@@ -295,6 +295,8 @@ GLOBAL_LIST_INIT(achievements_unlocked, list())
 	//Collects persistence features
 	SSpersistence.collect_data()
 	SSpersistent_paintings.save_paintings()
+	if(CONFIG_GET(flag/persistent_save_enabled))
+		SSworld_save.save_world()
 
 	//stop collecting feedback during grifftime
 	SSblackbox.Seal()

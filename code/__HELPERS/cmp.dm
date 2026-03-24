@@ -156,6 +156,12 @@
 /proc/cmp_num_string_asc(A, B)
 	return text2num(A) - text2num(B)
 
+/// Sorts persistent map JSON saves by z-level number embedded in the filename.
+/proc/cmp_persistent_saves_asc(A, B)
+	A = copytext(A, 1, -5)
+	B = copytext(B, 1, -5)
+	return text2num(A) - text2num(B)
+
 /proc/cmp_mob_realname_dsc(mob/A,mob/B)
 	return sorttext(A.real_name,B.real_name)
 

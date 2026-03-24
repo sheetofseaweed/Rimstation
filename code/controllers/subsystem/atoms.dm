@@ -14,6 +14,7 @@ SUBSYSTEM_DEF(atoms)
 	var/base_initialized
 
 	var/list/late_loaders = list()
+	var/list/world_save_loaders = list()
 
 	var/list/BadInitializeCalls = list()
 

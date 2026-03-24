@@ -19,6 +19,7 @@
 	///Handles whether the custom reconcilation handling should be used
 	var/custom_reconcilation = FALSE
 
+/*
 /obj/machinery/atmospherics/components/get_save_vars()
 	. = ..()
 	if(!override_naming)
@@ -26,6 +27,7 @@
 		. -= NAMEOF(src, name)
 	. += NAMEOF(src, welded)
 	return .
+*/
 
 /obj/machinery/atmospherics/components/Initialize(mapload)
 	parents = new(device_type)

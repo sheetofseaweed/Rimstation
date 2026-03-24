@@ -66,7 +66,8 @@ Always compile, always use that verb, and always make sure that it works for wha
 /// List of directories we can load map .json files from
 #define MAP_DIRECTORY_MAPS "_maps"
 #define MAP_DIRECTORY_DATA "data"
-#define MAP_DIRECTORY_WHITELIST list(MAP_DIRECTORY_MAPS,MAP_DIRECTORY_DATA)
+#define MAP_PERSISTENT_DIRECTORY "_maps/persistence/" // keep .gitignore in sync if this changes
+#define MAP_DIRECTORY_WHITELIST list(MAP_DIRECTORY_MAPS, MAP_DIRECTORY_DATA, MAP_PERSISTENT_DIRECTORY)
 
 /// Special map path value for custom adminloaded stations.
 #define CUSTOM_MAP_PATH "custom"
@@ -79,6 +80,7 @@ Always compile, always use that verb, and always make sure that it works for wha
 #define ZTRAIT_RESERVED "Transit/Reserved"
 #define ZTRAIT_AWAY "Away Mission"
 #define ZTRAIT_SPACE_RUINS "Space Ruins"
+#define ZTRAIT_SPACE_EMPTY "Space Empty"
 #define ZTRAIT_LAVA_RUINS "Lava Ruins"
 #define ZTRAIT_ICE_RUINS "Ice Ruins"
 #define ZTRAIT_ICE_RUINS_UNDERGROUND "Ice Ruins Underground"
@@ -218,6 +220,9 @@ Always compile, always use that verb, and always make sure that it works for wha
 #define CAPSULE_IGNORE_BANNED_OBJECTS (1<<1)
 
 /// A map key that corresponds to being one exclusively for Space.
+#define PERSISTENT_LOADED_Z_LEVELS "persistent_loaded_z_levels"
+/// Checks if a persistent map is already loaded.
+#define IS_PERSISTENT_MAP_LOADED(map_file) SSworld_save.map_configs_cache?[PERSISTENT_LOADED_Z_LEVELS][map_file]
 #define SPACE_KEY "space"
 
 //clusterCheckFlags defines
