@@ -32,6 +32,7 @@ ADMIN_VERB(map_serialization_ui, R_DEBUG, "Map Save", "Opens the map serializati
 	data["save_flags"] = get_save_flags_data()
 	data["save_enabled"] = CONFIG_GET(flag/persistent_save_enabled)
 	data["is_saving"] = SSworld_save.save_in_progress
+	data["cancel_requested"] = SSworld_save.save_cancel_requested
 	data["total_save_time"] = get_total_save_time()
 	return data
 
@@ -57,13 +58,9 @@ ADMIN_VERB(map_serialization_ui, R_DEBUG, "Map Save", "Opens the map serializati
 
 		if("stop_save")
 			if(SSworld_save.save_in_progress)
-				message_admins("[key_name_admin(usr)] stopped the map serialization save operation.")
-				log_admin("[key_name(usr)] stopped the map serialization save operation.")
-				SSworld_save.save_in_progress = FALSE
-
-				if(refresh_timer)
-					deltimer(refresh_timer)
-					refresh_timer = null
+				message_admins("[key_name_admin(usr)] requested cancellation of the map serialization save operation.")
+				log_admin("[key_name(usr)] requested cancellation of the map serialization save operation.")
+				SSworld_save.request_save_cancel("admin UI stop request by [key_name(usr)]")
 		if("toggle_z_level")
 			var/z_level = text2num(params["z_level"])
 			toggle_z_level_enabled(z_level)

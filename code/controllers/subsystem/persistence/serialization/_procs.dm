@@ -152,20 +152,24 @@ GLOBAL_LIST_EMPTY(save_containers_children)
  */
 /atom/proc/is_saveable(turf/current_loc, list/obj_blacklist)
 	if(obj_blacklist[type])
+		SSworld_save.record_serialization_skip("blacklist", src)
 		return FALSE
 	if(flags_1 & HOLOGRAM_1)
+		SSworld_save.record_serialization_skip("hologram", src)
 		return FALSE
 
 	return TRUE
 
 /atom/movable/is_saveable(turf/current_loc, list/obj_blacklist)
 	if(is_multi_tile_object(src) && (src.loc != current_loc))
+		SSworld_save.record_serialization_skip("multitile_child", src)
 		return FALSE
 
 	return ..()
 
 /obj/item/is_saveable(turf/current_loc, list/obj_blacklist)
 	if(item_flags & ABSTRACT)
+		SSworld_save.record_serialization_skip("abstract_item", src)
 		return FALSE
 
 	return ..()

@@ -8,6 +8,18 @@
 * elsewhere in code if you ever need to get a file in the .dmm format
 **/
 
+/proc/reset_write_map_state()
+	GLOB.save_containers_parents.Cut()
+	GLOB.save_containers_children.Cut()
+
+/proc/cancel_write_map()
+	SSworld_save.record_serialization_failure("cancel_requested")
+	reset_write_map_state()
+	return null
+
+/proc/should_cancel_write_map()
+	return SSworld_save && SSworld_save.should_cancel_save()
+
 /**
  *Procedure for converting a coordinate-selected part of the map into text for the .dmi format
  */
@@ -43,12 +55,20 @@
 	var/key_index = 1 // How many keys we've generated so far
 
 	for(var/z in 0 to depth)
+		if(should_cancel_write_map())
+			return cancel_write_map()
+
 		for(var/x in 0 to width)
+			if(should_cancel_write_map())
+				return cancel_write_map()
+
 			SSworld_save.current_save_x = x
 			contents += "\n([x + 1],1,[z + 1]) = {\"\n"
 
 			for(var/y in height to 0 step -1)
 				CHECK_TICK
+				if(should_cancel_write_map())
+					return cancel_write_map()
 
 				SSworld_save.current_save_y = y
 				// Reset the per turf obj/mob limits
@@ -144,6 +164,9 @@
 					INCREMENT_AREA_COUNT
 
 				for(var/atom/movable/target_atom as anything in pull_from)
+					if(should_cancel_write_map())
+						return cancel_write_map()
+
 					if(!target_atom.is_saveable(pull_from, obj_blacklist))
 						continue
 
@@ -152,6 +175,7 @@
 						CHECK_TICK
 
 						if(OBJECT_LIMIT_EXCEEDED)
+							SSworld_save.record_serialization_skip("object_limit", target_atom)
 							continue
 						INCREMENT_OBJ_COUNT()
 
@@ -160,6 +184,7 @@
 						CHECK_TICK
 
 						if(MOB_LIMIT_EXCEEDED)
+							SSworld_save.record_serialization_skip("mob_limit", target_atom)
 							continue
 						INCREMENT_MOB_COUNT()
 
@@ -211,8 +236,7 @@
 			contents += "\"}"
 
 	// These always need to be reset between saves so old child/parents storages dont get mixed up
-	GLOB.save_containers_parents.Cut()
-	GLOB.save_containers_children.Cut()
+	reset_write_map_state()
 
 	return "//[DMM2TGM_MESSAGE]\n[header.Join()][contents.Join()]"
 
