@@ -13,6 +13,7 @@
 
 MAPPING_DIRECTIONAL_HELPERS(/obj/structure/noticeboard, 32)
 
+/*
 /obj/structure/noticeboard/on_object_saved()
 	var/data
 
@@ -21,6 +22,7 @@ MAPPING_DIRECTIONAL_HELPERS(/obj/structure/noticeboard, 32)
 		data += "[data ? ",\n" : ""][paper.type][metadata]"
 
 	return data
+*/
 
 /obj/structure/noticeboard/Initialize(mapload)
 	. = ..()

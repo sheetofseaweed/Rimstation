@@ -1,4 +1,5 @@
-ADMIN_VERB(map_export, R_DEBUG, "Map Export", "Select a part of the map by coordinates and download it.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB_VISIBILITY(map_export, ADMIN_VERB_VISIBLITY_FLAG_MAPPING_DEBUG)
+ADMIN_VERB(map_export, R_DEBUG, "Map Export", "Select a part of the map by coordinates and download it.", ADMIN_CATEGORY_MAPPING)
 	var/user_x = user.mob.x
 	var/user_y = user.mob.y
 	var/user_z = user.mob.z
@@ -33,8 +34,11 @@ ADMIN_VERB(map_export, R_DEBUG, "Map Export", "Select a part of the map by coord
 	fdel(file_to_delete)
 
 /proc/sanitize_filename(text)
-	return hashtag_newlines_and_tabs(text, list("\n"="", "\t"="", "/"="", "\\"="", "?"="", "%"="", "*"="", ":"="", "|"="", "\""="", "<"="", ">"=""))
+	var/list/replacement_characters = list("\n"="", "\t"="", "/"="", "\\"="", "?"="", "%"="", "*"="", ":"="", "|"="", "\""="", "<"="", ">"="")
+	HASHTAG_NEWLINES_AND_TABS(text, replacement_characters)
+	return text
 
+/*
 /proc/hashtag_newlines_and_tabs(text, list/repl_chars = list("\n"="#","\t"="#"))
 	for(var/char in repl_chars)
 		var/index = findtext(text, char)
@@ -357,3 +361,4 @@ GLOBAL_LIST_INIT(save_file_chars, list(
 		calculated = (calculated % length) + 1
 		output += pull_from[calculated]
 	return output.Join()
+*/

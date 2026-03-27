@@ -19,6 +19,7 @@
 	///Handles whether the custom reconcilation handling should be used
 	var/custom_reconcilation = FALSE
 
+/*
 /obj/machinery/atmospherics/components/get_save_vars()
 	. = ..()
 	if(!override_naming)
@@ -26,6 +27,7 @@
 		. -= NAMEOF(src, name)
 	. += NAMEOF(src, welded)
 	return .
+*/
 
 /obj/machinery/atmospherics/components/Initialize(mapload)
 	parents = new(device_type)
@@ -378,7 +380,14 @@
 				continue
 			to_release.merge(air)
 			continue
-		var/datum/gas_mixture/parents_air = parents[i].air
+		var/datum/pipeline/parent_pipeline = parents[i]
+		if(!parent_pipeline?.air)
+			if(!to_release)
+				to_release = air
+				continue
+			to_release.merge(air)
+			continue
+		var/datum/gas_mixture/parents_air = parent_pipeline.air
 		parents_air.merge(air)
-	if(to_release)
+	if(to_release && local_turf)
 		local_turf.assume_air(to_release)

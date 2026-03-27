@@ -248,6 +248,7 @@
 #include "outfit_sanity.dm"
 #include "oxyloss_suffocation.dm"
 #include "paintings.dm"
+#include "persistence_serialization.dm"
 #include "pills.dm"
 #include "plane_double_transform.dm"
 #include "plane_dupe_detector.dm"
