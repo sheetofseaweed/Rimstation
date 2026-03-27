@@ -41,7 +41,7 @@
 	else if(!(A.flags_1 & INITIALIZED_1))
 		BadInitializeCalls[the_type] |= BAD_INIT_DIDNT_INIT
 	else
-		if(arguments[1]) // mapload
+		if(arguments[1] && SSatoms.persistent_map_load_in_progress) // persistent autosave mapload
 			world_save_loaders += A
 		SEND_SIGNAL(A, COMSIG_ATOM_AFTER_SUCCESSFUL_INITIALIZE)
 		SEND_GLOBAL_SIGNAL(COMSIG_GLOB_ATOM_AFTER_POST_INIT, A)

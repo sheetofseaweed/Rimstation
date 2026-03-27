@@ -139,7 +139,7 @@ SUBSYSTEM_DEF(mapping)
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else
 		while (space_levels_so_far < current_map.space_ruin_levels)
 			add_new_zlevel("Ruin Area [space_levels_so_far+1]", ZTRAITS_SPACE)
@@ -151,7 +151,7 @@ SUBSYSTEM_DEF(mapping)
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else
 		while (space_levels_so_far < current_map.space_empty_levels + current_map.space_ruin_levels)
 			empty_space = add_new_zlevel("Empty Area [space_levels_so_far+1]", list(ZTRAIT_LINKAGE = CROSSLINKED, ZTRAIT_SPACE_EMPTY = TRUE))
@@ -163,7 +163,7 @@ SUBSYSTEM_DEF(mapping)
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else if(current_map.wilderness_levels)
 		LoadGroup(FailedZs, "Wilderness Area", current_map.wilderness_directory, current_map.maps_to_spawn, default_traits = ZTRAITS_WILDS, height_autosetup = FALSE)
 
@@ -176,7 +176,7 @@ SUBSYSTEM_DEF(mapping)
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else if(CONFIG_GET(flag/roundstart_away))
 		createRandomZlevel(prob(CONFIG_GET(number/config_gateway_chance)))
 
@@ -412,7 +412,7 @@ Used by the AI doomsday and the self-destruct nuke.
 	multiz_levels = SSmapping.multiz_levels
 	loaded_lazy_templates = SSmapping.loaded_lazy_templates
 
-/datum/controller/subsystem/mapping/proc/LoadGroup(list/errorList, name, path, files, list/traits, list/default_traits, silent = FALSE, height_autosetup = TRUE)
+/datum/controller/subsystem/mapping/proc/LoadGroup(list/errorList, name, path, files, list/traits, list/default_traits, silent = FALSE, height_autosetup = TRUE, persistent_load = FALSE)
 	. = list()
 	var/start_time = REALTIMEOFDAY
 
@@ -461,6 +461,8 @@ Used by the AI doomsday and the self-destruct nuke.
 
 	SSautomapper.preload_templates_from_toml(files) // SKYRAT EDIT ADDITION - We need to load our templates AFTER the Z level exists, otherwise, there is no z level to preload.
 	var/turf_blacklist = SSautomapper.get_turf_blacklists(files) // SKYRAT EDIT ADDITION - We use blacklisted turfs to carve out places for our templates.
+	var/was_persistent_map_load_in_progress = SSatoms.persistent_map_load_in_progress
+	SSatoms.persistent_map_load_in_progress = (was_persistent_map_load_in_progress || persistent_load)
 
 	// load the maps
 	for (var/P in parsed_maps)
@@ -475,6 +477,7 @@ Used by the AI doomsday and the self-destruct nuke.
 	if(!LAZYLEN(errorList))
 		SSautomapper.load_templates_from_cache(files)
 	// SKYRAT EDIT ADDITION END
+	SSatoms.persistent_map_load_in_progress = was_persistent_map_load_in_progress
 	if(!silent)
 		add_startup_message("Loaded [name] in [(REALTIMEOFDAY - start_time)/10]s!") //SKYRAT EDIT CHANGE
 
@@ -503,7 +506,7 @@ Used by the AI doomsday and the self-destruct nuke.
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else
 		INIT_ANNOUNCE("Loading [current_map.map_name]...")
 		LoadGroup(FailedZs, "Station", current_map.map_path, current_map.map_file, current_map.traits, ZTRAITS_STATION, height_autosetup = current_map.height_autosetup)
@@ -523,7 +526,7 @@ Used by the AI doomsday and the self-destruct nuke.
 				continue
 
 			INIT_ANNOUNCE("Loading persistent z-level [persistent_map.map_name]...")
-			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup)
+			LoadGroup(FailedZs, persistent_map.map_name, persistent_map.map_path, persistent_map.map_file, persistent_map.traits, null, height_autosetup = persistent_map.height_autosetup, persistent_load = TRUE)
 	else
 		if(current_map.minetype == MINETYPE_LAVALAND)
 			LoadGroup(FailedZs, "Lavaland", "map_files/Mining", "Lavaland.dmm", default_traits = ZTRAITS_LAVALAND)

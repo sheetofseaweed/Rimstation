@@ -1,6 +1,5 @@
 // Map Serialization Admin UI
-ADMIN_VERB_VISIBILITY(map_serialization_ui, ADMIN_VERB_VISIBLITY_FLAG_MAPPING_DEBUG)
-ADMIN_VERB(map_serialization_ui, R_DEBUG, "Map Save", "Opens the map serialization admin interface.", ADMIN_CATEGORY_MAPPING)
+ADMIN_VERB(map_serialization_ui, R_DEBUG, "Map Save", "Opens the map serialization admin interface.", ADMIN_CATEGORY_PERSISTENCE)
 	var/datum/map_serialization_ui/ui = new(usr)
 	ui.ui_interact(usr)
 

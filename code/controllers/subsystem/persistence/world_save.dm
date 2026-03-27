@@ -55,6 +55,7 @@ SUBSYSTEM_DEF(world_save)
 	if(SSatoms.world_save_loaders.len)
 		if(CONFIG_GET(flag/persistent_save_enabled))
 			for(var/I in 1 to SSatoms.world_save_loaders.len)
+				CHECK_TICK
 				var/atom/A = SSatoms.world_save_loaders[I]
 				//I hate that we need this
 				if(QDELETED(A))

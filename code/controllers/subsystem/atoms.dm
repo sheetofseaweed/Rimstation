@@ -15,6 +15,8 @@ SUBSYSTEM_DEF(atoms)
 
 	var/list/late_loaders = list()
 	var/list/world_save_loaders = list()
+	/// TRUE while a map from the persistence autosave directory is being loaded.
+	var/persistent_map_load_in_progress = FALSE
 
 	var/list/BadInitializeCalls = list()
 

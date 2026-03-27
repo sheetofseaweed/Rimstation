@@ -380,7 +380,14 @@
 				continue
 			to_release.merge(air)
 			continue
-		var/datum/gas_mixture/parents_air = parents[i].air
+		var/datum/pipeline/parent_pipeline = parents[i]
+		if(!parent_pipeline?.air)
+			if(!to_release)
+				to_release = air
+				continue
+			to_release.merge(air)
+			continue
+		var/datum/gas_mixture/parents_air = parent_pipeline.air
 		parents_air.merge(air)
-	if(to_release)
+	if(to_release && local_turf)
 		local_turf.assume_air(to_release)

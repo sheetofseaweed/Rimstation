@@ -21,6 +21,8 @@
 /obj/vehicle/sealed/mecha/PersistentInitialize()
 	. = ..()
 	for(var/obj/item/mecha_parts/mecha_equipment/equip in contents)
+		if(equip.chassis == src)
+			continue
 		equip.attach(src, equip.was_right_attached)
 	locate_parts()
 
