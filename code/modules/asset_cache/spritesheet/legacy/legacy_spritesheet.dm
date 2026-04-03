@@ -97,6 +97,9 @@
 /datum/asset/spritesheet/proc/realize_spritesheets(yield)
 	if(fully_generated)
 		return
+
+	ensure_asset_spritesheet_directories()
+
 	while(length(to_generate))
 		var/list/stored_args = to_generate[to_generate.len]
 		to_generate.len--
@@ -216,6 +219,8 @@
 	return read_css_from_cache() && read_data_from_cache()
 
 /datum/asset/spritesheet/proc/read_css_from_cache()
+	ensure_asset_spritesheet_directories()
+
 	var/replaced_css = rustg_file_read(css_cache_filename())
 
 	var/regex/find_background_urls = regex(@"background-image:url\('%(.+?)%'\)", "g")

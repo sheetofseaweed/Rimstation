@@ -6,6 +6,22 @@
 /// This is used to invalidate the cache if something changes on the DM side. For example, if the CSS generator was changed.
 #define SPRITESHEET_SYSTEM_VERSION 1
 
+/// rust-g's spritesheet generation expects these folders to exist before it writes any files.
+/proc/ensure_asset_spritesheet_directories()
+	var/static/directories_ready = FALSE
+	if(directories_ready)
+		return
+
+	var/bootstrap_file = "data/spritesheets/.bootstrap"
+	rustg_file_write("spritesheet bootstrap", bootstrap_file)
+	fdel(bootstrap_file)
+
+	var/cache_bootstrap_file = "[ASSET_CROSS_ROUND_SMART_CACHE_DIRECTORY]/.bootstrap"
+	rustg_file_write("spritesheet smart cache bootstrap", cache_bootstrap_file)
+	fdel(cache_bootstrap_file)
+
+	directories_ready = TRUE
+
 /datum/asset/spritesheet_batched
 	_abstract = /datum/asset/spritesheet_batched
 	var/name
@@ -168,6 +184,8 @@
 	if(!length(entries))
 		CRASH("Spritesheet [name] ([type]) is empty! What are you doing?")
 
+	ensure_asset_spritesheet_directories()
+
 	if(isnull(entries_json))
 		entries_json = json_encode(entries)
 
@@ -201,6 +219,10 @@
 		rustg_file_write(entries_json, "[GLOB.log_directory]/spritesheet_debug_[name].json")
 		CRASH("Spritesheet [name] UNKNOWN ERROR: [data_out]")
 	var/data = json_decode(data_out)
+	var/generation_error = data["error"]
+	if(length(generation_error) && !(ignore_dir_errors && findtext(generation_error, "is not in the set of valid dirs")))
+		rustg_file_write(entries_json, "[GLOB.log_directory]/spritesheet_debug_[name].json")
+		CRASH("Error during spritesheet generation for [name]: [generation_error]")
 	sizes = data["sizes"]
 	sprites = data["sprites"]
 	var/input_hash = data["sprites_hash"]
@@ -209,6 +231,9 @@
 	for(var/size_id in sizes)
 		var/png_name = "[name]_[size_id].png"
 		var/file_directory = "data/spritesheets/[png_name]"
+		if(!fexists(file_directory))
+			rustg_file_write(entries_json, "[GLOB.log_directory]/spritesheet_debug_[name].json")
+			CRASH("Spritesheet [name] was missing generated output [file_directory].")
 		var/file_hash = rustg_hash_file(RUSTG_HASH_MD5, file_directory)
 		SSassets.transport.register_asset(png_name, fcopy_rsc(file_directory), file_hash)
 		if(CONFIG_GET(flag/save_spritesheets))
@@ -230,8 +255,6 @@
 	fully_generated = TRUE
 	// If we were ever in there, remove ourselves
 	SSasset_loading.dequeue_asset(src)
-	if(data["error"] && !(ignore_dir_errors && findtext(data["error"], "is not in the set of valid dirs")))
-		CRASH("Error during spritesheet generation for [name]: [data["error"]]")
 
 /datum/asset/spritesheet_batched/queued_generation()
 	INVOKE_ASYNC(src, PROC_REF(realize_spritesheets), TRUE) // The proc is called inside a subsystem and waits with an UNTIL

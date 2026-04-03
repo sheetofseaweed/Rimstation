@@ -47,10 +47,12 @@ PROCESSING_SUBSYSTEM_DEF(personalities)
 
 /// Helper to check if the new personality type is incompatible with the passed list of personality types
 /datum/controller/subsystem/processing/personalities/proc/is_incompatible(list/personality_types, new_personality_type)
+	if(!length(personalities_by_type))
+		init_personalities()
 	if(!length(incompatibilities_by_group))
 		stack_trace("Checking personality incompatibilities before the incompatibility list was initialized?")
 		return FALSE
-	if(length(personality_types))
+	if(!length(personality_types))
 		// No incompatibilities possible with no personalities
 		return FALSE
 	var/datum/personality/new_personality = personalities_by_type[new_personality_type]
@@ -67,6 +69,9 @@ PROCESSING_SUBSYSTEM_DEF(personalities)
 
 /// Helper to select a random list of personalities, respecting incompatibilities. REturns a list of typepaths
 /datum/controller/subsystem/processing/personalities/proc/select_random_personalities(lower_end = 1, upper_end = CONFIG_GET(number/max_personalities))
+	if(!length(personalities_by_type))
+		init_personalities()
+
 	var/list/personality_pool = personalities_by_type.Copy()
 	var/list/selected_personalities = list()
 	var/num = rand(lower_end, upper_end)
