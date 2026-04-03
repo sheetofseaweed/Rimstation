@@ -119,7 +119,7 @@
 		load_whitelist()
 
 	// SKYRAT EDIT ADDITION START
-	populate_interaction_instances()
+	// Interactions are populated by SSinteractions during subsystem initialization.
 	remove_erp_things()
 	// SKYRAT EDIT ADDITION END
 

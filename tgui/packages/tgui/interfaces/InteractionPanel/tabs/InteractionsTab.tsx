@@ -1,104 +1,309 @@
-// THIS IS A BUBBER UI FILE
-import { useMemo } from 'react';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Box,
   Button,
   Collapsible,
+  Icon,
+  Modal,
   NoticeBox,
   Section,
+  Slider,
   Stack,
+  Tooltip,
 } from 'tgui-core/components';
-import type { BooleanLike } from 'tgui-core/react';
 
 import { useBackend } from '../../../backend';
 
-type Interaction = {
+type AutoInteractionInfo = {
+  speed: number;
+  target: string;
+  target_name: string;
+  next_interaction: number;
+};
+
+type InteractionsInfo = {
   categories: string[];
   interactions: Record<string, string[]>;
   descriptions: Record<string, string>;
   colors: Record<string, string>;
-  self: string;
-  ref_self: string;
+  block_interact: boolean;
+  favorite_interactions: string[];
   ref_user: string;
-  block_interact: BooleanLike;
+  ref_self: string;
+  self: string;
+  additional_details: Record<
+    string,
+    { info: string; icon: string; color: string }[]
+  >;
+  auto_interaction_info: Record<string, AutoInteractionInfo>;
+  auto_interaction_speed_values: number[];
 };
 
 type InteractionsTabProps = {
   searchText: string;
+  inFavorites: boolean;
   showCategories: boolean;
 };
 
-export const InteractionsTab = (props: InteractionsTabProps) => {
-  const { act, data } = useBackend<Interaction>();
+type AutoInteractionModalProps = {
+  interaction: string;
+  ref_self: string;
+  onClose: () => void;
+};
+
+const AutoInteractionModal = ({
+  interaction,
+  ref_self,
+  onClose,
+}: AutoInteractionModalProps) => {
+  const { act, data } = useBackend<InteractionsInfo>();
+  const { auto_interaction_info, auto_interaction_speed_values } = data;
+  const isActive = !!auto_interaction_info[`${interaction}_target_${ref_self}`];
+
+  return (
+    <Modal width="400px">
+      <Section
+        title={`Auto Interaction: ${interaction}`}
+        buttons={<Button color="red" icon="window-close" onClick={onClose} />}
+      >
+        <Stack vertical fill>
+          {isActive && (
+            <Stack.Item>
+              <Box>
+                Interacting with:{' '}
+                {auto_interaction_info[`${interaction}_target_${ref_self}`]
+                  ?.target_name || 'No one'}
+              </Box>
+            </Stack.Item>
+          )}
+          <Stack.Item>
+            <Box>
+              Speed:{' '}
+              {auto_interaction_info[`${interaction}_target_${ref_self}`]
+                ?.speed || 'Stopped'}
+            </Box>
+          </Stack.Item>
+          <Stack.Item>
+            <Slider
+              minValue={auto_interaction_speed_values[0]}
+              maxValue={auto_interaction_speed_values[1]}
+              value={
+                auto_interaction_info[`${interaction}_target_${ref_self}`]
+                  ?.speed || auto_interaction_speed_values[1]
+              }
+              onChange={(e, value) => {
+                if (
+                  auto_interaction_info[`${interaction}_target_${ref_self}`]
+                ) {
+                  act('auto_interaction', {
+                    interaction_text: `${interaction}_target_${ref_self}`,
+                    speed: value,
+                    selfref: ref_self,
+                  });
+                }
+              }}
+            />
+          </Stack.Item>
+          <Stack.Item>
+            <Stack fill>
+              {isActive ? (
+                <Stack.Item grow>
+                  <Button
+                    fluid
+                    color="red"
+                    icon="stop"
+                    onClick={() =>
+                      act('auto_interaction', {
+                        interaction_text: `${interaction}_target_${ref_self}`,
+                        action: 'stop',
+                      })
+                    }
+                  >
+                    Stop
+                  </Button>
+                </Stack.Item>
+              ) : (
+                <Stack.Item grow>
+                  <Button
+                    fluid
+                    color="green"
+                    icon="play"
+                    onClick={() =>
+                      act('auto_interaction', {
+                        interaction_text: `${interaction}_target_${ref_self}`,
+                        speed: auto_interaction_speed_values[1],
+                        selfref: ref_self,
+                      })
+                    }
+                  >
+                    Play
+                  </Button>
+                </Stack.Item>
+              )}
+            </Stack>
+          </Stack.Item>
+        </Stack>
+      </Section>
+    </Modal>
+  );
+};
+
+export const InteractionsTab = ({
+  searchText,
+  inFavorites,
+  showCategories,
+}: InteractionsTabProps) => {
+  const { act, data } = useBackend<InteractionsInfo>();
+  const [autoInteractionModalOpen, setAutoInteractionModalOpen] = useState<
+    string | null
+  >(null);
+
   const {
     categories = [],
     interactions = {},
     descriptions = {},
     colors = {},
-    ref_self,
-    ref_user,
     block_interact,
+    favorite_interactions = [],
+    ref_user,
+    ref_self,
+    additional_details = {},
+    auto_interaction_info = {},
   } = data;
-  const { searchText, showCategories } = props;
-
-  const searchLower = searchText.toLowerCase();
-
-  const renderInteractionButton = (interaction: string) => {
-    return (
-      <Button
-        key={interaction}
-        width="150px"
-        lineHeight={1.75}
-        disabled={block_interact}
-        color={block_interact ? 'grey' : colors[interaction]}
-        tooltip={
-          block_interact
-            ? 'You cannot interact right now'
-            : descriptions[interaction]
-        }
-        icon="exclamation-circle"
-        onClick={() =>
-          act('interact', {
-            interaction: interaction,
-            selfref: ref_self,
-            userref: ref_user,
-          })
-        }
-      >
-        {interaction}
-      </Button>
-    );
-  };
 
   const filterInteractions = (category: string) => {
     let categoryInteractions = interactions[category] || [];
     if (searchText) {
       categoryInteractions = categoryInteractions.filter((interaction) =>
-        interaction.toLowerCase().includes(searchLower),
+        interaction.toLowerCase().includes(searchText.toLowerCase()),
+      );
+    }
+    if (inFavorites) {
+      categoryInteractions = categoryInteractions.filter((interaction) =>
+        favorite_interactions.includes(interaction),
       );
     }
     return categoryInteractions;
   };
 
-  const allInteractions = useMemo(() => {
-    return categories.flatMap((category) =>
-      filterInteractions(category).map((interaction) => ({
-        name: interaction,
-        category,
-      })),
+  const getAllInteractions = () => {
+    let allInteractions: Array<{ name: string; category: string }> = [];
+    categories.forEach((category) => {
+      const categoryInteractions = filterInteractions(category);
+      allInteractions = allInteractions.concat(
+        categoryInteractions.map((interaction) => ({
+          name: interaction,
+          category,
+        })),
+      );
+    });
+    return allInteractions;
+  };
+
+  const renderInteractionButton = (interaction: string) => {
+    const hasAutoInteraction =
+      !!auto_interaction_info[`${interaction}_target_${ref_self}`];
+
+    return (
+      <Stack fill>
+        <Stack.Item grow>
+          <Button
+            fluid
+            color={block_interact ? 'grey' : colors[interaction]}
+            tooltip={descriptions[interaction]}
+            disabled={block_interact}
+            onClick={() =>
+              act('interact', {
+                interaction,
+                selfref: ref_self,
+                userref: ref_user,
+              })
+            }
+          >
+            {interaction}
+            <Box textAlign="right" fillPositionedParent>
+              {additional_details[interaction]?.map((detail) => (
+                <Tooltip content={detail.info} key={detail.info}>
+                  <Box mx={0.5} as="span" color={detail.color}>
+                    <Icon name={detail.icon} />
+                  </Box>
+                </Tooltip>
+              ))}
+            </Box>
+          </Button>
+        </Stack.Item>
+        <Stack.Item>
+          <Button
+            icon={
+              favorite_interactions.includes(interaction) ? 'star' : 'star-o'
+            }
+            color={
+              favorite_interactions.includes(interaction) ? 'yellow' : 'default'
+            }
+            tooltip={`${
+              favorite_interactions.includes(interaction)
+                ? 'Remove from'
+                : 'Add to'
+            } favorites`}
+            onClick={() =>
+              act('favorite', {
+                interaction,
+              })
+            }
+          />
+        </Stack.Item>
+        <Stack.Item>
+          <Button
+            icon={hasAutoInteraction ? 'play' : 'stop'}
+            color={hasAutoInteraction ? 'green' : 'red'}
+            tooltip="Auto Interaction"
+            onClick={() => setAutoInteractionModalOpen(interaction)}
+          />
+        </Stack.Item>
+      </Stack>
     );
-  }, [categories, searchLower]);
+  };
 
   return (
-    <Stack fill vertical>
-      <NoticeBox>
-        {block_interact ? 'Unable to Interact' : 'Able to Interact'}
-      </NoticeBox>
+    <Stack vertical fill>
+      <Stack.Item>
+        <NoticeBox>
+          <Stack>
+            <Stack.Item grow>
+              {block_interact ? 'Unable to Interact' : 'Able to Interact'}
+            </Stack.Item>
+            {Object.keys(auto_interaction_info).length > 0 && (
+              <Stack.Item>
+                <Button
+                  color="red"
+                  icon="stop"
+                  tooltip="Stop all auto interactions"
+                  onClick={() => {
+                    Object.keys(auto_interaction_info).forEach(
+                      (interaction_text) => {
+                        act('auto_interaction', {
+                          interaction_text,
+                          action: 'stop',
+                        });
+                      },
+                    );
+                  }}
+                >
+                  Stop all auto interactions
+                </Button>
+              </Stack.Item>
+            )}
+          </Stack>
+        </NoticeBox>
+      </Stack.Item>
       <Stack.Item grow>
         {showCategories ? (
           categories.map((category) => {
             const filteredInteractions = filterInteractions(category);
-            if (filteredInteractions.length === 0) return null;
+            if (filteredInteractions.length === 0) {
+              return null;
+            }
             return (
               <Collapsible
                 key={category}
@@ -111,25 +316,36 @@ export const InteractionsTab = (props: InteractionsTabProps) => {
                 }
               >
                 <Section fill>
-                  <Box mt={0.2}>
-                    {filteredInteractions.map((interaction) =>
-                      renderInteractionButton(interaction),
-                    )}
-                  </Box>
+                  <Stack vertical>
+                    {filteredInteractions.map((interaction) => (
+                      <Stack.Item key={interaction}>
+                        {renderInteractionButton(interaction)}
+                      </Stack.Item>
+                    ))}
+                  </Stack>
                 </Section>
               </Collapsible>
             );
           })
         ) : (
           <Section fill>
-            <Box mt={0.2}>
-              {allInteractions.map(({ name, category }) =>
-                renderInteractionButton(name),
-              )}
-            </Box>
+            <Stack vertical>
+              {getAllInteractions().map(({ name }) => (
+                <Stack.Item key={name}>{renderInteractionButton(name)}</Stack.Item>
+              ))}
+            </Stack>
           </Section>
         )}
       </Stack.Item>
+      {autoInteractionModalOpen &&
+        createPortal(
+          <AutoInteractionModal
+            interaction={autoInteractionModalOpen}
+            ref_self={ref_self}
+            onClose={() => setAutoInteractionModalOpen(null)}
+          />,
+          document.body,
+        )}
     </Stack>
   );
 };

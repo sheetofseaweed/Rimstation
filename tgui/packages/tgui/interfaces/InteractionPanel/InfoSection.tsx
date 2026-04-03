@@ -1,44 +1,86 @@
-// THIS IS A BUBBER UI FILE
-import { Icon, ProgressBar, Section, Stack } from 'tgui-core/components';
-import type { BooleanLike } from 'tgui-core/react';
+import {
+  BlockQuote,
+  Icon,
+  ProgressBar,
+  Section,
+  Stack,
+} from 'tgui-core/components';
 
 import { useBackend } from '../../backend';
 
 type HeaderInfo = {
-  isTargetSelf: BooleanLike;
+  isTargetSelf: boolean;
+  interactingWith: string;
   pleasure: number;
+  maxPleasure: number;
   arousal: number;
+  maxArousal: number;
   pain: number;
+  maxPain: number;
+  selfAttributes: string[];
+  theirAttributes: string[];
   theirPleasure: number;
+  theirMaxPleasure: number;
   theirArousal: number;
+  theirMaxArousal: number;
   theirPain: number;
-  arousalLimit: number;
-  theirName: string;
-  yourName: string;
+  theirMaxPain: number;
 };
 
 export const InfoSection = () => {
   const { data } = useBackend<HeaderInfo>();
   const {
     isTargetSelf,
+    interactingWith,
     pleasure,
+    maxPleasure,
     arousal,
+    maxArousal,
     pain,
+    maxPain,
+    selfAttributes,
+    theirAttributes,
     theirPleasure,
+    theirMaxPleasure,
     theirArousal,
+    theirMaxArousal,
     theirPain,
-    yourName,
-    theirName,
-    arousalLimit,
+    theirMaxPain,
   } = data;
   return (
-    <Section fill>
+    <Section title={interactingWith} fill>
       <Stack vertical fill>
-        <Stack.Item grow>
-          <Stack>
-            <Stack.Item grow>{yourName}</Stack.Item>
-            {!isTargetSelf ? <Stack.Item grow>{theirName}</Stack.Item> : null}
-          </Stack>
+        <Stack.Item grow basis={0}>
+          <Section fill scrollable>
+            <Stack>
+              <Stack.Item grow>
+                <BlockQuote>
+                  You...
+                  <br />
+                  {selfAttributes.map((attribute) => (
+                    <div key={attribute}>
+                      {attribute}
+                      <br />
+                    </div>
+                  ))}
+                </BlockQuote>
+              </Stack.Item>
+              {!isTargetSelf ? (
+                <Stack.Item grow>
+                  <BlockQuote>
+                    They...
+                    <br />
+                    {theirAttributes.map((attribute) => (
+                      <div key={attribute}>
+                        {attribute}
+                        <br />
+                      </div>
+                    ))}
+                  </BlockQuote>
+                </Stack.Item>
+              ) : null}
+            </Stack>
+          </Section>
         </Stack.Item>
         <Stack.Item>
           <Stack fill>
@@ -47,7 +89,7 @@ export const InfoSection = () => {
                 <Stack.Item>
                   <ProgressBar
                     value={pleasure}
-                    maxValue={arousalLimit}
+                    maxValue={maxPleasure}
                     color="purple"
                   >
                     <Icon name="heart" /> Pleasure
@@ -56,14 +98,14 @@ export const InfoSection = () => {
                 <Stack.Item>
                   <ProgressBar
                     value={arousal}
-                    maxValue={arousalLimit}
+                    maxValue={maxArousal}
                     color="pink"
                   >
                     <Icon name="tint" /> Arousal
                   </ProgressBar>
                 </Stack.Item>
                 <Stack.Item>
-                  <ProgressBar value={pain} maxValue={arousalLimit} color="red">
+                  <ProgressBar value={pain} maxValue={maxPain} color="red">
                     <Icon name="bolt" /> Pain
                   </ProgressBar>
                 </Stack.Item>
@@ -75,7 +117,7 @@ export const InfoSection = () => {
                   <Stack.Item>
                     <ProgressBar
                       value={theirPleasure}
-                      maxValue={arousalLimit}
+                      maxValue={theirMaxPleasure}
                       color="purple"
                     >
                       <Icon name="heart" /> Pleasure
@@ -84,7 +126,7 @@ export const InfoSection = () => {
                   <Stack.Item>
                     <ProgressBar
                       value={theirArousal}
-                      maxValue={arousalLimit}
+                      maxValue={theirMaxArousal}
                       color="pink"
                     >
                       <Icon name="tint" /> Arousal
@@ -93,7 +135,7 @@ export const InfoSection = () => {
                   <Stack.Item>
                     <ProgressBar
                       value={theirPain}
-                      maxValue={arousalLimit}
+                      maxValue={theirMaxPain}
                       color="red"
                     >
                       <Icon name="bolt" /> Pain

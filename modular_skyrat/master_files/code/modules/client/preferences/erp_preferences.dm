@@ -35,7 +35,7 @@
 	category = PREFERENCE_CATEGORY_GAME_PREFERENCES
 	savefile_identifier = PREFERENCE_PLAYER
 	savefile_key = "erp_pref"
-	default_value = FALSE
+	default_value = TRUE
 
 /datum/preference/toggle/erp/is_accessible(datum/preferences/preferences)
 	if (!..(preferences))
@@ -95,30 +95,38 @@
 
 /datum/preference/toggle/erp/hypnosis
 	savefile_key = "hypnosis_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/bimbofication
 	savefile_key = "bimbofication_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/aphro
 	savefile_key = "aphro_pref"
 
 /datum/preference/toggle/erp/breast_enlargement
 	savefile_key = "breast_enlargement_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/breast_shrinkage
 	savefile_key = "breast_shrinkage_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/penis_enlargement
 	savefile_key = "penis_enlargement_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/penis_shrinkage
 	savefile_key = "penis_shrinkage_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/genitalia_removal
 	savefile_key = "genitalia_removal_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/gender_change
 	savefile_key = "gender_change_pref"
+	default_value = FALSE
 
 /datum/preference/toggle/erp/autocum
 	savefile_key = "autocum_pref"
@@ -128,6 +136,7 @@
 
 /datum/preference/toggle/erp/new_genitalia_growth
 	savefile_key = "new_genitalia_growth_pref"
+	default_value = FALSE
 
 /datum/preference/choiced/erp_status
 	category = PREFERENCE_CATEGORY_OOC_PREFS
@@ -158,7 +167,7 @@
 	)
 
 /datum/preference/choiced/erp_status/create_default_value()
-	return "Ask (L)OOC"
+	return "Yes"
 
 /datum/preference/choiced/erp_status/is_accessible(datum/preferences/preferences)
 	if (!..(preferences))
@@ -188,7 +197,7 @@
 	return list("Yes - Switch", "Yes - Dom", "Yes - Sub", "Yes", "Ask (L)OOC", "Check OOC Notes", "No")
 
 /datum/preference/choiced/erp_status_nc/create_default_value()
-	return "No"
+	return "Yes"
 
 /datum/preference/choiced/erp_status_nc/is_accessible(datum/preferences/preferences)
 	if (!..(preferences))
@@ -248,7 +257,7 @@
 	return list("Roleplay only", "Mechanical only", "Mechanical and Roleplay", "None")
 
 /datum/preference/choiced/erp_status_mechanics/create_default_value()
-	return "None"
+	return "Mechanical and Roleplay"
 
 /datum/preference/choiced/erp_status_mechanics/is_accessible(datum/preferences/preferences)
 	if (!..(preferences))
@@ -278,7 +287,7 @@
 	return list("Gay", "Straight", "None") // For simplicity's sake we only have 3 options.
 
 /datum/preference/choiced/erp_sexuality/create_default_value()
-	return "None"
+	return "Straight"
 
 /datum/preference/choiced/erp_sexuality/is_accessible(datum/preferences/preferences)
 	if (!..(preferences))

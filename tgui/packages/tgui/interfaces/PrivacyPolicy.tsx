@@ -11,7 +11,7 @@ export const PrivacyPolicy = () => {
   const { policy_text } = data;
 
   return (
-    <Window width={600} height={500} title="Privacy Policy">
+    <Window width={600} height={500} title="Content Acknowledgement">
       <Window.Content scrollable>
         <Section>
           <div style={{ whiteSpace: 'pre-wrap' }}>{policy_text}</div>
