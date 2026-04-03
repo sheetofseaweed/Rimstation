@@ -30,6 +30,8 @@
 #define NO_DEBRIS_AFTER_DECONSTRUCTION (1<<13)
 /// Flag which tells an object to hang onto an support atom on late initialize. Usefull only during mapload and supported by some atoms only
 #define MOUNT_ON_LATE_INITIALIZE (1<<14)
+/// The object's internal contents has already been populated via PopulateContents()
+#define CONTENTS_INITIALIZED (1<<23)
 
 // If you add new ones, be sure to add them to /obj/Initialize as well for complete mapping support
 

@@ -714,8 +714,10 @@
 	/// the type of wallframe it 'disassembles' into
 	var/wallframe_type = /obj/item/wallframe/painting
 
+/*
 /obj/structure/sign/painting/get_save_vars()
 	return ..() - NAMEOF(src, icon)
+*/
 
 /obj/structure/sign/painting/Initialize(mapload)
 	. = ..()

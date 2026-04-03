@@ -153,6 +153,7 @@
 	fire = 90
 	acid = 50
 
+/*
 /obj/machinery/power/apc/get_save_vars()
 	. = ..()
 	if(!auto_name)
@@ -172,6 +173,7 @@
 	//. += NAMEOF(src, shorted)
 	//. += NAMEOF(src, locked)
 	return .
+*/
 
 /obj/machinery/power/apc/Initialize(mapload)
 	. = ..()

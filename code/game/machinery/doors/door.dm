@@ -96,6 +96,7 @@
 	fire = 80
 	acid = 70
 
+/*
 /obj/machinery/door/on_object_saved()
 	var/data
 
@@ -103,6 +104,7 @@
 		data += "[data ? ",\n" : ""][/obj/effect/mapping_helpers/airlock/welded]"
 
 	return data
+*/
 
 /obj/machinery/door/Initialize(mapload)
 	AddElement(/datum/element/blocks_explosives)

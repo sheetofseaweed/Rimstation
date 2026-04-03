@@ -22,7 +22,8 @@ SUBSYSTEM_DEF(minor_mapping)
 	return SS_INIT_NO_NEED
 #else
 	trigger_migration(CONFIG_GET(number/mice_roundstart))
-	place_satchels(satchel_amount = 10) //SKYRAT EDIT CHANGE - ORIGINAL : place_satchels(satchel_amount = 2)
+	// Persistent maps should not duplicate guaranteed contraband caches every round.
+	//place_satchels(satchel_amount = 10)
 	return SS_INIT_SUCCESS
 #endif
 
