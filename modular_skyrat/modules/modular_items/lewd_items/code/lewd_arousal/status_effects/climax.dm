@@ -1,6 +1,6 @@
 #define AROUSAL_REMOVAL_AMOUNT -12
-#define STAMINA_REMOVAL_AMOUNT_EXTERNAL 15
-#define STAMINA_REMOVAL_AMOUNT_SELF 8
+#define STAMINA_REMOVAL_AMOUNT_EXTERNAL 1
+#define STAMINA_REMOVAL_AMOUNT_SELF 1
 
 // Lowers arousal and pleasure by a bunch to not chain climax.
 
