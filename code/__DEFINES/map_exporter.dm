@@ -27,13 +27,11 @@
 
 /// Sanitizes text so it remains safe inside serialized TGM output.
 #define HASHTAG_NEWLINES_AND_TABS(text, replacements)\
-	replacements = replacements || list("\n"="#", "\t"="#");\
+	if(isnull(replacements)) {\
+		replacements = list("\n"="#", "\t"="#");\
+	};\
 	for(var/char in replacements){\
-		var/index = findtext(text, char);\
-		while(index){\
-			text = copytext(text, 1, index) + replacements[char] + copytext(text, index + length(char));\
-			index = findtext(text, char, index + length(char));\
-		};\
+		text = replacetext(text, char, replacements[char]);\
 	};
 
 /**
@@ -44,9 +42,7 @@
  */
 #define TGM_ENCODE(value)\
 	if(istext(value)) {\
-		var/list/replacement_characters = list("{"="", "}"="", "\""="", ","="");\
-		HASHTAG_NEWLINES_AND_TABS(value, replacement_characters);\
-		value = "\"[value]\"";\
+		value = tgm_encode_text(value);\
 	} else if(isnum(value) || ispath(value)) {\
 		value = "[value]";\
 	} else if(islist(value)) {\
@@ -56,10 +52,7 @@
 	} else if(isicon(value) || isfile(value)) {\
 		value = "'[value]'";\
 	} else {\
-		value = "[value]";\
-		var/list/replacement_characters = list("{"="", "}"="", "\""="", ","="");\
-		HASHTAG_NEWLINES_AND_TABS(value, replacement_characters);\
-		value = "\"[value]\"";\
+		value = tgm_encode_text("[value]");\
 	};
 
 /// Generates a TGM string for an object's variables "{variables}".

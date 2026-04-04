@@ -90,6 +90,8 @@ SUBSYSTEM_DEF(mapping)
 
 	/// list of lazy templates that have been loaded
 	var/list/loaded_lazy_templates
+	/// Z-levels restored from persistence during this world load.
+	var/list/persistent_loaded_z_levels = list()
 
 /datum/controller/subsystem/mapping/PreInit()
 	..()
@@ -291,21 +293,21 @@ SUBSYSTEM_DEF(mapping)
  */
 /datum/controller/subsystem/mapping/proc/setup_ruins()
 	// Generate mining ruins
-	var/list/lava_ruins = levels_by_trait(ZTRAIT_LAVA_RUINS)
+	var/list/lava_ruins = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_LAVA_RUINS))
 	if (lava_ruins.len)
 		seedRuins(lava_ruins, CONFIG_GET(number/lavaland_budget), list(/area/lavaland/surface/outdoors/unexplored), themed_ruins[ZTRAIT_LAVA_RUINS], clear_below = TRUE, mineral_budget = 15, mineral_budget_update = OREGEN_PRESET_LAVALAND, ruins_type = ZTRAIT_LAVA_RUINS)
 
-	var/list/ice_ruins = levels_by_trait(ZTRAIT_ICE_RUINS)
+	var/list/ice_ruins = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_ICE_RUINS))
 	if (ice_ruins.len)
 		// needs to be whitelisted for underground too so place_below ruins work
 		seedRuins(ice_ruins, CONFIG_GET(number/icemoon_budget), list(/area/icemoon/surface/outdoors/unexplored, /area/icemoon/underground/unexplored), themed_ruins[ZTRAIT_ICE_RUINS], clear_below = TRUE, mineral_budget = 4, mineral_budget_update = OREGEN_PRESET_TRIPLE_Z, ruins_type = ZTRAIT_ICE_RUINS)
 
-	var/list/ice_ruins_underground = levels_by_trait(ZTRAIT_ICE_RUINS_UNDERGROUND)
+	var/list/ice_ruins_underground = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_ICE_RUINS_UNDERGROUND))
 	if (ice_ruins_underground.len)
 		seedRuins(ice_ruins_underground, CONFIG_GET(number/icemoon_budget), list(/area/icemoon/underground/unexplored), themed_ruins[ZTRAIT_ICE_RUINS_UNDERGROUND], clear_below = TRUE, mineral_budget = 21, ruins_type = ZTRAIT_ICE_RUINS_UNDERGROUND)
 
 	// Generate deep space ruins
-	var/list/space_ruins = levels_by_trait(ZTRAIT_SPACE_RUINS)
+	var/list/space_ruins = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_SPACE_RUINS))
 	if (space_ruins.len)
 		// Create a proportional budget by multiplying the amount of space ruin levels in the current map over the default amount
 		var/proportional_budget = round(CONFIG_GET(number/space_budget) * (space_ruins.len / DEFAULT_SPACE_RUIN_LEVELS))
@@ -315,15 +317,15 @@ SUBSYSTEM_DEF(mapping)
 /// It is important that this happens AFTER generating mineral walls and such, since we rely on them for river logic
 /datum/controller/subsystem/mapping/proc/setup_rivers()
 	// Generate mining ruins
-	var/list/lava_ruins = levels_by_trait(ZTRAIT_LAVA_RUINS)
+	var/list/lava_ruins = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_LAVA_RUINS))
 	for (var/lava_z in lava_ruins)
 		spawn_rivers(lava_z, 4, /turf/open/lava/smooth/lava_land_surface, /area/lavaland/surface/outdoors/unexplored)
 
-	var/list/ice_ruins = levels_by_trait(ZTRAIT_ICE_RUINS)
+	var/list/ice_ruins = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_ICE_RUINS))
 	for (var/ice_z in ice_ruins)
 		spawn_rivers(ice_z, 6, /turf/open/lava/plasma/ice_moon, /area/icemoon/surface/outdoors/unexplored/rivers)
 
-	var/list/ice_ruins_underground = levels_by_trait(ZTRAIT_ICE_RUINS_UNDERGROUND)
+	var/list/ice_ruins_underground = filter_out_persistent_loaded_z_levels(levels_by_trait(ZTRAIT_ICE_RUINS_UNDERGROUND))
 	for (var/ice_z in ice_ruins_underground)
 		spawn_rivers(ice_z, 4, level_trait(ice_z, ZTRAIT_BASETURF), /area/icemoon/underground/unexplored/rivers)
 
@@ -411,6 +413,7 @@ Used by the AI doomsday and the self-destruct nuke.
 	z_list = SSmapping.z_list
 	multiz_levels = SSmapping.multiz_levels
 	loaded_lazy_templates = SSmapping.loaded_lazy_templates
+	persistent_loaded_z_levels = SSmapping.persistent_loaded_z_levels
 
 /datum/controller/subsystem/mapping/proc/LoadGroup(list/errorList, name, path, files, list/traits, list/default_traits, silent = FALSE, height_autosetup = TRUE, persistent_load = FALSE)
 	. = list()
@@ -478,6 +481,8 @@ Used by the AI doomsday and the self-destruct nuke.
 		SSautomapper.load_templates_from_cache(files)
 	// SKYRAT EDIT ADDITION END
 	SSatoms.persistent_map_load_in_progress = was_persistent_map_load_in_progress
+	if(persistent_load && !LAZYLEN(errorList))
+		register_persistent_loaded_z_levels(start_z, total_z)
 	if(!silent)
 		add_startup_message("Loaded [name] in [(REALTIMEOFDAY - start_time)/10]s!") //SKYRAT EDIT CHANGE
 
@@ -486,6 +491,33 @@ Used by the AI doomsday and the self-destruct nuke.
 			SSworld_save.map_configs_cache[PERSISTENT_LOADED_Z_LEVELS][dmm_file] = TRUE
 
 	return parsed_maps
+
+/datum/controller/subsystem/mapping/proc/register_persistent_loaded_z_levels(start_z, total_z)
+	if(start_z <= 0 || total_z <= 0)
+		return
+
+	for(var/z in start_z to (start_z + total_z - 1))
+		persistent_loaded_z_levels[z] = TRUE
+
+/datum/controller/subsystem/mapping/proc/is_persistent_loaded_z_level(z)
+	return !!persistent_loaded_z_levels?[z]
+
+/// Returns a copy of the z-level list with persistence-restored levels removed so
+/// procedural map generation does not overwrite maps we just loaded from disk.
+/datum/controller/subsystem/mapping/proc/filter_out_persistent_loaded_z_levels(list/z_levels)
+	if(!islist(z_levels))
+		return list()
+
+	if(!persistent_loaded_z_levels.len)
+		return z_levels.Copy()
+
+	var/list/filtered_z_levels = list()
+	for(var/z in z_levels)
+		if(is_persistent_loaded_z_level(z))
+			continue
+		filtered_z_levels += z
+
+	return filtered_z_levels
 
 /datum/controller/subsystem/mapping/proc/loadWorld()
 	//if any of these fail, something has gone horribly, HORRIBLY, wrong

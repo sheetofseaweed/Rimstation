@@ -28,7 +28,7 @@ PERSISTENT_SAVE_ENABLED
 ## The period of time in hours between map autosaves for persistence
 ## Set to -1 to only allow saving when the server reboots
 ## Defaults to every 4 hours
-PERSISTENT_AUTOSAVE_PERIOD 0.002
+PERSISTENT_AUTOSAVE_PERIOD 50
 
 ## The maximum number of autosaves to store
 ## Set to -1 to never delete any autosaves

@@ -224,7 +224,11 @@ GLOBAL_LIST_EMPTY(teleportlocs)
 		map_generator = new map_generator()
 		var/list/turfs = list()
 		for(var/turf/T in contents)
+			if(SSmapping.is_persistent_loaded_z_level(T.z))
+				continue
 			turfs += T
+		if(!turfs.len)
+			return
 		map_generator.generate_terrain(turfs, src)
 
 /// Populate the previously generated terrain with mobs and objects
@@ -232,7 +236,11 @@ GLOBAL_LIST_EMPTY(teleportlocs)
 	if(map_generator)
 		var/list/turfs = list()
 		for(var/turf/T in contents)
+			if(SSmapping.is_persistent_loaded_z_level(T.z))
+				continue
 			turfs += T
+		if(!turfs.len)
+			return
 		map_generator.populate_terrain(turfs, src)
 
 /area/proc/test_gen()

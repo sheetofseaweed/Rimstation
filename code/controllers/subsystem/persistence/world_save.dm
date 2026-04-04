@@ -615,6 +615,7 @@ SUBSYSTEM_DEF(world_save)
 			"map_path" = map_path,
 			"map_file" = "[z].dmm",
 			"traits" = level_traits,
+			"height_autosetup" = FALSE,
 			"minetype" = MINETYPE_NONE,
 		)
 

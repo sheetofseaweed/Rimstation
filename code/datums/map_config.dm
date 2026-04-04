@@ -241,6 +241,10 @@
 
 	if ("height_autosetup" in json)
 		height_autosetup = json["height_autosetup"]
+	else if(persistence_save)
+		// Persistence saves already serialize the exact trait list for every z-level,
+		// so re-deriving Up/Down links during load can corrupt custom multi-z layouts.
+		height_autosetup = FALSE
 
 	var/list/wilderness = json["wilderness"]
 	// If we got wilderness levels, fetch them from the config

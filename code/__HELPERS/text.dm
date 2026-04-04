@@ -54,6 +54,46 @@
 	return html_encode(STRIP_HTML_SIMPLE(text, limit))
 
 
+/// Removes blank lines from text before it is serialized into a persistent map file.
+/proc/normalize_persistent_map_text(text)
+	if(!istext(text) || !length(text))
+		return text
+
+	var/static/carriage_return = ascii2text(13)
+	var/static/windows_newline = "[carriage_return]\n"
+
+	text = replacetext(text, windows_newline, "\n")
+	text = replacetext(text, carriage_return, "\n")
+
+	if(!findtext(text, "\n"))
+		return text
+
+	var/list/non_empty_lines = list()
+	for(var/line in splittext(text, "\n"))
+		if(length(trimtext(line) || ""))
+			non_empty_lines += line
+
+	return jointext(non_empty_lines, "\n")
+
+
+/// Encodes text so it remains valid inside serialized TGM output.
+/proc/tgm_encode_text(text)
+	var/encoded_text = normalize_persistent_map_text(text)
+	var/list/replacement_characters = list(
+		"{" = "",
+		"}" = "",
+		"\"" = "",
+		"," = "",
+		"\n" = "#",
+		"\t" = "#",
+	)
+
+	for(var/character in replacement_characters)
+		encoded_text = replacetext(encoded_text, character, replacement_characters[character])
+
+	return "\"[encoded_text]\""
+
+
 /**
  * Perform a whitespace cleanup on the text, similar to what HTML renderers do
  *

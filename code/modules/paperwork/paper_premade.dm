@@ -495,7 +495,7 @@
 	desc = "Seems important. That's why it's red."
 	default_raw_text = {"
 Greetings operative.
-
+<br>
 <br>As you may be aware, since your financial backers do not wish to provide our collective enemies access to any trace of you or your physical form, we've had to augment
 you with an explosive located in the base of your neck: a microbomb implant. This implant activates a blood-based explosive the moment your heart stops beating, destroying all
 evidence of your physical body and brain, eradicating you permanently so those freaks at Nanotrasen can't interrogate your brain. Or worse, clone you and mindwipe you.
