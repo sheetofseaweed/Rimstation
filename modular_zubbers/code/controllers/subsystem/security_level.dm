@@ -9,6 +9,8 @@
 /datum/controller/subsystem/security_level/proc/offset_map_vote(offset = 7 SECONDS)
 	if(GLOB.roundend_mapvote_called)
 		return
+	if(!CONFIG_GET(flag/maprotation))
+		return
 
 	GLOB.roundend_mapvote_called = TRUE
 	if(!SSmap_vote.next_map_config)

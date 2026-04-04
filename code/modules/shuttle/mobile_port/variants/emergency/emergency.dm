@@ -237,7 +237,8 @@
 				INVOKE_ASYNC(SSticker, TYPE_PROC_REF(/datum/controller/subsystem/ticker, poll_hearts))
 				bolt_all_doors() // BUBBER EDIT ADDITION - Shuttle doors bolt/sounds
 				// INVOKE_ASYNC(SSvote, TYPE_PROC_REF(/datum/controller/subsystem/vote, initiate_vote), /datum/vote/map_vote, vote_initiator_name = "Map Rotation", forced = TRUE) // BUBBER EDIT CHANGE - Offset Map Vote
-				SSsecurity_level.offset_map_vote()
+				//if(CONFIG_GET(flag/maprotation))
+				//	SSsecurity_level.offset_map_vote()
 
 				if(!is_reserved_level(z))
 					CRASH("Emergency shuttle did not move to transit z-level!")
