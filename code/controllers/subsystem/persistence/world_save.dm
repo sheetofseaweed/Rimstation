@@ -512,6 +512,29 @@ SUBSYSTEM_DEF(world_save)
 
 	return flags
 
+/// Returns TRUE when a z-level matches any persistence trait that is enabled in config.
+/// This keeps mixed-trait maps like Moon Station from being skipped just because one of
+/// their secondary traits is disabled for autosaves.
+/datum/controller/subsystem/world_save/proc/should_autosave_z_level(z, list/persistent_save_z_levels)
+	if(persistent_save_z_levels[ZTRAIT_CENTCOM] && is_centcom_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_STATION] && is_station_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_SPACE_EMPTY] && is_space_empty_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_SPACE_RUINS] && is_space_ruins_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_ICE_RUINS] && is_ice_ruins_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_MINING] && is_mining_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_RESERVED] && is_reserved_level(z))
+		return TRUE
+	if(persistent_save_z_levels[ZTRAIT_AWAY] && is_away_level(z))
+		return TRUE
+
+	return FALSE
+
 /datum/controller/subsystem/world_save/proc/save_persistent_maps(list/z_levels, silent=FALSE)
 	save_in_progress = TRUE
 	save_cancel_requested = FALSE
@@ -548,23 +571,8 @@ SUBSYSTEM_DEF(world_save)
 		if(z_levels) // Skip saving z-levels based on num
 			if(!z_levels[num2text(z)])
 				continue
-		else // Skip saving certain z-levels based on config settings
-			if(!persistent_save_z_levels[ZTRAIT_CENTCOM] && is_centcom_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_STATION] && is_station_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_SPACE_EMPTY] && is_space_empty_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_SPACE_RUINS] && is_space_ruins_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_ICE_RUINS] && is_ice_ruins_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_MINING] && is_mining_level(z))
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_RESERVED] && is_reserved_level(z)) // for shuttles in transit (hyperspace)
-				continue
-			else if(!persistent_save_z_levels[ZTRAIT_AWAY] && is_away_level(z)) // gateway away missions
-				continue
+		else if(!should_autosave_z_level(z, persistent_save_z_levels))
+			continue
 
 		var/bottom_z = z
 		var/top_z = z
