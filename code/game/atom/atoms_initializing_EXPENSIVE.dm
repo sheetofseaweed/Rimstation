@@ -123,6 +123,9 @@
 
 	SET_PLANE_IMPLICIT(src, plane)
 
+	if(LAZYLEN(hud_possible))
+		hud_possible = string_assoc_list(hud_possible)
+
 	if(greyscale_config && greyscale_colors) //we'll check again at item/init for inhand/belt/worn configs.
 		update_greyscale()
 
@@ -157,6 +160,7 @@
 
 	if(save_container_child_id)
 		GLOB.save_containers_children += src
+	setup_reskins()
 
 	return INITIALIZE_HINT_NORMAL
 

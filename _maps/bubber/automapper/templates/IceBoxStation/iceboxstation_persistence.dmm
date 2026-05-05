@@ -1456,7 +1456,8 @@
 /area/ruin/space/has_grav/bubbers/persistance/sci/xenobio)
 "de" = (
 /obj/machinery/computer/rdconsole{
-	dir = 4
+	dir = 4;
+	req_access = list("syndicate")
 	},
 /turf/open/floor/iron/dark/textured_large,
 /area/ruin/space/has_grav/bubbers/persistance/sci/rnd)
@@ -1587,6 +1588,7 @@
 	dir = 4
 	},
 /obj/machinery/light/directional/west,
+/obj/machinery/atmospherics/components/unary/vent_scrubber/on/layer4,
 /turf/open/floor/mineral/plastitanium,
 /area/ruin/space/has_grav/bubbers/persistance/service/lounge)
 "dq" = (
@@ -4040,11 +4042,11 @@
 /obj/item/choice_beacon/music,
 /obj/item/binoculars,
 /obj/item/binoculars,
-/obj/item/computer_disk/syndicate/camera_app,
-/obj/item/computer_disk/syndicate/camera_app,
-/obj/item/computer_disk/syndicate/camera_app,
-/obj/item/computer_disk/syndicate/camera_app,
-/obj/item/computer_disk/syndicate/camera_app,
+/obj/item/disk/computer/syndicate/camera_app,
+/obj/item/disk/computer/syndicate/camera_app,
+/obj/item/disk/computer/syndicate/camera_app,
+/obj/item/disk/computer/syndicate/camera_app,
+/obj/item/disk/computer/syndicate/camera_app,
 /obj/item/disk{
 	desc = "A cheap, plastic hard-disk labelled 'good tunes to assault ops to'. It looks disused... wait, is that a 'THE WEAPONIZED' logo?";
 	icon_state = "nucleardisk";
@@ -4821,11 +4823,11 @@
 "ky" = (
 /obj/structure/table/reinforced/plastitaniumglass,
 /obj/item/modular_computer/laptop/preset/syndicate,
-/obj/item/computer_disk/ordnance,
+/obj/item/disk/computer/ordnance,
 /obj/item/pipe_dispenser{
 	pixel_x = -3
 	},
-/obj/item/computer_disk/ordnance,
+/obj/item/disk/computer/ordnance,
 /obj/item/book/manual/wiki/ordnance,
 /obj/machinery/light/directional/east,
 /obj/machinery/airalarm/directional/east,
@@ -4884,7 +4886,7 @@
 	pixel_x = -8;
 	pixel_y = 4
 	},
-/obj/item/computer_disk/ordnance{
+/obj/item/disk/computer/ordnance{
 	pixel_x = 5;
 	pixel_y = 10
 	},
@@ -5485,6 +5487,7 @@
 	},
 /obj/structure/noticeboard/directional/east,
 /obj/machinery/light/directional/east,
+/obj/machinery/atmospherics/components/unary/vent_scrubber/on/layer4,
 /turf/open/floor/mineral/plastitanium,
 /area/ruin/space/has_grav/bubbers/persistance/service/lounge)
 "lS" = (
@@ -6088,7 +6091,8 @@
 /obj/structure/fans/tiny,
 /obj/machinery/door/firedoor/heavy,
 /obj/machinery/door/airlock/hatch{
-	id_tag = "syndishipengibed"
+	id_tag = "syndishipengibed";
+	name = "Engineering Officer"
 	},
 /obj/machinery/atmospherics/pipe/smart/manifold4w/scrubbers/hidden/layer4,
 /obj/machinery/atmospherics/pipe/smart/manifold4w/supply/hidden/layer2,
@@ -9061,9 +9065,7 @@
 /obj/machinery/atmospherics/pipe/smart/manifold4w/scrubbers/hidden/layer4,
 /obj/machinery/door/firedoor/heavy,
 /obj/machinery/door/airlock/science{
-	id_tag = "syndishipscienced";
-	name = "Head of Research's Quarters";
-	desc = "No sleep more sacred than theirs."
+	name = "Nanite Programming Lab"
 	},
 /obj/effect/mapping_helpers/airlock/access/all/syndicate/general,
 /obj/effect/mapping_helpers/airlock/cutaiwire,
@@ -9457,7 +9459,7 @@
 /area/ruin/space/has_grav/bubbers/persistance/sci/rnd)
 "tK" = (
 /obj/machinery/door/airlock/highsecurity{
-	id_tag = "syndishipmanager";
+	id_tag = "syndishipmanager2";
 	name = "Admiral's Quarters"
 	},
 /obj/machinery/atmospherics/pipe/smart/manifold4w/supply/hidden/layer2,
@@ -9469,8 +9471,8 @@
 /obj/structure/disposalpipe/segment{
 	dir = 4
 	},
-/obj/effect/mapping_helpers/airlock/locked,
 /obj/machinery/duct,
+/obj/effect/mapping_helpers/airlock/locked,
 /turf/open/floor/catwalk_floor/iron_dark,
 /area/ruin/space/has_grav/bubbers/persistance/command/admiral)
 "tL" = (
@@ -11224,6 +11226,7 @@
 	dir = 8
 	},
 /obj/structure/disposalpipe/segment,
+/obj/machinery/atmospherics/components/unary/vent_pump/on/layer2,
 /turf/open/floor/mineral/plastitanium,
 /area/ruin/space/has_grav/bubbers/persistance/service/lounge)
 "xi" = (
@@ -16820,7 +16823,7 @@
 	},
 /obj/structure/table/reinforced/plastitaniumglass,
 /obj/item/sequence_scanner,
-/obj/item/infuser_book{
+/obj/item/tgui_book/manual/infuser{
 	pixel_x = -7;
 	pixel_y = 1
 	},
@@ -20766,9 +20769,9 @@
 /obj/effect/turf_decal/siding/wood{
 	dir = 6
 	},
-/obj/machinery/atmospherics/components/unary/vent_pump/on/layer4,
 /obj/machinery/netpod,
 /obj/structure/window/reinforced/plasma/spawner/directional/east,
+/obj/machinery/atmospherics/components/unary/vent_pump/on/layer2,
 /turf/open/floor/wood/tile,
 /area/ruin/space/has_grav/bubbers/persistance/sec/interrogation)
 "QG" = (
@@ -23362,20 +23365,20 @@
 	color = "#DE3A3A";
 	dir = 8
 	},
-/obj/machinery/button/door/directional/west{
-	pixel_y = 8;
-	specialfunctions = 4;
-	name = "Admiral Quarters Bolt Switch";
-	id = "syndishipmanager";
-	req_access = list("syndicate");
-	pixel_x = 24;
-	normaldoorcontrol = 1
-	},
 /obj/effect/turf_decal/siding/wideplating_new/dark{
 	dir = 5
 	},
 /obj/effect/turf_decal/siding/wood{
 	dir = 5
+	},
+/obj/machinery/button/door/directional/west{
+	pixel_y = 8;
+	specialfunctions = 4;
+	name = "Admiral Quarters Bolt Switch";
+	id = "syndishipmanager2";
+	req_access = list("syndicate");
+	pixel_x = 24;
+	normaldoorcontrol = 1
 	},
 /turf/open/floor/mineral/plastitanium/red,
 /area/ruin/space/has_grav/bubbers/persistance/command/admiral)
@@ -24419,6 +24422,7 @@
 /area/ruin/space/has_grav/bubbers/persistance/service/lockers)
 "Yw" = (
 /obj/machinery/power/smes/full,
+/obj/structure/cable,
 /turf/open/floor/catwalk_floor/iron_dark,
 /area/ruin/space/has_grav/bubbers/persistance/engineering/utilities)
 "Yx" = (
@@ -24585,8 +24589,8 @@
 /turf/open/floor/pod/dark,
 /area/ruin/space/has_grav/bubbers/persistance/engineering)
 "YM" = (
-/obj/machinery/atmospherics/components/unary/vent_pump/on/layer2,
 /obj/machinery/photocopier/gratis,
+/obj/machinery/atmospherics/components/unary/vent_scrubber/on/layer4,
 /turf/open/floor/mineral/plastitanium,
 /area/ruin/space/has_grav/bubbers/persistance/service/lounge)
 "YN" = (
