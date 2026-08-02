@@ -11,7 +11,7 @@ SUBSYSTEM_DEF(world_save)
 		/datum/controller/subsystem/machines,
 		/datum/controller/subsystem/shuttle,
 	)
-	flags = SS_BACKGROUND
+	ss_flags = SS_BACKGROUND
 	wait = INFINITY
 	runlevels = RUNLEVEL_GAME
 
@@ -79,12 +79,12 @@ SUBSYSTEM_DEF(world_save)
 /// Saves map z-levels in the world based on PERSISTENT_SAVE_ENABLED config options in config/persistence.txt
 /datum/controller/subsystem/world_save/proc/save_world(list/z_levels, silent=FALSE)
 	if(save_in_progress)
-		log_world("World map save skipped at [time_stamp()] because another save is already in progress")
+		log_world("World map save skipped at [server_timestamp()] because another save is already in progress")
 		return FALSE
 
-	log_world("World map save initiated at [time_stamp()]")
+	log_world("World map save initiated at [server_timestamp()]")
 	if(!silent)
-		to_chat(world, span_boldannounce("World map save initiated at [time_stamp()]"))
+		to_chat(world, span_boldannounce("World map save initiated at [server_timestamp()]"))
 
 	var/save_succeeded = save_persistent_maps(z_levels, silent)
 	if(save_succeeded)
@@ -96,7 +96,7 @@ SUBSYSTEM_DEF(world_save)
 		return FALSE
 
 	save_cancel_requested = TRUE
-	log_world("World map save cancellation requested at [time_stamp()] ([reason])")
+	log_world("World map save cancellation requested at [server_timestamp()] ([reason])")
 	return TRUE
 
 /datum/controller/subsystem/world_save/proc/should_cancel_save()
@@ -178,16 +178,16 @@ SUBSYSTEM_DEF(world_save)
 	if(map_save_directory && fexists(map_save_directory))
 		fdel(map_save_directory)
 
-	log_world("World map save aborted at [time_stamp()]: [reason]")
+	log_world("World map save aborted at [server_timestamp()]: [reason]")
 	if(!silent)
-		to_chat(world, span_boldannounce("World map save aborted at [time_stamp()] ([reason])"))
+		to_chat(world, span_boldannounce("World map save aborted at [server_timestamp()] ([reason])"))
 	return FALSE
 
 /datum/controller/subsystem/world_save/proc/finish_current_save(silent=FALSE)
 	reset_active_save_state()
 	if(!silent)
-		to_chat(world, span_boldannounce("World map save finished at [time_stamp()]"))
-	log_world("World map save finished at [time_stamp()]")
+		to_chat(world, span_boldannounce("World map save finished at [server_timestamp()]"))
+	log_world("World map save finished at [server_timestamp()]")
 	return TRUE
 
 /datum/controller/subsystem/world_save/proc/get_save_directory_key(save_directory_name)
