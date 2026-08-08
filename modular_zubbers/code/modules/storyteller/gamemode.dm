@@ -671,17 +671,35 @@ SUBSYSTEM_DEF(gamemode)
 	var/json_file = file("[global.config.directory]/events.json")
 	if(!fexists(json_file))
 		return
-	var/list/decoded = json_decode(file2text(json_file))
+	var/decoded = json_decode(file2text(json_file))
+	apply_event_config(decoded)
+
+/// Applies event overrides decoded from events.json to the active storyteller controls.
+/datum/controller/subsystem/gamemode/proc/apply_event_config(decoded)
+	if(!islist(decoded))
+		log_config("Storyteller event config must decode to a list, got [decoded].")
+		return
+
 	for(var/event_text_path in decoded)
 		var/event_path = text2path(event_text_path)
+		if(!ispath(event_path, /datum/round_event_control))
+			log_config("Unknown storyteller event config path: [event_text_path].")
+			continue
+
 		var/datum/round_event_control/event
 		for(var/datum/round_event_control/iterated_event as anything in control)
 			if(iterated_event.type == event_path)
 				event = iterated_event
 				break
 		if(!event)
+			log_config("Storyteller event config path is not in the active control pool: [event_text_path].")
 			continue
-		var/list/var_list = decoded[event_text_path]
+
+		var/var_list = decoded[event_text_path]
+		if(!islist(var_list))
+			log_config("Storyteller event config for [event_text_path] must be a list, got [var_list].")
+			continue
+
 		for(var/variable in var_list)
 			var/value = var_list[variable]
 			switch(variable)
@@ -704,26 +722,88 @@ SUBSYSTEM_DEF(gamemode)
 					if(!isnull(value))
 						value = text2path(value)
 					event.shared_occurence_type = value
+				else
+					log_config("Unknown storyteller event config variable '[variable]' for [event_text_path].")
 
 /// Loads config values from game_options.txt
 /datum/controller/subsystem/gamemode/proc/load_config_vars()
-	point_gain_multipliers[EVENT_TRACK_MUNDANE] = CONFIG_GET(number/mundane_point_gain_multiplier)
-	point_gain_multipliers[EVENT_TRACK_MODERATE] = CONFIG_GET(number/moderate_point_gain_multiplier)
-	point_gain_multipliers[EVENT_TRACK_MAJOR] = CONFIG_GET(number/major_point_gain_multiplier)
-	point_gain_multipliers[EVENT_TRACK_CREWSET] = CONFIG_GET(number/crewset_point_gain_multiplier)
-	point_gain_multipliers[EVENT_TRACK_GHOSTSET] = CONFIG_GET(number/ghostset_point_gain_multiplier)
+	set_track_config(
+		EVENT_TRACK_MUNDANE,
+		CONFIG_GET(number/mundane_point_gain_multiplier),
+		CONFIG_GET(number/mundane_roundstart_point_multiplier),
+		CONFIG_GET(number/mundane_min_pop),
+		CONFIG_GET(number/mundane_point_threshold),
+		CONFIG_GET(number/mundane_pop_scale_threshold),
+		CONFIG_GET(number/mundane_pop_scale_penalty),
+	)
+	set_track_config(
+		EVENT_TRACK_MODERATE,
+		CONFIG_GET(number/moderate_point_gain_multiplier),
+		CONFIG_GET(number/moderate_roundstart_point_multiplier),
+		CONFIG_GET(number/moderate_min_pop),
+		CONFIG_GET(number/moderate_point_threshold),
+		CONFIG_GET(number/moderate_pop_scale_threshold),
+		CONFIG_GET(number/moderate_pop_scale_penalty),
+	)
+	set_track_config(
+		EVENT_TRACK_MAJOR,
+		CONFIG_GET(number/major_point_gain_multiplier),
+		CONFIG_GET(number/major_roundstart_point_multiplier),
+		CONFIG_GET(number/major_min_pop),
+		CONFIG_GET(number/major_point_threshold),
+		CONFIG_GET(number/major_pop_scale_threshold),
+		CONFIG_GET(number/major_pop_scale_penalty),
+	)
+	set_track_config(
+		EVENT_TRACK_CREWSET,
+		CONFIG_GET(number/crewset_point_gain_multiplier),
+		CONFIG_GET(number/crewset_roundstart_point_multiplier),
+		CONFIG_GET(number/crewset_min_pop),
+		CONFIG_GET(number/crewset_point_threshold),
+		CONFIG_GET(number/crewset_pop_scale_threshold),
+		CONFIG_GET(number/crewset_pop_scale_penalty),
+	)
+	set_track_config(
+		EVENT_TRACK_GHOSTSET,
+		CONFIG_GET(number/ghostset_point_gain_multiplier),
+		CONFIG_GET(number/ghostset_roundstart_point_multiplier),
+		CONFIG_GET(number/ghostset_min_pop),
+		CONFIG_GET(number/ghostset_point_threshold),
+		CONFIG_GET(number/ghostset_pop_scale_threshold),
+		CONFIG_GET(number/ghostset_pop_scale_penalty),
+	)
+	allow_pop_scaling = CONFIG_GET(flag/allow_storyteller_pop_scaling)
 
-	roundstart_point_multipliers[EVENT_TRACK_MUNDANE] = CONFIG_GET(number/mundane_roundstart_point_multiplier)
-	roundstart_point_multipliers[EVENT_TRACK_MODERATE] = CONFIG_GET(number/moderate_roundstart_point_multiplier)
-	roundstart_point_multipliers[EVENT_TRACK_MAJOR] = CONFIG_GET(number/major_roundstart_point_multiplier)
-	roundstart_point_multipliers[EVENT_TRACK_CREWSET] = CONFIG_GET(number/crewset_roundstart_point_multiplier)
-	roundstart_point_multipliers[EVENT_TRACK_GHOSTSET] = CONFIG_GET(number/ghostset_roundstart_point_multiplier)
+/// Applies validated pacing values to a track. Runtime tuning should use this path too.
+/datum/controller/subsystem/gamemode/proc/set_track_config(
+	track,
+	point_gain_multiplier,
+	roundstart_point_multiplier,
+	minimum_population,
+	point_threshold,
+	population_scale_threshold,
+	population_scale_penalty,
+)
+	if(!(track in event_tracks))
+		return FALSE
+	point_gain_multipliers[track] = max(0, point_gain_multiplier)
+	roundstart_point_multipliers[track] = max(0, roundstart_point_multiplier)
+	min_pop_thresholds[track] = max(0, minimum_population)
+	point_thresholds[track] = max(0, point_threshold)
+	pop_scale_thresholds[track] = max(0, population_scale_threshold)
+	pop_scale_penalties[track] = clamp(population_scale_penalty, 0, 100)
+	return TRUE
 
-	min_pop_thresholds[EVENT_TRACK_MUNDANE] = CONFIG_GET(number/mundane_min_pop)
-	min_pop_thresholds[EVENT_TRACK_MODERATE] = CONFIG_GET(number/moderate_min_pop)
-	min_pop_thresholds[EVENT_TRACK_MAJOR] = CONFIG_GET(number/major_min_pop)
-	min_pop_thresholds[EVENT_TRACK_CREWSET] = CONFIG_GET(number/crewset_min_pop)
-	min_pop_thresholds[EVENT_TRACK_GHOSTSET] = CONFIG_GET(number/ghostset_min_pop)
+/// Returns the population component of storyteller point gain for a track.
+/datum/controller/subsystem/gamemode/proc/get_population_frequency_multiplier(track, player_pop)
+	if(!allow_pop_scaling)
+		return 1
+	var/population_threshold = max(0, pop_scale_thresholds[track])
+	if(!population_threshold)
+		return 1
+	var/maximum_penalty = clamp(pop_scale_penalties[track], 0, 100) / 100
+	var/population_ratio = clamp(max(0, player_pop) / population_threshold, 0, 1)
+	return max(0, 1 - maximum_penalty * (1 - population_ratio))
 
 /datum/controller/subsystem/gamemode/proc/storyteller_vote_choices()
 	var/client_amount = GLOB.clients.len
@@ -800,11 +880,11 @@ SUBSYSTEM_DEF(gamemode)
 	storyteller = storytellers[passed_type]
 
 	var/datum/storyteller_data/tracks/track_data = storyteller.track_data
-	point_thresholds[EVENT_TRACK_MUNDANE] = track_data.threshold_mundane * CONFIG_GET(number/mundane_point_threshold)
-	point_thresholds[EVENT_TRACK_MODERATE] = track_data.threshold_moderate * CONFIG_GET(number/moderate_point_threshold)
-	point_thresholds[EVENT_TRACK_MAJOR] = track_data.threshold_major * CONFIG_GET(number/major_point_threshold)
-	point_thresholds[EVENT_TRACK_CREWSET] = track_data.threshold_crewset * CONFIG_GET(number/crewset_point_threshold)
-	point_thresholds[EVENT_TRACK_GHOSTSET] = track_data.threshold_ghostset * CONFIG_GET(number/ghostset_point_threshold)
+	point_thresholds[EVENT_TRACK_MUNDANE] = max(0, track_data.threshold_mundane * CONFIG_GET(number/mundane_point_threshold))
+	point_thresholds[EVENT_TRACK_MODERATE] = max(0, track_data.threshold_moderate * CONFIG_GET(number/moderate_point_threshold))
+	point_thresholds[EVENT_TRACK_MAJOR] = max(0, track_data.threshold_major * CONFIG_GET(number/major_point_threshold))
+	point_thresholds[EVENT_TRACK_CREWSET] = max(0, track_data.threshold_crewset * CONFIG_GET(number/crewset_point_threshold))
+	point_thresholds[EVENT_TRACK_GHOSTSET] = max(0, track_data.threshold_ghostset * CONFIG_GET(number/ghostset_point_threshold))
 
 	log_admin_private("Storyteller switched to [storyteller.name]. [forced ? "Forced by admin ckey [force_ckey]" : ""]")
 

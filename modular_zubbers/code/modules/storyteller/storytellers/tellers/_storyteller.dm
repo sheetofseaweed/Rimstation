@@ -60,10 +60,19 @@
 /// Add points to all tracks while respecting the multipliers.
 /datum/storyteller/proc/add_points(delta_time)
 	var/datum/controller/subsystem/gamemode/mode = SSgamemode
+	var/player_pop = mode.get_correct_popcount()
 	for(var/track in mode.event_track_points)
-		var/point_gain = delta_time
+		var/point_gain = get_track_point_gain(track, delta_time, player_pop)
 		mode.event_track_points[track] += point_gain
 		mode.last_point_gains[track] = point_gain
+
+/// Calculates the final point gain for one track and storyteller tick.
+/datum/storyteller/proc/get_track_point_gain(track, delta_time, player_pop)
+	var/datum/controller/subsystem/gamemode/mode = SSgamemode
+	var/base_gain = max(0, EVENT_POINT_GAINED_PER_SECOND * delta_time)
+	var/track_multiplier = max(0, mode.point_gain_multipliers[track])
+	var/global_multiplier = max(0, mode.event_frequency_multiplier)
+	return max(0, base_gain * track_multiplier * global_multiplier * mode.get_population_frequency_multiplier(track, player_pop))
 
 /**
  * Goes through every track of the gamemode and checks if it passes a threshold to buy an event, if does, buys one.
