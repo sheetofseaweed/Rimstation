@@ -295,6 +295,7 @@
 #include "resist.dm"
 #include "reskin_validation.dm"
 #include "reta_system.dm"
+#include "rimstation_colony_map.dm"
 #include "say.dm"
 #include "screenshot_airlocks.dm"
 #include "screenshot_antag_icons.dm"

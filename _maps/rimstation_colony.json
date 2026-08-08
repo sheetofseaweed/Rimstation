@@ -1,0 +1,37 @@
+{
+	"version": 1,
+	"map_name": "Rimstation Colony",
+	"map_path": "map_files/rimstation_colony",
+	"map_file": "rimstation_colony.dmm",
+	"space_ruin_levels": 0,
+	"space_empty_levels": 0,
+	"wilderness_levels": 0,
+	"planetary": 1,
+	"height_autosetup": 0,
+	"minetype": "none",
+	"traits": [
+		{
+			"Up": true,
+			"Mining": true,
+			"Linkage": null,
+			"Gravity": true,
+			"Baseturf": "/turf/open/misc/asteroid/rimstation",
+			"No Parallax": true
+		},
+		{
+			"Up": true,
+			"Down": true,
+			"Linkage": null,
+			"Gravity": true,
+			"Baseturf": "/turf/open/misc/dirt/planet/rimstation",
+			"No Parallax": true
+		},
+		{
+			"Down": true,
+			"Linkage": null,
+			"Gravity": true,
+			"Baseturf": "/turf/open/openspace/rimstation",
+			"No Parallax": true
+		}
+	]
+}

@@ -94,6 +94,9 @@ endmap
 
 # Debug-only maps.
 
+map rimstation_colony
+endmap
+
 map gateway_test
 endmap
 
