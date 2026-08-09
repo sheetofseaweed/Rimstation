@@ -367,6 +367,7 @@
 #include "weird_food.dm"
 #include "wizard_loadout.dm"
 // RIMSTATION ADDITION START - Campaign unit tests
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/planet.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller.dm"
 // RIMSTATION ADDITION END
 // SKYRAT EDIT START
