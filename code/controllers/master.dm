@@ -474,12 +474,12 @@ ADMIN_VERB(cmd_controller_view_ui, R_SERVER|R_DEBUG, "Controller Overview", "Vie
 	if(tgs_prime)
 		world.TgsInitializationComplete()
 
-	if(sleep_offline_after_initializations)
+	// RIMSTATION EDIT START - Decide before sleeping. Sleeping first deadlocks an empty server: the world sleeps
+	// on the sleep(1 TICKS) below and never reaches the line that would resume it.
+	if(sleep_offline_after_initializations && !CONFIG_GET(flag/resume_after_initializations))
 		world.sleep_offline = TRUE
 	sleep(1 TICKS)
-
-	if(sleep_offline_after_initializations && CONFIG_GET(flag/resume_after_initializations))
-		world.sleep_offline = FALSE
+	// RIMSTATION EDIT END
 	initializations_finished_with_no_players_logged_in = initialized_tod < REALTIMEOFDAY - 10
 
 /**

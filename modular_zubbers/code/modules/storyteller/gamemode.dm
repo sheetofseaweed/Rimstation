@@ -666,6 +666,32 @@ SUBSYSTEM_DEF(gamemode)
 		if(SSshuttle.emergency.is_hijacked())
 			SSticker.news_report = SHUTTLE_HIJACK
 
+/**
+ * Returns the live event control the storyteller actually schedules from.
+ *
+ * SSevents keeps its own instances of the same types, so anything that mutates an event for this round
+ * (station traits, config overrides) has to resolve through here or it will edit an instance nobody reads.
+ */
+/datum/controller/subsystem/gamemode/proc/get_event_control(event_type)
+	RETURN_TYPE(/datum/round_event_control)
+	for(var/datum/round_event_control/iterated_event as anything in control)
+		if(iterated_event.type == event_type)
+			return iterated_event
+	return null
+
+/**
+ * Resolves the event control that anything mutating this round's events should touch.
+ *
+ * Prefers the storyteller pool, since that is what actually schedules. Falls back to SSevents for
+ * controls the storyteller dropped, so callers keep the legacy instance rather than a null.
+ */
+/proc/get_active_event_control(event_type)
+	RETURN_TYPE(/datum/round_event_control)
+	var/datum/round_event_control/active = SSgamemode.get_event_control(event_type)
+	if(active)
+		return active
+	return locate(event_type) in SSevents.control
+
 /// Loads json event config values from events.txt
 /datum/controller/subsystem/gamemode/proc/load_event_config_vars()
 	var/json_file = file("[global.config.directory]/events.json")
@@ -686,11 +712,7 @@ SUBSYSTEM_DEF(gamemode)
 			log_config("Unknown storyteller event config path: [event_text_path].")
 			continue
 
-		var/datum/round_event_control/event
-		for(var/datum/round_event_control/iterated_event as anything in control)
-			if(iterated_event.type == event_path)
-				event = iterated_event
-				break
+		var/datum/round_event_control/event = get_event_control(event_path)
 		if(!event)
 			log_config("Storyteller event config path is not in the active control pool: [event_text_path].")
 			continue
@@ -805,6 +827,20 @@ SUBSYSTEM_DEF(gamemode)
 	var/population_ratio = clamp(max(0, player_pop) / population_threshold, 0, 1)
 	return max(0, 1 - maximum_penalty * (1 - population_ratio))
 
+/**
+ * Estimated deciseconds until `track` reaches its point threshold at the last observed gain rate.
+ *
+ * Returns null when the track is gaining nothing, because "never at this rate" is not "right now".
+ */
+/datum/controller/subsystem/gamemode/proc/estimate_track_eta(track)
+	var/gain_per_tick = last_point_gains[track]
+	if(gain_per_tick <= 0)
+		return null
+	var/remaining_points = point_thresholds[track] - event_track_points[track]
+	if(remaining_points <= 0)
+		return 0
+	return (remaining_points / gain_per_tick) * STORYTELLER_WAIT_TIME
+
 /datum/controller/subsystem/gamemode/proc/storyteller_vote_choices()
 	var/client_amount = GLOB.clients.len
 	var/list/choices = list()
@@ -827,26 +863,39 @@ SUBSYSTEM_DEF(gamemode)
 	to_chat(world, vote_font(fieldset_block("Storyteller Vote", "[finalized_message]", "boxed_message purple_box")))
 	return choices
 
-/datum/controller/subsystem/gamemode/proc/storyteller_vote_result(winner_name)
-	/// Find the winner
-	voted_storyteller = winner_name
-	if(storyteller)
-		return
+/**
+ * Turns a vote result into a storyteller type that set_storyteller() will accept.
+ *
+ * A configured DEFAULT_STORYTELLER outranks the vote, because that entry exists to override it.
+ * Anything unusable - no winner, an unknown name, a bad config path - resolves to the default storyteller
+ * rather than leaving a bare name string that would crash set_storyteller() later.
+ */
+/datum/controller/subsystem/gamemode/proc/resolve_storyteller_choice(winner_name)
+	var/configured_default = CONFIG_GET(string/default_storyteller)
+	if(configured_default)
+		var/configured_type = text2path(configured_default)
+		if(storytellers[configured_type])
+			return configured_type
+		log_config("Configured DEFAULT_STORYTELLER '[configured_default]' is not a valid storyteller type, using the vote result instead.")
+
 	for(var/storyteller_type in storytellers)
 		var/datum/storyteller/storyboy = storytellers[storyteller_type]
 		if(storyboy.name == winner_name)
-			voted_storyteller = storyteller_type
-			break
+			return storyteller_type
+
+	return /datum/storyteller/default
+
+/datum/controller/subsystem/gamemode/proc/storyteller_vote_result(winner_name)
+	/// Find the winner. init_storyteller() is what refuses to overwrite an admin-set storyteller, not this.
+	voted_storyteller = resolve_storyteller_choice(winner_name)
 
 /datum/controller/subsystem/gamemode/proc/init_storyteller()
 	if(storyteller) // If this is true, then an admin bussed one, don't overwrite it
 		log_dynamic("Roundstart storyteller has been set by admins to [storyteller.name], the vote was not considered.")
 		return
-	var/datum/storyteller/storyteller_pick
-	if(!voted_storyteller)
-		storyteller_pick = pick(storytellers)
-		log_dynamic("Roundstart picked storyteller [storyteller_pick.name] randomly due to no vote result.")
-		voted_storyteller = storyteller_pick
+	if(!storytellers[voted_storyteller])
+		voted_storyteller = resolve_storyteller_choice(null)
+		log_dynamic("Roundstart resolved storyteller [voted_storyteller] because the vote produced no usable result.")
 
 	set_storyteller(voted_storyteller)
 	if(vote_datum)

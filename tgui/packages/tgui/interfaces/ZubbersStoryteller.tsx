@@ -9,6 +9,7 @@ import {
   Table,
   Tooltip,
 } from 'tgui-core/components';
+import { formatTime } from 'tgui-core/format';
 
 import { useBackend } from '../backend';
 import { Window } from '../layouts';
@@ -29,7 +30,8 @@ export type Storyteller_Track = {
   name: string;
   current: number;
   max: number;
-  next: number;
+  /** Deciseconds until the track buys its next event, or null when it is gaining no points. */
+  next: number | null;
   forced: Storyteller_Event;
 };
 
@@ -145,6 +147,16 @@ const TRACK_DATA_NEXT_WIDTH = '5%';
 const TRACK_DATA_FORCED_WIDTH = '20%';
 const TRACK_DATA_ACTIONS_WIDTH = '20%';
 
+function formatTrackEta(next: number | null): string {
+  if (typeof next !== 'number') {
+    return 'Paused';
+  }
+  if (next <= 0) {
+    return 'Now';
+  }
+  return `~${formatTime(next, 'short')}`;
+}
+
 export const ZubbersStorytellerTrackData = (props) => {
   const { act, data } = useBackend<Storyteller_Data>();
   const { tracks_data, storyteller_halt } = data;
@@ -197,7 +209,7 @@ export const ZubbersStorytellerTrackData = (props) => {
                 </ProgressBar>
               </Table.Cell>
               <Table.Cell textAlign="center">
-                {storyteller_halt ? 'N/A' : `~${track_data.next}min`}
+                {storyteller_halt ? 'N/A' : formatTrackEta(track_data.next)}
               </Table.Cell>
               <Table.Cell>{forced ? forced.name : ''}</Table.Cell>
               <Table.Cell>

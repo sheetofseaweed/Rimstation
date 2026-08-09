@@ -29,6 +29,18 @@
 	roundstart = TRUE
 	earliest_start = 0
 
+/**
+ * Storyteller-side eligibility check.
+ *
+ * Enforces earliest_start, which the shared can_spawn_event() contract does not, then delegates to it.
+ * earliest_start describes midround timing, so roundstart events skip it and rely on the roundstart check instead.
+ * Admin-forced events do not go through here and remain the only bypass.
+ */
+/datum/round_event_control/proc/can_spawn_storyteller_event(players_amt, elapsed = STATION_TIME_PASSED())
+	if(!roundstart && elapsed < earliest_start)
+		return FALSE
+	return can_spawn_event(players_amt)
+
 ///Adds an occurence. Has to use the setter to properly handle shared occurences
 /datum/round_event_control/proc/add_occurence()
 	if(shared_occurence_type)

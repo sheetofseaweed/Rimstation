@@ -133,11 +133,16 @@ SUBSYSTEM_DEF(ticker)
 
 			current_state = GAME_STATE_PREGAME
 		// BUBBERSTATION EDIT START
+			// RIMSTATION EDIT START - Validate the configured default instead of crashing set_storyteller() on a bad path.
 			var/storyteller = CONFIG_GET(string/default_storyteller)
-			if(storyteller)
-				SSgamemode.set_storyteller(text2path(storyteller), TRUE)
+			var/storyteller_type = storyteller ? text2path(storyteller) : null
+			if(SSgamemode.storytellers[storyteller_type])
+				SSgamemode.set_storyteller(storyteller_type, TRUE)
 			else
+				if(storyteller)
+					log_config("Configured DEFAULT_STORYTELLER '[storyteller]' is not a valid storyteller type, running the vote instead.")
 				SSvote.initiate_vote(/datum/vote/storyteller, "Storyteller Vote", forced = TRUE)
+			// RIMSTATION EDIT END
 		// BUBBERSTATION EDIT END
 			SStitle.change_title_screen() //SKYRAT EDIT ADDITION - Title screen
 			addtimer(CALLBACK(SStitle, TYPE_PROC_REF(/datum/controller/subsystem/title, change_title_screen)), 1 SECONDS) //SKYRAT EDIT ADDITION - Title screen

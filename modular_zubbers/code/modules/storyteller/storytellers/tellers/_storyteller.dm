@@ -110,7 +110,7 @@
 		for(var/datum/round_event_control/event as anything in SSgamemode.event_pools[track])
 			if(isnull(event))
 				continue
-			if(event.can_spawn_event(player_pop))
+			if(event.can_spawn_storyteller_event(player_pop))
 				valid_events[event] = event.calculated_weight
 				if(event.roundstart)
 					log_dynamic("[event] added to roundstart event pool with calculated weight [event.calculated_weight] and tags [english_list(event.tags)].")

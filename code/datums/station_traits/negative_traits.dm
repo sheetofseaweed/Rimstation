@@ -31,12 +31,12 @@
 		name = "Postal system overtime"
 		report_message = "Despite being a day off, the postal system is working overtime today. Mail will be delivered this shift."
 	else
-		var/datum/round_event_control/shuttle_loan/our_event = locate() in SSevents.control
+		var/datum/round_event_control/shuttle_loan/our_event = get_active_event_control(/datum/round_event_control/shuttle_loan) // RIMSTATION EDIT: ORG - locate() in SSevents.control
 		our_event.unavailable_situations -= /datum/shuttle_loan_situation/mail_strike
 	SSeconomy.mail_blocked = !SSeconomy.mail_blocked
 
 /datum/station_trait/mail_blocked/hangover/revert()
-	var/datum/round_event_control/shuttle_loan/our_event = locate() in SSevents.control
+	var/datum/round_event_control/shuttle_loan/our_event = get_active_event_control(/datum/round_event_control/shuttle_loan) // RIMSTATION EDIT: ORG - locate() in SSevents.control
 	our_event.unavailable_situations |= /datum/shuttle_loan_situation/mail_strike
 	SSeconomy.mail_blocked = !SSeconomy.mail_blocked
 	return ..()
@@ -308,7 +308,7 @@
 
 /datum/station_trait/random_event_weight_modifier/on_round_start()
 	. = ..()
-	var/datum/round_event_control/modified_event = locate(event_control_path) in SSevents.control
+	var/datum/round_event_control/modified_event = get_active_event_control(event_control_path) // RIMSTATION EDIT: ORG - locate(event_control_path) in SSevents.control
 	if(!modified_event)
 		CRASH("[type] could not find a round event controller to modify on round start (likely has an invalid event_control_path set)!")
 
@@ -623,7 +623,7 @@
 		)
 
 	//Disables radstorms, they don't really make sense since we already have the nebula causing storms
-	var/datum/round_event_control/modified_event = locate(/datum/round_event_control/radiation_storm) in SSevents.control
+	var/datum/round_event_control/modified_event = get_active_event_control(/datum/round_event_control/radiation_storm) // RIMSTATION EDIT: ORG - locate(...) in SSevents.control
 	modified_event.weight = 0
 
 ///They entered space? START BOMBING WITH RADS HAHAHAHA. old_area can be null for new objects

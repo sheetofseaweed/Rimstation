@@ -42,7 +42,8 @@
 
 #define STORYTELLER_WAIT_TIME 20 SECONDS
 
-#define EVENT_POINT_GAINED_PER_SECOND 0.05
+/// Track thresholds are authored on a one-point-per-second scale. See /datum/storyteller_data/tracks.
+#define EVENT_POINT_GAINED_PER_SECOND 1 // RIMSTATION EDIT: ORG - 0.05, which made every track 20x slower than its threshold assumed.
 
 #define TRACK_FAIL_POINT_PENALTY_MULTIPLIER 0.5
 

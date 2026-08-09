@@ -32,10 +32,9 @@
 /datum/controller/subsystem/gamemode/proc/get_ui_track_data()
 	var/list/track_data = list()
 	for(var/track in event_tracks)
-		var/last_points = last_point_gains[track]
 		var/lower = event_track_points[track]
 		var/upper = point_thresholds[track]
-		var/next = last_points ? round((upper - lower) / last_points / STORYTELLER_WAIT_TIME * 40 / 6) / 10 : 0
+		var/next = estimate_track_eta(track)
 		var/datum/round_event_control/forced = forced_next_events[track]
 		track_data[track] = list(
 			"name" = "[track]",
