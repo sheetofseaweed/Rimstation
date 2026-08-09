@@ -1,12 +1,6 @@
 #undef INTERACTION_COOLDOWN
 #define INTERACTION_COOLDOWN 0.25 SECONDS
 
-#define ORGAN_SLOT_BUTT "butt"
-#define ORGAN_SLOT_BELLY "belly"
-
-#define BELLY_MIN_SIZE 1
-#define BELLY_MAX_SIZE 7
-
 #define span_lewd(str) span_purple(str)
 
 #define INTERACTION_REQUIRE_SELF_MOUTH "self_mouth"
