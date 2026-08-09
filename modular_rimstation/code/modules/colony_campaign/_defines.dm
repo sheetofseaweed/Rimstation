@@ -34,3 +34,12 @@
 
 /// Length of a derived stream seed in hex characters.
 #define PLANET_STREAM_SEED_LENGTH 16
+
+/**
+ * Axis selectors for biome sampling drift.
+ *
+ * These live here rather than beside BIOME_RANDOM_SQUARE_DRIFT in CaveGenerator.dm because that file undefines
+ * its own macros at the bottom, which would put them out of reach of the colony generator and its tests.
+ */
+#define BIOME_DRIFT_AXIS_X "x"
+#define BIOME_DRIFT_AXIS_Y "y"

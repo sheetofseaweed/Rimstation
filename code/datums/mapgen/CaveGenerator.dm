@@ -112,6 +112,13 @@
 	///Whether out-of-boudns counts as being alive. Setting this to FALSE results in the edges of the generator generating more closed. Default behavior tends to open up tunnels outside.
 	var/edges_are_alive = TRUE
 
+	// RIMSTATION EDIT START - Optional deterministic seeding, so a campaign can rebuild the same surface.
+	/// Planet supplying deterministic stream seeds. Null keeps every legacy rand() path exactly as it was.
+	var/datum/planet_definition/generation_seed_provider
+	/// Separates generators sharing one planet, so two z levels do not come out identical.
+	var/generation_seed_namespace
+	// RIMSTATION EDIT END
+
 /datum/map_generator/cave_generator/New()
 	. = ..()
 	if(!weighted_mob_spawn_list)
@@ -178,6 +185,43 @@
 	log_world(message)
 
 
+// RIMSTATION EDIT START - Deterministic seed resolution.
+/**
+ * Resolves the seed for one generation stream on one z level, or null when no planet is bound.
+ *
+ * A null return is the signal to use the legacy rand() path, so inherited maps are untouched. The namespace
+ * and z level are folded in so a single planet still gives every generator and level its own terrain, and the
+ * result is squeezed into the 0-50000 range the noise generators are already fed.
+ */
+/datum/map_generator/cave_generator/proc/resolve_generation_seed(stream_name, z)
+	if(isnull(generation_seed_provider))
+		return null
+	var/stream_seed = generation_seed_provider.get_stream_seed(stream_name)
+	if(isnull(stream_seed))
+		return null
+	// Six hex digits stay inside the range BYOND floats represent exactly, so this stays reproducible.
+	var/folded = rustg_hash_string(RUSTG_HASH_SHA256, "[stream_seed]:[generation_seed_namespace]:[z]")
+	return hex2num(copytext(folded, 1, 7)) % 50000
+
+/// The inclusive drift range, exposed because BIOME_RANDOM_SQUARE_DRIFT is undefined at the end of this file.
+/datum/map_generator/cave_generator/proc/get_biome_drift_range()
+	return BIOME_RANDOM_SQUARE_DRIFT
+
+/**
+ * Returns the biome sampling offset for one axis at one coordinate.
+ *
+ * With a seed this is a pure function of the coordinate, which is what makes terrain reproducible: the
+ * offset decides which noise sample a tile reads, so a random one re-rolls biome borders on every run.
+ * With no seed it falls back to the original rand() so inherited generators behave identically.
+ */
+/datum/map_generator/cave_generator/proc/resolve_biome_drift(drift_seed, x, y, axis)
+	if(isnull(drift_seed))
+		return rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT)
+	var/span = (BIOME_RANDOM_SQUARE_DRIFT * 2) + 1
+	var/hashed = hex2num(copytext(rustg_hash_string(RUSTG_HASH_XXH64, "[drift_seed]:[axis]:[x]:[y]"), 1, 7))
+	return (hashed % span) - BIOME_RANDOM_SQUARE_DRIFT
+// RIMSTATION EDIT END
+
 /**
  * This proc handles including biomes in the cave generation. This is slower than
  * `generate_terrain()`, so please use it only if you actually need biomes.
@@ -192,8 +236,16 @@
 	var/humidity_seed = null
 	var/heat_seed = null
 
+	// RIMSTATION EDIT START - A bound planet decides the seeds; the legacy branches below only run without one.
+	var/generation_z = turfs[1].z
+	heat_seed = resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, generation_z)
+	humidity_seed = resolve_generation_seed(PLANET_STREAM_BIOME_HUMIDITY, generation_z)
+	var/drift_seed = resolve_generation_seed(PLANET_STREAM_TERRAIN, generation_z)
+	var/seeded_by_planet = !isnull(heat_seed) && !isnull(humidity_seed)
+	// RIMSTATION EDIT END
+
 	// Make sure that all caves on the same z level generate smoothly regardless of the area
-	if (shared_seed)
+	if (shared_seed && !seeded_by_planet) // RIMSTATION EDIT: ORG - if (shared_seed)
 		var/static/list/static_heat = null
 		var/static/list/static_humi = null
 		if (!static_heat)
@@ -207,7 +259,7 @@
 
 		heat_seed = static_heat[z_key]
 		humidity_seed = static_humi[z_key]
-	else
+	else if (!seeded_by_planet) // RIMSTATION EDIT: ORG - else
 		humidity_seed = rand(0, 50000)
 		heat_seed = rand(0, 50000)
 
@@ -222,7 +274,7 @@
 	heat_gen[BIOME_HIGH_HEAT] = rustg_dbp_generate("[heat_seed]", "60", "[biome_stamp_size]", "[world.maxx]", "[high_heat_threshold]", "1.1")
 	heat_gen[BIOME_MEDIUM_HEAT] = rustg_dbp_generate("[heat_seed]", "60", "[biome_stamp_size]", "[world.maxx]", "[medium_heat_threshold]", "[high_heat_threshold]")
 
-	if (shared_seed)
+	if (shared_seed || seeded_by_planet) // RIMSTATION EDIT: ORG - if (shared_seed)
 		static_biome_maps["[turfs[1].z]"] = list(
 			BIOME_HIGH_HUMIDITY = humidity_gen[BIOME_HIGH_HUMIDITY],
 			BIOME_MEDIUM_HUMIDITY = humidity_gen[BIOME_MEDIUM_HUMIDITY],
@@ -236,8 +288,9 @@
 		var/datum/biome/selected_biome
 
 		// Here comes the meat of the biome code.
-		var/drift_x = clamp((gen_turf.x + rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT)), 1, world.maxx) // / perlin_zoom
-		var/drift_y = clamp((gen_turf.y + rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT)), 2, world.maxy) // / perlin_zoom
+		// RIMSTATION EDIT: ORG - rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT) inline on both axes.
+		var/drift_x = clamp((gen_turf.x + resolve_biome_drift(drift_seed, gen_turf.x, gen_turf.y, BIOME_DRIFT_AXIS_X)), 1, world.maxx) // / perlin_zoom
+		var/drift_y = clamp((gen_turf.y + resolve_biome_drift(drift_seed, gen_turf.x, gen_turf.y, BIOME_DRIFT_AXIS_Y)), 2, world.maxy) // / perlin_zoom
 
 		// Where we go in the generated string (generated outside of the loop for s p e e d)
 		var/coordinate = world.maxx * (drift_y - 1) + drift_x
@@ -279,8 +332,12 @@
 	if (!shared_seed || !biome_map)
 		return null
 
-	var/drift_x = clamp((target.x + rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT)), 1, world.maxx)
-	var/drift_y = clamp((target.y + rand(-BIOME_RANDOM_SQUARE_DRIFT, BIOME_RANDOM_SQUARE_DRIFT)), 2, world.maxy)
+	// RIMSTATION EDIT START - ORG - rand() on both axes. Seeded drift is what makes this proc's own
+	// "not consistent between calls" caveat above go away for planets that supply a seed.
+	var/drift_seed = resolve_generation_seed(PLANET_STREAM_TERRAIN, target.z)
+	var/drift_x = clamp((target.x + resolve_biome_drift(drift_seed, target.x, target.y, BIOME_DRIFT_AXIS_X)), 1, world.maxx)
+	var/drift_y = clamp((target.y + resolve_biome_drift(drift_seed, target.x, target.y, BIOME_DRIFT_AXIS_Y)), 2, world.maxy)
+	// RIMSTATION EDIT END
 	var/coordinate = world.maxx * (drift_y - 1) + drift_x
 
 	var/humidity_level = text2num(biome_map[BIOME_HIGH_HUMIDITY][coordinate]) ? \

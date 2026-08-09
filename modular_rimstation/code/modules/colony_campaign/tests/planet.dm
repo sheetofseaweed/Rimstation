@@ -76,4 +76,102 @@
 	bad_generation["generation_version"] = 0
 	TEST_ASSERT(!reject.deserialize(bad_generation), "A record with a non-positive generation version was accepted.")
 
+
+/// The seed contract has to be opt-in: bound generators become reproducible, inherited ones must not change.
+/datum/unit_test/rimstation_planet_seed_contract
+
+/datum/unit_test/rimstation_planet_seed_contract/Run()
+	var/datum/planet_definition/planet = new(PLANET_TEST_SEED)
+	allocated += planet
+
+	var/datum/map_generator/cave_generator/legacy = new
+	allocated += legacy
+	TEST_ASSERT_NULL(legacy.resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, 1), "A generator with no planet bound returned a seed instead of deferring to rand().")
+
+	var/datum/map_generator/cave_generator/bound = new
+	allocated += bound
+	bound.generation_seed_provider = planet
+	bound.generation_seed_namespace = "surface"
+
+	var/heat = bound.resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, 1)
+	TEST_ASSERT_NOTNULL(heat, "A bound generator produced no heat seed.")
+	TEST_ASSERT_EQUAL(heat, bound.resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, 1), "Resolving the same stream twice returned different seeds.")
+	// The noise generators are fed values in this range, so staying inside it keeps behaviour comparable.
+	TEST_ASSERT(heat >= 0 && heat < 50000, "A resolved seed fell outside the 0-50000 range the noise generators expect.")
+
+	TEST_ASSERT_NOTEQUAL(heat, bound.resolve_generation_seed(PLANET_STREAM_BIOME_HUMIDITY, 1), "Heat and humidity resolved to the same seed on one z level.")
+	// One planet covers several z levels, which must not come out identical.
+	TEST_ASSERT_NOTEQUAL(heat, bound.resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, 2), "Two z levels resolved to the same heat seed.")
+
+	var/datum/map_generator/cave_generator/other_namespace = new
+	allocated += other_namespace
+	other_namespace.generation_seed_provider = planet
+	other_namespace.generation_seed_namespace = "underground"
+	TEST_ASSERT_NOTEQUAL(heat, other_namespace.resolve_generation_seed(PLANET_STREAM_BIOME_HEAT, 1), "Two generator namespaces sharing a planet resolved to the same seed.")
+
+
+/// Biome drift decides which sample each border tile reads, so it has to be reproducible too.
+/datum/unit_test/rimstation_planet_biome_drift
+
+/datum/unit_test/rimstation_planet_biome_drift/Run()
+	var/datum/planet_definition/planet = new(PLANET_TEST_SEED)
+	allocated += planet
+
+	var/datum/map_generator/cave_generator/bound = new
+	allocated += bound
+	bound.generation_seed_provider = planet
+	bound.generation_seed_namespace = "surface"
+
+	var/drift_seed = bound.resolve_generation_seed(PLANET_STREAM_TERRAIN, 1)
+	TEST_ASSERT_NOTNULL(drift_seed, "A bound generator produced no terrain seed to drift with.")
+
+	var/drift_range = bound.get_biome_drift_range()
+	var/seen_variation = FALSE
+	var/first_sample = bound.resolve_biome_drift(drift_seed, 40, 40, BIOME_DRIFT_AXIS_X)
+	for(var/x in 1 to 60)
+		for(var/axis in list(BIOME_DRIFT_AXIS_X, BIOME_DRIFT_AXIS_Y))
+			var/drift = bound.resolve_biome_drift(drift_seed, x, 40, axis)
+			TEST_ASSERT(drift >= -drift_range && drift <= drift_range, "Seeded drift left the legacy drift range at x=[x], axis [axis], with value [drift].")
+			TEST_ASSERT_EQUAL(drift, bound.resolve_biome_drift(drift_seed, x, 40, axis), "Seeded drift was not stable for a fixed coordinate at x=[x].")
+			if(drift != first_sample)
+				seen_variation = TRUE
+	TEST_ASSERT(seen_variation, "Seeded drift returned one constant value, which would remove biome border intermingling.")
+
+	// Without a seed the legacy rand() path has to stay in place. If this ever came back constant, every
+	// inherited map would quietly start generating the same terrain each round.
+	var/legacy_varied = FALSE
+	var/first_legacy_drift = bound.resolve_biome_drift(null, 40, 40, BIOME_DRIFT_AXIS_X)
+	for(var/i in 1 to 40)
+		var/legacy_drift = bound.resolve_biome_drift(null, 40, 40, BIOME_DRIFT_AXIS_X)
+		TEST_ASSERT(legacy_drift >= -drift_range && legacy_drift <= drift_range, "Unseeded drift left the legacy range with value [legacy_drift].")
+		if(legacy_drift != first_legacy_drift)
+			legacy_varied = TRUE
+	TEST_ASSERT(legacy_varied, "Unseeded drift stopped being random, which would make inherited maps repeat their terrain.")
+
+
+/// The point of the whole task: one planet record rebuilds one surface.
+/datum/unit_test/rimstation_planet_terrain_fingerprint
+
+/datum/unit_test/rimstation_planet_terrain_fingerprint/Run()
+	var/datum/planet_definition/planet = new(PLANET_TEST_SEED)
+	var/datum/planet_definition/same_planet = new(PLANET_TEST_SEED)
+	var/datum/planet_definition/other_planet = new("[PLANET_TEST_SEED]-elsewhere")
+	allocated += planet
+	allocated += same_planet
+	allocated += other_planet
+
+	var/datum/colony_planet_generator/generator = new(planet)
+	var/datum/colony_planet_generator/same_generator = new(same_planet)
+	var/datum/colony_planet_generator/other_generator = new(other_planet)
+	allocated += generator
+	allocated += same_generator
+	allocated += other_generator
+
+	var/fingerprint = generator.terrain_fingerprint(1)
+	TEST_ASSERT_NOTNULL(fingerprint, "The colony generator produced no terrain fingerprint.")
+	TEST_ASSERT_EQUAL(fingerprint, generator.terrain_fingerprint(1), "One generator produced two different fingerprints for the same z level.")
+	TEST_ASSERT_EQUAL(fingerprint, same_generator.terrain_fingerprint(1), "An identical planet record produced a different surface.")
+	TEST_ASSERT_NOTEQUAL(fingerprint, other_generator.terrain_fingerprint(1), "Two different root seeds produced the same surface.")
+	TEST_ASSERT_NOTEQUAL(fingerprint, generator.terrain_fingerprint(2), "Two z levels of one planet produced the same surface.")
+
 #undef PLANET_TEST_SEED
