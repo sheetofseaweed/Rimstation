@@ -19948,7 +19948,6 @@
 "OR" = (
 /obj/structure/window/reinforced/survival_pod/spawner/directional/east,
 /obj/machinery/smartfridge/chemistry,
-/obj/machinery/atmospherics/pipe/smart/manifold4w/orange/hidden/layer4,
 /obj/machinery/atmospherics/pipe/smart/manifold4w/scrubbers/hidden/layer4,
 /obj/effect/turf_decal/siding/dark,
 /turf/open/floor/iron/dark/smooth_large,

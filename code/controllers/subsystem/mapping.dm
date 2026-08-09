@@ -499,11 +499,15 @@ Used by the AI doomsday and the self-destruct nuke.
 	if(start_z <= 0 || total_z <= 0)
 		return
 
+	// RIMSTATION EDIT START:
+	// ORG: persistent_loaded_z_levels[z] = TRUE
 	for(var/z in start_z to (start_z + total_z - 1))
-		persistent_loaded_z_levels[z] = TRUE
+		persistent_loaded_z_levels |= z
 
 /datum/controller/subsystem/mapping/proc/is_persistent_loaded_z_level(z)
-	return !!persistent_loaded_z_levels?[z]
+	// ORG: return !!persistent_loaded_z_levels?[z]
+	return (z in persistent_loaded_z_levels)
+	// RIMSTATION EDIT END
 
 /// Returns a copy of the z-level list with persistence-restored levels removed so
 /// procedural map generation does not overwrite maps we just loaded from disk.

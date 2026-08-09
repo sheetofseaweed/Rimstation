@@ -188,16 +188,30 @@
 			returned_air += airs[i]
 	return returned_air
 
+// RIMSTATION EDIT START:
 /obj/machinery/atmospherics/components/pipeline_expansion(datum/pipeline/reference)
 	if(reference)
-		return list(nodes[parents.Find(reference)])
+		// ORG: return list(nodes[parents.Find(reference)])
+		var/parent_index = parents.Find(reference)
+		if(!parent_index)
+			return list()
+		return list(nodes[parent_index])
 	return ..()
 
 /obj/machinery/atmospherics/components/set_pipenet(datum/pipeline/reference, obj/machinery/atmospherics/target_component)
-	parents[nodes.Find(target_component)] = reference
+	// ORG: parents[nodes.Find(target_component)] = reference
+	var/node_index = nodes.Find(target_component)
+	if(!node_index)
+		return
+	parents[node_index] = reference
 
 /obj/machinery/atmospherics/components/return_pipenet(obj/machinery/atmospherics/target_component = nodes[1]) //returns parents[1] if called without argument
-	return parents[nodes.Find(target_component)]
+	// ORG: return parents[nodes.Find(target_component)]
+	var/node_index = nodes.Find(target_component)
+	if(!node_index)
+		return null
+	return parents[node_index]
+// RIMSTATION EDIT END
 
 /obj/machinery/atmospherics/components/replace_pipenet(datum/pipeline/Old, datum/pipeline/New)
 	parents[parents.Find(Old)] = New
