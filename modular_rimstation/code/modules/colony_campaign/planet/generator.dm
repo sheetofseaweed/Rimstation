@@ -9,6 +9,42 @@
 /datum/map_generator/cave_generator/rimstation_colony
 	name = "Rimstation Colony Caves"
 	generation_seed_namespace = "colony_surface"
+	// Exactly one type per side, because the inherited non-biome path picks with pick() and a second entry
+	// would put an unseeded roll back into terrain. rimstation_colony_generator_determinism guards this.
+	weighted_open_turf_types = list(/turf/open/misc/dirt/planet/rimstation = 1)
+	weighted_closed_turf_types = list(/turf/closed/mineral/random/rimstation = 1)
+
+	/**
+	 * Earthlike ecology, replacing the lavaland defaults the parent installs in New().
+	 *
+	 * Left unset, a colony that starts with a knife and a shovel would share its surface with goliaths,
+	 * hivelords and whatever GLOB.megafauna_spawn_list holds. These are animals a new settlement can hunt,
+	 * herd or survive, which is the point of the opening.
+	 */
+	weighted_mob_spawn_list = list(
+		/mob/living/basic/rabbit = 5,
+		/mob/living/basic/chicken = 4,
+		/mob/living/basic/deer = 3,
+		/mob/living/basic/goat = 2,
+		/mob/living/basic/cow = 1,
+	)
+	// Megafauna are excluded by the wilds area withholding MEGAFAUNA_SPAWN_ALLOWED rather than by emptying
+	// the list here: an empty list is truthy in DM, so the parent would still expand_weights() it and
+	// divide by a greatest common factor of nothing.
+	/// Trees are the renewable wood the opening package primes with, so they lead the table.
+	weighted_flora_spawn_list = list(
+		/obj/structure/flora/tree/dead = 4,
+		/obj/structure/flora/bush/ferny = 3,
+		/obj/structure/flora/bush/flowers_yw = 1,
+		/obj/structure/flora/bush/flowers_br = 1,
+		/obj/structure/flora/rock = 2,
+	)
+	/// Ore vents give the colony a reason to dig. Geysers are lavaland set dressing and are dropped.
+	weighted_feature_spawn_list = list(/obj/structure/ore_vent/random = 1)
+
+/datum/map_generator/cave_generator/rimstation_colony/New()
+	. = ..()
+	generation_seed_provider = get_active_colony_planet()
 
 /**
  * TRUE when this coordinate should be open floor.

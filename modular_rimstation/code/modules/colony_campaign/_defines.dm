@@ -43,3 +43,6 @@
  */
 #define BIOME_DRIFT_AXIS_X "x"
 #define BIOME_DRIFT_AXIS_Y "y"
+
+/// Root seed for the development colony world, used until a campaign manifest chooses one.
+#define RIMSTATION_DEVELOPMENT_PLANET_SEED "rimstation-development-world"

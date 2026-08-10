@@ -32,6 +32,30 @@
 	base_lighting_alpha = RIMSTATION_DAYLIGHT_ALPHA
 	base_lighting_color = RIMSTATION_DAYLIGHT_COLOR
 
+/**
+ * The generated wilderness that makes up most of the surface.
+ *
+ * Everything here is genturf in the DMM and gets replaced at init by the colony cave generator, so the
+ * checked-in map stays small and the terrain comes from the planet record instead.
+ */
+/area/rimstation_colony/surface/wilds
+	name = "Rimstation Wilds"
+	icon_state = "unexplored"
+	area_flags_mapping = UNIQUE_AREA | CAVES_ALLOWED | FLORA_ALLOWED | MOB_SPAWN_ALLOWED
+	use_mapgen = TRUE
+	map_generator = /datum/map_generator/cave_generator/rimstation_colony
+
+/**
+ * The one clearing the colony starts in.
+ *
+ * Deliberately excluded from generation: colonists need somewhere that is guaranteed open, flat and free of
+ * hostile spawns, and a generated landing site could bury them in rock.
+ */
+/area/rimstation_colony/surface/landing
+	name = "Rimstation Landing Site"
+	icon_state = "explored"
+	use_mapgen = FALSE
+
 /area/rimstation_colony/sky
 	name = "Rimstation Open Air"
 	icon_state = "space"

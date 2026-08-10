@@ -1,5 +1,7 @@
 #define RIMSTATION_COLONY_CONFIG "rimstation_colony"
 #define RIMSTATION_COLONY_MAP "_maps/map_files/rimstation_colony/rimstation_colony.dmm"
+/// Matches the generated surface size used by the other planetary maps in this repository.
+#define RIMSTATION_COLONY_SIZE 255
 
 /datum/unit_test/rimstation_colony_map_contract
 	test_flags = UNIT_TEST_MAP_TEST
@@ -99,29 +101,69 @@
 	var/datum/parsed_map/parsed_map = new(file(RIMSTATION_COLONY_MAP))
 	allocated += parsed_map
 	TEST_ASSERT_NOTNULL(parsed_map.parsed_bounds, "The Rimstation Colony DMM could not be parsed.")
-	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXX] - parsed_map.parsed_bounds[MAP_MINX] + 1, 10, "The seed map should be 10 tiles wide.")
-	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXY] - parsed_map.parsed_bounds[MAP_MINY] + 1, 10, "The seed map should be 10 tiles tall.")
-	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXZ] - parsed_map.parsed_bounds[MAP_MINZ] + 1, 3, "The seed map should contain exactly three z-levels.")
+	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXX] - parsed_map.parsed_bounds[MAP_MINX] + 1, RIMSTATION_COLONY_SIZE, "The colony map should be [RIMSTATION_COLONY_SIZE] tiles wide.")
+	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXY] - parsed_map.parsed_bounds[MAP_MINY] + 1, RIMSTATION_COLONY_SIZE, "The colony map should be [RIMSTATION_COLONY_SIZE] tiles tall.")
+	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXZ] - parsed_map.parsed_bounds[MAP_MINZ] + 1, 3, "The colony map should contain exactly three z-levels.")
 
-	var/list/expected_layer_turfs = list(
-		"/turf/closed/mineral/random/rimstation",
-		"/turf/open/misc/dirt/planet/rimstation",
-		"/turf/open/openspace/rimstation",
+	// Each level is restricted to the areas that belong on it. The surface carries two: generated wilds and
+	// the hand-placed landing clearing that must never be generated over.
+	var/list/allowed_layer_areas = list(
+		list("/area/rimstation_colony/underground"),
+		list("/area/rimstation_colony/surface/wilds", "/area/rimstation_colony/surface/landing"),
+		list("/area/rimstation_colony/sky"),
 	)
-	var/list/expected_layer_areas = list(
-		"/area/rimstation_colony/underground",
-		"/area/rimstation_colony/surface",
-		"/area/rimstation_colony/sky",
+	// A station-grade spawn on a colony map would drop players into a department that does not exist here.
+	var/list/forbidden_model_fragments = list(
+		"/obj/effect/landmark/start/",
+		"/obj/machinery/computer/cargo",
+		"/obj/machinery/rnd/",
+		"/obj/machinery/autolathe",
 	)
+
+	var/found_colony_spawn = FALSE
+	var/found_settlement_center = FALSE
+	var/found_raid_insertion = FALSE
+	var/list/seen_keys = list()
 	for(var/datum/grid_set/grid_set as anything in parsed_map.gridSets)
-		var/expected_turf = expected_layer_turfs[grid_set.zcrd]
-		var/expected_area = expected_layer_areas[grid_set.zcrd]
+		var/list/allowed_areas = allowed_layer_areas[grid_set.zcrd]
 		for(var/grid_line in grid_set.gridLines)
 			for(var/key_position in 1 to length(grid_line) step parsed_map.key_len)
 				var/model_key = copytext(grid_line, key_position, key_position + parsed_map.key_len)
+				if(seen_keys["[grid_set.zcrd]:[model_key]"])
+					continue
+				seen_keys["[grid_set.zcrd]:[model_key]"] = TRUE
 				var/model = parsed_map.grid_models[model_key]
-				TEST_ASSERT(findtext(model, expected_turf), "Z-level [grid_set.zcrd] should use [expected_turf], but model [model_key] did not.")
-				TEST_ASSERT(findtext(model, expected_area), "Z-level [grid_set.zcrd] should use [expected_area], but model [model_key] did not.")
+
+				var/area_matched = FALSE
+				for(var/allowed_area in allowed_areas)
+					if(findtext(model, allowed_area))
+						area_matched = TRUE
+						break
+				TEST_ASSERT(area_matched, "Z-level [grid_set.zcrd] model [model_key] used an area that does not belong on that layer.")
+
+				for(var/forbidden in forbidden_model_fragments)
+					TEST_ASSERT(!findtext(model, forbidden), "The colony map contains [forbidden], which is station-grade content.")
+
+				if(findtext(model, "/obj/effect/landmark/rimstation_colony_spawn"))
+					found_colony_spawn = TRUE
+				if(findtext(model, "/obj/effect/landmark/rimstation_settlement_center"))
+					found_settlement_center = TRUE
+				if(findtext(model, "/obj/effect/landmark/rimstation_raid_insertion"))
+					found_raid_insertion = TRUE
+
+	TEST_ASSERT(found_colony_spawn, "The colony map has nowhere for colonists to start.")
+	TEST_ASSERT(found_settlement_center, "The colony map has no settlement centre, so raids cannot measure an exclusion radius.")
+	TEST_ASSERT(found_raid_insertion, "The colony map has no validated raid insertion points, so attackers would have to spawn arbitrarily.")
+
+	// The wilds are genturf and rely on the generator running; the landing site must not be generated over.
+	var/area/rimstation_colony/surface/wilds/wilds_area = /area/rimstation_colony/surface/wilds
+	TEST_ASSERT(initial(wilds_area.use_mapgen), "The wilds must run their map generator, or the map keeps its placeholder genturf.")
+	TEST_ASSERT(initial(wilds_area.area_flags_mapping) & CAVES_ALLOWED, "The wilds must allow cave generation.")
+	TEST_ASSERT_EQUAL(initial(wilds_area.map_generator), /datum/map_generator/cave_generator/rimstation_colony, "The wilds should generate from the colony's own seeded generator.")
+
+	var/area/rimstation_colony/surface/landing/landing_area = /area/rimstation_colony/surface/landing
+	TEST_ASSERT(!initial(landing_area.use_mapgen), "The landing site must stay hand-placed so colonists cannot spawn inside rock.")
 
 #undef RIMSTATION_COLONY_CONFIG
 #undef RIMSTATION_COLONY_MAP
+#undef RIMSTATION_COLONY_SIZE

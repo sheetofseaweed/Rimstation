@@ -138,6 +138,21 @@
 	derived_seeds = null
 	return TRUE
 
+/**
+ * The planet the colony map is currently generated from.
+ *
+ * A placeholder seam. Phase 2 gives SScampaign ownership of this, loading the record from the campaign
+ * manifest so a saved town regenerates on the world it was built on. Until then it hands out one fixed
+ * development world, which is still reproducible - just not yet chosen per campaign.
+ */
+GLOBAL_DATUM(rimstation_active_planet, /datum/planet_definition)
+
+/proc/get_active_colony_planet()
+	RETURN_TYPE(/datum/planet_definition)
+	if(!GLOB.rimstation_active_planet)
+		GLOB.rimstation_active_planet = new /datum/planet_definition(RIMSTATION_DEVELOPMENT_PLANET_SEED, "rimstation-development")
+	return GLOB.rimstation_active_planet
+
 /// TRUE when both records would generate the same world and carry the same campaign metadata.
 /datum/planet_definition/proc/equals(datum/planet_definition/other)
 	if(!istype(other))
