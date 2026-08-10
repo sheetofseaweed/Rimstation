@@ -3302,6 +3302,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\opening\loadout.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\composition.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\raid.dm"
+#include "modular_rimstation\code\modules\colony_campaign\raids\telemetry.dm"
 #include "code\game\turfs\open\river.dm"
 #include "code\game\turfs\open\sand.dm"
 #include "code\game\turfs\open\snow.dm"

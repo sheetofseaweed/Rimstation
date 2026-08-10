@@ -18,8 +18,8 @@
 	var/resolved_at = 0
 	/// Identifier of the raid that decided the chapter, when one did.
 	var/raid_id
-	/// Telemetry record for the deciding event, when one exists. Typed once Task 6 defines the record.
-	var/datum/telemetry
+	/// Telemetry record for the deciding event, when one exists.
+	var/datum/colony_raid_telemetry/telemetry
 	/**
 	 * Whether resolving this outcome modified persistent campaign state.
 	 *
@@ -37,7 +37,7 @@
  *
  * Refuses anything outside the outcome vocabulary, and refuses to overwrite an already-recorded result.
  */
-/datum/colony_chapter_outcome/proc/resolve(new_result, new_reason, deciding_raid_id, datum/deciding_telemetry)
+/datum/colony_chapter_outcome/proc/resolve(new_result, new_reason, deciding_raid_id, datum/colony_raid_telemetry/deciding_telemetry)
 	if(!(new_result in list(COLONY_OUTCOME_SUCCESS, COLONY_OUTCOME_FAILURE)))
 		log_game("Colony chapter outcome rejected an unknown result '[new_result]'.")
 		return FALSE

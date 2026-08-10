@@ -76,8 +76,35 @@ SUBSYSTEM_DEF(world_save)
 
 	save_world()
 
+// RIMSTATION EDIT ADDITION START - One gate for every write path.
+/**
+ * TRUE when writing a world save is deliberately suppressed.
+ *
+ * Unit test runs are unconditional: a save written during a test run gets restored over the *next* run, which
+ * changes what areas exist and fails tests that have nothing to do with persistence. That was diagnosed the
+ * hard way, so it is not left to a config someone can forget.
+ */
+/datum/controller/subsystem/world_save/proc/save_writing_blocked()
+#ifdef UNIT_TESTS
+	return TRUE
+#else
+	return CONFIG_GET(flag/persistent_save_readonly)
+#endif
+
+/// TRUE when this server is allowed to write a world save at all.
+/datum/controller/subsystem/world_save/proc/can_save_world()
+	if(save_writing_blocked())
+		return FALSE
+	return CONFIG_GET(flag/persistent_save_enabled)
+// RIMSTATION EDIT ADDITION END
+
 /// Saves map z-levels in the world based on PERSISTENT_SAVE_ENABLED config options in config/persistence.txt
 /datum/controller/subsystem/world_save/proc/save_world(list/z_levels, silent=FALSE)
+	// RIMSTATION EDIT ADDITION START - Gate every caller here; the autosave path never checked the config.
+	if(!can_save_world())
+		log_world("World map save skipped at [server_timestamp()]: saving is disabled or read-only.")
+		return FALSE
+	// RIMSTATION EDIT ADDITION END
 	if(save_in_progress)
 		log_world("World map save skipped at [server_timestamp()] because another save is already in progress")
 		return FALSE

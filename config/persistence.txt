@@ -25,6 +25,12 @@
 ## Save folders in the persistence directory are formatted as year-month-day_UTF_hour.minute.second
 PERSISTENT_SAVE_ENABLED
 
+## Uncomment to load saved worlds as normal but never write new ones.
+## Use this for local test rounds: a save written while testing gets restored over the next round, including
+## unit test runs, where it replaces the map's areas and fails tests that have nothing to do with persistence.
+## Unit test builds refuse to write saves regardless of this setting.
+#PERSISTENT_SAVE_READONLY
+
 ## The period of time in hours between map autosaves for persistence
 ## Set to -1 to only allow saving when the server reboots
 ## Defaults to every 4 hours

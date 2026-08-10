@@ -1,6 +1,15 @@
 // Configs for persistent map saving and loading
 /// This will load the most recent saved maps, z-levels, and jsons in the _maps/persistence folder organized by year/month/day/hour-minute-second
 /datum/config_entry/flag/persistent_save_enabled
+// RIMSTATION EDIT ADDITION START - Read-only persistence for test rounds.
+/**
+ * Load saved worlds as normal, but never write new ones.
+ *
+ * For local testing. A test round that writes a save leaves it to be restored over the next round - including
+ * unit test runs, where a restored world silently replaces the map's areas and fails unrelated tests.
+ */
+/datum/config_entry/flag/persistent_save_readonly
+// RIMSTATION EDIT ADDITION END
 /// Include specific z-levels when saving and loading determined by trait
 /datum/config_entry/keyed_list/persistent_save_z_levels
 	key_mode = KEY_MODE_TEXT

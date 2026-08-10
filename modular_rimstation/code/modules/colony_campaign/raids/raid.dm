@@ -39,15 +39,19 @@
 	var/warning_duration = 2 MINUTES
 	/// Stoppable timer that starts the assault.
 	var/assault_timer_id
+	/// Record of what this raid did, submitted once at resolution.
+	var/datum/colony_raid_telemetry/telemetry
 
 /datum/colony_raid/New()
 	. = ..()
 	raid_id = "raid-[world.time]-[rand(1000, 9999)]"
 	roster = list()
 	insertion_turfs = list()
+	telemetry = new(raid_id)
 
 /datum/colony_raid/Destroy(force)
 	cancel_timers()
+	QDEL_NULL(telemetry)
 	roster = null
 	insertion_turfs = null
 	objective_ref = null
@@ -74,6 +78,7 @@
 		return FALSE
 
 	state = new_state
+	telemetry?.record_state(new_state)
 	return TRUE
 
 /**
@@ -170,17 +175,24 @@
 		return FALSE
 
 	set_state(COLONY_RAID_WARNING)
+	telemetry.insertion_direction = describe_insertion_direction()
+	// Sample the settlement before anything is shot at, so damage is a difference rather than a guess.
+	telemetry.sample_settlement_integrity()
 	announce_warning()
 	assault_timer_id = addtimer(CALLBACK(src, PROC_REF(begin_assault)), warning_duration, TIMER_STOPPABLE)
 	return TRUE
 
+/// Compass direction the attackers are arriving from, relative to the settlement.
+/datum/colony_raid/proc/describe_insertion_direction()
+	var/turf/sample = length(insertion_turfs) ? insertion_turfs[1] : null
+	var/obj/effect/landmark/rimstation_settlement_center/centre = GLOB.rimstation_settlement_center
+	if(!sample || !centre)
+		return "unknown"
+	return dir2text(get_dir(centre, sample))
+
 /// Tells the colony what is coming, roughly from where, and how long it has.
 /datum/colony_raid/proc/announce_warning()
-	var/turf/sample = length(insertion_turfs) ? insertion_turfs[1] : null
-	var/direction = "an unknown direction"
-	var/obj/effect/landmark/rimstation_settlement_center/centre = GLOB.rimstation_settlement_center
-	if(sample && centre)
-		direction = dir2text(get_dir(centre, sample))
+	var/direction = describe_insertion_direction()
 	priority_announce(
 		"Hostile movement detected approaching from [direction]. Estimated contact in [DisplayTimeText(warning_duration)]. They are moving on the colony core.",
 		"Colony Perimeter Alert",
@@ -197,13 +209,17 @@
 
 /// Spawns the bought attackers across the validated arrival tiles.
 /datum/colony_raid/proc/deploy_attackers()
-	var/list/composition = build_composition(threat_budget, get_available_units(), live_cap)
+	var/list/available = get_available_units()
+	var/list/composition = build_composition(threat_budget, available, live_cap)
+	telemetry.record_composition(composition, composition_cost(composition, available))
 	for(var/mob_type in composition)
 		for(var/i in 1 to composition[mob_type])
 			var/turf/arrival = pick(insertion_turfs)
 			var/mob/living/attacker = new mob_type(arrival)
 			attacker.faction = list(faction)
 			roster += WEAKREF(attacker)
+			// Phase 1 raids are AI-complete by design; Phase 5 is what offers these to ghosts.
+			telemetry.ai_units++
 
 /**
  * The unit table this raid draws from. Phase 5 replaces this with per-faction rosters.
@@ -239,6 +255,17 @@
 	outcome_reason = reason
 	cancel_timers()
 	set_state(COLONY_RAID_RESOLVED)
+
+	if(telemetry)
+		telemetry.outcome = outcome
+		// Captured here rather than at warning so that a raid cancelled before it deployed still records
+		// what it was offered - "we budgeted 100 points and found nowhere to land" is worth knowing.
+		telemetry.offered_budget = threat_budget
+		var/obj/structure/colony_core/core = objective_ref?.resolve()
+		if(core)
+			telemetry.core_capture_progress = core.capture_duration ? (core.capture_progress / core.capture_duration) : 0
+		telemetry.submit()
+
 	log_game("Colony raid [raid_id] resolved as [outcome]: [reason].")
 	message_admins("Colony raid [raid_id] resolved as [outcome]: [reason].")
 	return TRUE
