@@ -370,6 +370,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/opening.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/planet.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller.dm"
 // RIMSTATION ADDITION END
 // SKYRAT EDIT START

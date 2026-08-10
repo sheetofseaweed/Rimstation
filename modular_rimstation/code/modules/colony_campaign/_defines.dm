@@ -72,3 +72,35 @@
 #define COMSIG_COLONY_CORE_CAPTURED "colony_core_captured"
 /// Sent when the core is destroyed outright rather than captured. Args: (obj/structure/colony_core/core)
 #define COMSIG_COLONY_CORE_DESTROYED "colony_core_destroyed"
+
+// Raid lifecycle. Strictly forward: the telegraph is the colony's preparation window and cannot be skipped.
+#define COLONY_RAID_QUEUED "queued"
+#define COLONY_RAID_WARNING "warning"
+#define COLONY_RAID_ASSEMBLING "assembling"
+#define COLONY_RAID_ARRIVING "arriving"
+#define COLONY_RAID_ASSAULTING "assaulting"
+#define COLONY_RAID_RETREATING "retreating"
+#define COLONY_RAID_RESOLVED "resolved"
+
+/// Ordered lifecycle. Position in this list is what makes a transition forward or backward.
+#define COLONY_RAID_STATE_ORDER list( \
+	COLONY_RAID_QUEUED, \
+	COLONY_RAID_WARNING, \
+	COLONY_RAID_ASSEMBLING, \
+	COLONY_RAID_ARRIVING, \
+	COLONY_RAID_ASSAULTING, \
+	COLONY_RAID_RETREATING, \
+	COLONY_RAID_RESOLVED, \
+)
+
+/// The raid never deployed, usually because no validated insertion point existed.
+#define COLONY_RAID_OUTCOME_CANCELLED "cancelled"
+/// The colony killed or drove off the attackers.
+#define COLONY_RAID_OUTCOME_REPELLED "repelled"
+/// The attackers took the core.
+#define COLONY_RAID_OUTCOME_SUCCEEDED "succeeded"
+
+/// How far in from the map edge a raid may arrive.
+#define COLONY_RAID_EDGE_BAND 6
+/// How close to the settlement centre a raid may never arrive.
+#define COLONY_RAID_EXCLUSION_RADIUS 24
