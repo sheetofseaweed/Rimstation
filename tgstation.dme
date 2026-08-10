@@ -3297,6 +3297,8 @@
 #include "code\game\turfs\open\planet.dm"
 #include "modular_rimstation\code\modules\colony_campaign\mapping\landmarks.dm"
 #include "modular_rimstation\code\modules\colony_campaign\mapping\rimstation_colony.dm"
+#include "modular_rimstation\code\modules\colony_campaign\objectives\chapter_outcome.dm"
+#include "modular_rimstation\code\modules\colony_campaign\objectives\colony_core.dm"
 #include "modular_rimstation\code\modules\colony_campaign\opening\loadout.dm"
 #include "code\game\turfs\open\river.dm"
 #include "code\game\turfs\open\sand.dm"

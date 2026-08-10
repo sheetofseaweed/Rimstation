@@ -46,3 +46,29 @@
 
 /// Root seed for the development colony world, used until a campaign manifest chooses one.
 #define RIMSTATION_DEVELOPMENT_PLANET_SEED "rimstation-development-world"
+
+/// Faction shared by colonists and their animals. Anything outside it can contest the core.
+#define RIMSTATION_COLONY_FACTION "rimstation_colony"
+
+/// The colony core is held. Nothing hostile is standing on it.
+#define COLONY_CORE_SECURE "secure"
+/// Hostiles are on the core and capture progress is accumulating.
+#define COLONY_CORE_CONTESTED "contested"
+/// The core has been held long enough to fall. Terminal.
+#define COLONY_CORE_CAPTURED "captured"
+
+/// The chapter is still being played.
+#define COLONY_OUTCOME_PENDING "pending"
+/// The colony survived the chapter, damage included.
+#define COLONY_OUTCOME_SUCCESS "success"
+/// The colony lost the chapter through an explicit, legible condition.
+#define COLONY_OUTCOME_FAILURE "failure"
+
+/// Sent when the core starts being contested. Args: (obj/structure/colony_core/core)
+#define COMSIG_COLONY_CORE_CONTESTED "colony_core_contested"
+/// Sent when attackers are cleared and progress resets. Args: (obj/structure/colony_core/core)
+#define COMSIG_COLONY_CORE_SECURED "colony_core_secured"
+/// Sent when the core is held long enough to fall. Args: (obj/structure/colony_core/core)
+#define COMSIG_COLONY_CORE_CAPTURED "colony_core_captured"
+/// Sent when the core is destroyed outright rather than captured. Args: (obj/structure/colony_core/core)
+#define COMSIG_COLONY_CORE_DESTROYED "colony_core_destroyed"
