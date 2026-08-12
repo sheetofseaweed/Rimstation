@@ -28,6 +28,12 @@
 
 	/// Weakrefs to spawned attackers, so a dead raid does not pin mobs in memory.
 	var/list/datum/weakref/roster
+	/// How many attackers actually arrived. Casualty ratios are measured against this, not the budget.
+	var/deployed_strength = 0
+	/// Assoc of turf to the turf it was reached from, built once from the core. Both reachability and routes.
+	var/list/route_map
+	/// Assoc of attacker weakref to its remaining approach waypoints.
+	var/list/attacker_routes
 	/// Turfs the attackers will arrive on.
 	var/list/turf/insertion_turfs
 	/// The core this raid is trying to take.
@@ -51,7 +57,10 @@
 
 /datum/colony_raid/Destroy(force)
 	cancel_timers()
+	STOP_PROCESSING(SSprocessing, src)
 	QDEL_NULL(telemetry)
+	route_map = null
+	attacker_routes = null
 	roster = null
 	insertion_turfs = null
 	objective_ref = null
@@ -128,16 +137,29 @@
 /**
  * Collects the turfs this raid is allowed to arrive on.
  *
- * Candidates come from mapped-in landmarks rather than a runtime search. A mapper placing the landmark is
- * the assertion that the tile is reachable and sane, which matters because SSpathfinder is asynchronous and
- * cannot answer a reachability question inline during selection.
+ * Candidates are mapped-in landmarks, but a landmark is only a *proposal*. The surface is generated after the
+ * map is authored, so a mapper cannot promise a tile is reachable - generation routinely seals one inside a
+ * closed pocket of rock. Attackers spawned there simply stand around, which is how this was found.
  *
- * The cheap invariants are still re-checked here, because a landmark can end up buried by generated terrain.
+ * So every candidate is checked against a walkable region flood-filled outward from the core. That is a real
+ * connectivity answer rather than a proxy for one, and it is done here rather than through SSpathfinder
+ * because that subsystem is asynchronous and cannot answer inline during selection.
  */
 /datum/colony_raid/proc/find_insertion_turfs()
 	RETURN_TYPE(/list)
 	var/list/turf/valid = list()
+	if(!length(GLOB.rimstation_raid_insertion_points))
+		return valid
+
 	var/obj/effect/landmark/rimstation_settlement_center/centre = GLOB.rimstation_settlement_center
+	var/turf/core_turf = get_turf(objective_ref?.resolve()) || get_turf(centre)
+	if(!core_turf)
+		return valid
+
+	// One flood fill per raid, reused for every candidate and for building approach routes.
+	route_map = build_route_map(core_turf)
+	var/rejected_unreachable = 0
+
 	for(var/obj/effect/landmark/rimstation_raid_insertion/candidate as anything in GLOB.rimstation_raid_insertion_points)
 		var/turf/candidate_turf = get_turf(candidate)
 		if(!candidate_turf || candidate_turf.density)
@@ -147,8 +169,98 @@
 			continue
 		if(!is_edge_band_turf(candidate_turf))
 			continue
+		if(!route_map[candidate_turf])
+			rejected_unreachable++
+			continue
 		valid += candidate_turf
+
+	if(rejected_unreachable)
+		log_game("Colony raid [raid_id] discarded [rejected_unreachable] insertion point(s) with no walkable route to the core.")
 	return valid
+
+/**
+ * Breadth-first search outward from `origin`, returning an assoc of turf to the turf it was reached from.
+ *
+ * Doubles as the reachability answer (a key exists only if the turf is walkable-connected to the origin) and
+ * as the route home: following parents from any turf leads back to the origin along a walkable path. Doing
+ * both in one pass matters, because the map is 255x255 and this runs once per raid.
+ *
+ * The frontier is walked by index rather than consumed with Cut(), because repeatedly removing the head of a
+ * 60,000-entry list is quadratic.
+ */
+/datum/colony_raid/proc/build_route_map(turf/origin, max_turfs = COLONY_RAID_REACHABILITY_LIMIT)
+	RETURN_TYPE(/list)
+	var/list/came_from = list()
+	if(!origin)
+		return came_from
+
+	// The core tile itself holds a dense structure, so seed from the walkable ring around it instead.
+	var/list/frontier = list()
+	for(var/turf/open/starting as anything in get_adjacent_open_turfs(origin))
+		if(!is_walkable_turf(starting))
+			continue
+		came_from[starting] = origin
+		frontier += starting
+
+	var/index = 1
+	while(index <= length(frontier) && length(came_from) < max_turfs)
+		var/turf/current = frontier[index++]
+		for(var/turf/open/neighbour as anything in get_adjacent_open_turfs(current))
+			if(came_from[neighbour])
+				continue
+			if(!is_walkable_turf(neighbour))
+				continue
+			came_from[neighbour] = current
+			frontier += neighbour
+		CHECK_TICK
+
+	return came_from
+
+/**
+ * Turns a route map into the short hops an attacker can actually be asked to walk.
+ *
+ * Basic-mob JPS will not path further than AI_MAX_PATH_LENGTH, so a raider told to walk to a core 110 tiles
+ * away simply stands still. Following the route map back from the arrival point and sampling it every
+ * COLONY_RAID_WAYPOINT_SPACING tiles gives a chain of legs that are each short enough to path.
+ *
+ * Returned in travel order, ending at the objective.
+ */
+/datum/colony_raid/proc/build_waypoint_chain(turf/from)
+	RETURN_TYPE(/list)
+	var/list/turf/chain = list()
+
+	// No route map means no intermediate legs, but the chain must still end somewhere: an attacker handed an
+	// empty chain has nowhere to go at all, which is the failure this whole mechanism exists to prevent.
+	if(length(route_map) && from)
+		var/turf/current = from
+		var/steps_since_waypoint = 0
+		// Walk parent links back toward the core. The origin has no parent, which terminates the loop.
+		while(route_map[current])
+			current = route_map[current]
+			steps_since_waypoint++
+			if(steps_since_waypoint >= COLONY_RAID_WAYPOINT_SPACING)
+				chain += current
+				steps_since_waypoint = 0
+
+	// Always finish on the objective itself, however short the last leg is.
+	var/atom/objective = objective_ref?.resolve()
+	if(objective)
+		chain += get_turf(objective)
+	return chain
+
+/**
+ * TRUE when something walking could stand on this turf.
+ *
+ * Deliberately conservative about dense objects: refusing to arrive somewhere that needs a door opened is a
+ * far cheaper mistake than arriving somewhere the attackers cannot leave.
+ */
+/datum/colony_raid/proc/is_walkable_turf(turf/candidate)
+	if(!candidate || candidate.density)
+		return FALSE
+	for(var/obj/blocker in candidate)
+		if(blocker.density)
+			return FALSE
+	return TRUE
 
 /// TRUE when the turf sits in the band along the map edge where arrivals are permitted.
 /datum/colony_raid/proc/is_edge_band_turf(turf/candidate)
@@ -206,20 +318,135 @@
 	set_state(COLONY_RAID_ARRIVING)
 	deploy_attackers()
 	set_state(COLONY_RAID_ASSAULTING)
+	deployed_strength = length(roster)
+	// Only now can anything take the core, and only this raid's faction.
+	var/obj/structure/colony_core/core = objective_ref?.resolve()
+	core?.register_contesting_faction(faction)
+	// Nothing else drives the fight: the core's capture clock and the raid's own end conditions are both
+	// evaluated from here.
+	START_PROCESSING(SSprocessing, src)
+
+/**
+ * Drives the fight.
+ *
+ * The colony core takes its elapsed time from here rather than running its own timer, so capture progress and
+ * the raid's outcome can never disagree about how long attackers held the objective.
+ */
+/datum/colony_raid/process(seconds_per_tick)
+	if(state != COLONY_RAID_ASSAULTING && state != COLONY_RAID_RETREATING)
+		return PROCESS_KILL
+
+	var/obj/structure/colony_core/core = objective_ref?.resolve()
+	if(core)
+		core.advance_contest(core.has_hostiles_present(), seconds_per_tick SECONDS)
+		if(core.state == COLONY_CORE_CAPTURED)
+			resolve_raid(COLONY_RAID_OUTCOME_SUCCEEDED, "the attackers took the colony core")
+			return PROCESS_KILL
+
+	var/alive = living_attacker_count()
+	if(!alive)
+		resolve_raid(COLONY_RAID_OUTCOME_REPELLED, "every attacker was killed")
+		return PROCESS_KILL
+
+	if(state == COLONY_RAID_ASSAULTING)
+		update_attacker_routes()
+
+	if(state == COLONY_RAID_RETREATING)
+		// Survivors that made it back to the edge have left the chapter.
+		for(var/datum/weakref/attacker_ref as anything in roster)
+			var/mob/living/attacker = attacker_ref.resolve()
+			if(!attacker || attacker.stat == DEAD)
+				continue
+			if(is_edge_band_turf(get_turf(attacker)))
+				qdel(attacker)
+		if(!living_attacker_count())
+			resolve_raid(COLONY_RAID_OUTCOME_REPELLED, "the survivors withdrew")
+			return PROCESS_KILL
+		return
+
+	// Enough of the roster is dead that the rest give up.
+	if(deployed_strength && ((deployed_strength - alive) / deployed_strength) >= casualty_threshold)
+		order_retreat()
 
 /// Spawns the bought attackers across the validated arrival tiles.
 /datum/colony_raid/proc/deploy_attackers()
 	var/list/available = get_available_units()
 	var/list/composition = build_composition(threat_budget, available, live_cap)
 	telemetry.record_composition(composition, composition_cost(composition, available))
+	// One chain per arrival point, shared by everyone who lands there.
+	var/list/chains_by_turf = list()
+	for(var/turf/arrival_turf as anything in insertion_turfs)
+		chains_by_turf[arrival_turf] = build_waypoint_chain(arrival_turf)
+
 	for(var/mob_type in composition)
 		for(var/i in 1 to composition[mob_type])
 			var/turf/arrival = pick(insertion_turfs)
 			var/mob/living/attacker = new mob_type(arrival)
 			attacker.faction = list(faction)
+			assign_objective(attacker, chains_by_turf[arrival])
 			roster += WEAKREF(attacker)
 			// Phase 1 raids are AI-complete by design; Phase 5 is what offers these to ghosts.
 			telemetry.ai_units++
+
+/**
+ * Gives one attacker its approach route and points it at the first leg.
+ *
+ * This is the whole of the "strategy" layer: the mob's own AI still decides how to fight, break obstacles and
+ * pick targets. All the raid contributes is somewhere to be when nothing else is happening - and, critically,
+ * somewhere *close enough to path to*. Handing it the distant core instead leaves it standing still.
+ */
+/datum/colony_raid/proc/assign_objective(mob/living/attacker, list/turf/route)
+	var/atom/objective = objective_ref?.resolve()
+	if(!objective || !attacker.ai_controller)
+		return FALSE
+
+	LAZYINITLIST(attacker_routes)
+	var/datum/weakref/attacker_ref = WEAKREF(attacker)
+	// With no route the objective is presumably already close, so head straight for it.
+	attacker_routes[attacker_ref] = length(route) ? route.Copy() : list(get_turf(objective))
+	return advance_waypoint(attacker, attacker_ref)
+
+/// Points an attacker at the next leg of its route. Returns TRUE if it now has somewhere to go.
+/datum/colony_raid/proc/advance_waypoint(mob/living/attacker, datum/weakref/attacker_ref)
+	var/list/turf/route = attacker_routes?[attacker_ref]
+	if(!length(route))
+		return FALSE
+	attacker.ai_controller?.set_blackboard_key(BB_TRAVEL_DESTINATION, route[1])
+	return TRUE
+
+/**
+ * Walks every attacker along its route.
+ *
+ * Handing out the next leg only once the current one is reached is what keeps each pathfinding request inside
+ * the range basic mobs will actually attempt.
+ */
+/datum/colony_raid/proc/update_attacker_routes()
+	for(var/datum/weakref/attacker_ref as anything in attacker_routes)
+		var/mob/living/attacker = attacker_ref.resolve()
+		if(!attacker || attacker.stat == DEAD)
+			continue
+		var/list/turf/route = attacker_routes[attacker_ref]
+		if(!length(route))
+			continue
+		if(get_dist(attacker, route[1]) > COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE)
+			continue
+		// Reached this leg; hand over the next one, or leave them on the objective if this was the last.
+		if(length(route) > 1)
+			route.Cut(1, 2)
+			advance_waypoint(attacker, attacker_ref)
+
+/// Sends the survivors back the way they came and stops them pressing the objective.
+/datum/colony_raid/proc/order_retreat()
+	if(!set_state(COLONY_RAID_RETREATING))
+		return FALSE
+	var/turf/exit_point = length(insertion_turfs) ? pick(insertion_turfs) : null
+	for(var/datum/weakref/attacker_ref as anything in roster)
+		var/mob/living/attacker = attacker_ref.resolve()
+		if(!attacker || attacker.stat == DEAD || !attacker.ai_controller)
+			continue
+		attacker.ai_controller.set_blackboard_key(BB_TRAVEL_DESTINATION, exit_point)
+	priority_announce("The surviving attackers are pulling back.", "Colony Perimeter Alert")
+	return TRUE
 
 /**
  * The unit table this raid draws from. Phase 5 replaces this with per-faction rosters.
@@ -230,8 +457,8 @@
 /datum/colony_raid/proc/get_available_units()
 	RETURN_TYPE(/list)
 	return list(
-		new /datum/colony_raid_unit(/mob/living/basic/trooper/pirate/melee, 20, 2, 8, "grunt", 5),
-		new /datum/colony_raid_unit(/mob/living/basic/trooper/pirate, 35, 0, 4, "ranged", 2),
+		new /datum/colony_raid_unit(/mob/living/basic/trooper/pirate/melee/rimstation_raider, 20, 2, 8, "grunt", 5),
+		new /datum/colony_raid_unit(/mob/living/basic/trooper/pirate/ranged/rimstation_raider, 35, 0, 4, "ranged", 2),
 	)
 
 /// How many of the spawned attackers are still alive.
@@ -254,7 +481,12 @@
 	outcome = new_outcome
 	outcome_reason = reason
 	cancel_timers()
+	STOP_PROCESSING(SSprocessing, src)
 	set_state(COLONY_RAID_RESOLVED)
+
+	// The fight is over, so nothing can be taking the core any more.
+	var/obj/structure/colony_core/finished_core = objective_ref?.resolve()
+	finished_core?.unregister_contesting_faction(faction)
 
 	if(telemetry)
 		telemetry.outcome = outcome

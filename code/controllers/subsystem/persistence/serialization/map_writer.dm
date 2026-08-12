@@ -45,8 +45,14 @@
 		obj_blacklist = GLOB.save_object_blacklist
 
 	//Step 0: Calculate the amount of letters we need (26 ^ n > turf count)
-	var/turfs_needed = width * height
-	var/layers = FLOOR(log(GLOB.save_file_chars.len, turfs_needed) + 0.999,1)
+	// RIMSTATION EDIT START - ORG: turfs_needed = width * height, layers without the max().
+	// width and height are inclusive differences, so a single-tile region made them 0 and log(52, 0) is not
+	// computable. The loops below run `0 to width`, so the real count is one more on each axis - which also
+	// means the original under-counted every region, not just the degenerate one.
+	var/turfs_needed = (width + 1) * (height + 1)
+	// A one-tile region needs log(52, 1) = 0 layers, but a key still has to be at least one character wide.
+	var/layers = max(1, FLOOR(log(GLOB.save_file_chars.len, turfs_needed) + 0.999,1))
+	// RIMSTATION EDIT END
 
 	//Step 1: Run through the area and generate file data
 	var/list/header_data = list() //holds the data of a header -> to its key

@@ -12,3 +12,7 @@
 	TEST_ASSERT(!SSworld_save.can_save_world(), "World saving reported itself allowed during a unit test run.")
 	// Every write path routes through save_world(), including the autosave that never checked the config.
 	TEST_ASSERT(!SSworld_save.save_world(silent = TRUE), "save_world() went ahead during a unit test run.")
+
+	// Loading is a separate switch, because a run can be poisoned by a save some earlier round left behind.
+	TEST_ASSERT(SSworld_save.save_loading_blocked(), "World save loading is not blocked during unit tests.")
+	TEST_ASSERT_NULL(SSworld_save.get_last_save(), "A unit test run selected a saved world to load over the test map.")

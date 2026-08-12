@@ -34,6 +34,46 @@
 	TEST_ASSERT_EQUAL(core.state, COLONY_CORE_CAPTURED, "A captured core reverted once the attackers left.")
 
 
+/**
+ * Only an actual raider can take the core.
+ *
+ * The first version treated "not in the colony faction" as hostile, which counted the colonists standing on
+ * their own core - and would have counted every rabbit on the surface too. Contesting is opt-in per faction,
+ * registered by a running raid.
+ */
+/datum/unit_test/rimstation_colony_core_hostility
+
+/datum/unit_test/rimstation_colony_core_hostility/Run()
+	var/obj/structure/colony_core/core = allocate(/obj/structure/colony_core)
+
+	// A colonist standing on the core outside a raid.
+	var/mob/living/carbon/human/colonist = allocate(/mob/living/carbon/human/consistent)
+	colonist.forceMove(get_turf(core))
+	TEST_ASSERT(!core.has_hostiles_present(), "A colonist standing on the core counted as taking it.")
+
+	// Wildlife wandering past is not an assault either.
+	var/mob/living/basic/rabbit/wildlife = allocate(/mob/living/basic/rabbit)
+	wildlife.forceMove(get_turf(core))
+	TEST_ASSERT(!core.has_hostiles_present(), "Wildlife next to the core counted as taking it.")
+
+	// A raider only counts once its faction has been registered by a raid.
+	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/raider = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
+	raider.faction = list("test_raiders")
+	raider.forceMove(get_turf(core))
+	TEST_ASSERT(!core.has_hostiles_present(), "A raider took the core before any raid registered its faction.")
+
+	core.register_contesting_faction("test_raiders")
+	TEST_ASSERT(core.has_hostiles_present(), "A registered raider standing on the core did not contest it.")
+
+	// A dead raider is not holding anything.
+	raider.death()
+	TEST_ASSERT(!core.has_hostiles_present(), "A dead raider still counted as holding the core.")
+
+	// And when the raid ends, the core stands down.
+	core.unregister_contesting_faction("test_raiders")
+	TEST_ASSERT(!core.has_hostiles_present(), "The core was still contested after its raid deregistered.")
+
+
 /// Losing the core is an explicit event. Nothing about an ordinary round ending may imply it.
 /datum/unit_test/rimstation_colony_outcome
 

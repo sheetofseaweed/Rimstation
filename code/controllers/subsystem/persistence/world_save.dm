@@ -91,6 +91,19 @@ SUBSYSTEM_DEF(world_save)
 	return CONFIG_GET(flag/persistent_save_readonly)
 #endif
 
+/**
+ * TRUE when loading a saved world is deliberately suppressed.
+ *
+ * Unit tests only. Writing and loading are separate switches because a test run can be poisoned by a save it
+ * did not create - all it takes is one ordinary round having happened first.
+ */
+/datum/controller/subsystem/world_save/proc/save_loading_blocked()
+#ifdef UNIT_TESTS
+	return TRUE
+#else
+	return FALSE
+#endif
+
 /// TRUE when this server is allowed to write a world save at all.
 /datum/controller/subsystem/world_save/proc/can_save_world()
 	if(save_writing_blocked())
@@ -411,6 +424,13 @@ SUBSYSTEM_DEF(world_save)
 		fdel(oldest_autosave_full_path)
 
 /datum/controller/subsystem/world_save/proc/get_last_save()
+	// RIMSTATION EDIT ADDITION START - Test runs must not load saved worlds.
+	// A save restored over the unit test map replaces its areas, which fails hundreds of tests that have
+	// nothing to do with persistence. Blocking writes was not enough: a save left by an ordinary round is
+	// still on disk, and the suite has to be hermetic regardless of what the server did last.
+	if(save_loading_blocked())
+		return null
+	// RIMSTATION EDIT ADDITION END
 	// organize by newest saves first
 	var/list/all_saves = get_all_saves(GLOBAL_PROC_REF(cmp_text_dsc))
 	if(!all_saves.len)

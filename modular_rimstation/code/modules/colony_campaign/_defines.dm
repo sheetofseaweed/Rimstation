@@ -50,6 +50,7 @@
 /// Faction shared by colonists and their animals. Anything outside it can contest the core.
 #define RIMSTATION_COLONY_FACTION "rimstation_colony"
 
+
 /// The colony core is held. Nothing hostile is standing on it.
 #define COLONY_CORE_SECURE "secure"
 /// Hostiles are on the core and capture progress is accumulating.
@@ -100,7 +101,56 @@
 /// The attackers took the core.
 #define COLONY_RAID_OUTCOME_SUCCEEDED "succeeded"
 
+// Campaign lifecycle. SScampaign is the only thing allowed to move between these.
+/// No campaign exists yet.
+#define CAMPAIGN_STATE_NONE "none"
+/// Selecting and loading a committed checkpoint.
+#define CAMPAIGN_STATE_LOADING "loading"
+/// A chapter is being played.
+#define CAMPAIGN_STATE_ACTIVE "active"
+/// Staging and promoting a new checkpoint. Mutation is quiesced.
+#define CAMPAIGN_STATE_COMMITTING "committing"
+/// Between chapters, with a committed checkpoint to return to.
+#define CAMPAIGN_STATE_INTERMISSION "intermission"
+/// The generation lost. Its checkpoint pointer is cleared and never promoted.
+#define CAMPAIGN_STATE_DEFEATED "defeated"
+/// Waiting to build a fresh generation on next boot.
+#define CAMPAIGN_STATE_RESET_PENDING "reset_pending"
+/// Something ended abnormally. Explicitly not defeat.
+#define CAMPAIGN_STATE_RECOVERY "recovery"
+
+/**
+ * Legal lifecycle transitions.
+ *
+ * Written out rather than inferred so that "can a lost campaign quietly become an active one" has a single,
+ * readable answer. Note defeat leads only to reset_pending: there is no path from defeated back to active.
+ */
+#define CAMPAIGN_STATE_TRANSITIONS list( \
+	CAMPAIGN_STATE_NONE = list(CAMPAIGN_STATE_LOADING), \
+	CAMPAIGN_STATE_LOADING = list(CAMPAIGN_STATE_ACTIVE, CAMPAIGN_STATE_RECOVERY), \
+	CAMPAIGN_STATE_ACTIVE = list(CAMPAIGN_STATE_COMMITTING, CAMPAIGN_STATE_DEFEATED, CAMPAIGN_STATE_RECOVERY), \
+	CAMPAIGN_STATE_COMMITTING = list(CAMPAIGN_STATE_INTERMISSION, CAMPAIGN_STATE_RECOVERY), \
+	CAMPAIGN_STATE_INTERMISSION = list(CAMPAIGN_STATE_LOADING, CAMPAIGN_STATE_ACTIVE, CAMPAIGN_STATE_RECOVERY), \
+	CAMPAIGN_STATE_DEFEATED = list(CAMPAIGN_STATE_RESET_PENDING), \
+	CAMPAIGN_STATE_RESET_PENDING = list(CAMPAIGN_STATE_LOADING), \
+	CAMPAIGN_STATE_RECOVERY = list(CAMPAIGN_STATE_LOADING, CAMPAIGN_STATE_ACTIVE), \
+)
+
+/// Manifest layout version. Bump with a migration, never in place.
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 1
+
 /// How far in from the map edge a raid may arrive.
 #define COLONY_RAID_EDGE_BAND 6
 /// How close to the settlement centre a raid may never arrive.
 #define COLONY_RAID_EXCLUSION_RADIUS 24
+/// Ceiling on the walkable-region flood fill, so a pathological map cannot stall a raid indefinitely.
+#define COLONY_RAID_REACHABILITY_LIMIT 70000
+/**
+ * Tiles between waypoints on a raid's approach route.
+ *
+ * Must stay comfortably below AI_MAX_PATH_LENGTH (30): basic-mob JPS refuses to path further than that, so a
+ * raid crossing a 255-tile map has to be handed the journey one short hop at a time.
+ */
+#define COLONY_RAID_WAYPOINT_SPACING 15
+/// How close an attacker must get to a waypoint before it is handed the next one.
+#define COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE 3

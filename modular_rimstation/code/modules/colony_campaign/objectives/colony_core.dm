@@ -27,6 +27,8 @@
 	var/datum/colony_chapter_outcome/chapter_outcome
 	/// Repeating alert timer, live only while contested. Stoppable so Destroy() can cancel it.
 	var/alert_timer_id
+	/// Factions currently able to take this core. Empty outside a raid, so colonists and wildlife never count.
+	var/list/contesting_factions
 
 /obj/structure/colony_core/Initialize(mapload)
 	. = ..()
@@ -91,15 +93,37 @@
 
 	return state
 
-/// TRUE when something hostile to the colony is close enough to be taking the core.
+/**
+ * TRUE when someone who can actually take this core is standing on it.
+ *
+ * Membership is opt-in: a faction only counts once a raid has registered it. The obvious alternative -
+ * "anything not in the colony faction is hostile" - is wrong in a way that is easy to miss, because it counts
+ * the colonists themselves, their livestock, and every rabbit that wanders past. With no raid running, nobody
+ * contests the core at all.
+ */
 /obj/structure/colony_core/proc/has_hostiles_present()
+	if(!length(contesting_factions))
+		return FALSE
 	for(var/mob/living/nearby in range(capture_radius, src))
 		if(nearby.stat == DEAD)
 			continue
-		if(faction_check(nearby.faction, list(RIMSTATION_COLONY_FACTION)))
-			continue
-		return TRUE
+		if(faction_check(nearby.faction, contesting_factions))
+			return TRUE
 	return FALSE
+
+/// Lets a faction start taking this core. Called by a raid when its attackers arrive.
+/obj/structure/colony_core/proc/register_contesting_faction(faction)
+	if(!faction)
+		return
+	LAZYADD(contesting_factions, faction)
+
+/// Stops a faction being able to take this core, and stands the core down if nobody else can.
+/obj/structure/colony_core/proc/unregister_contesting_faction(faction)
+	LAZYREMOVE(contesting_factions, faction)
+	if(length(contesting_factions) || state == COLONY_CORE_CAPTURED)
+		return
+	// The raid that was taking it is over, so any partial progress stops here rather than sitting frozen.
+	advance_contest(FALSE, 0)
 
 /obj/structure/colony_core/proc/start_progress_alerts()
 	stop_progress_alerts()

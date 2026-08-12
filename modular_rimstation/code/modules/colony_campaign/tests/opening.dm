@@ -75,6 +75,34 @@
 		TEST_ASSERT(large_colony[item_type] > tiny_colony[item_type], "Personal supply [item_type] did not scale with colonist count.")
 
 
+/// The crate is the only thing that turns the package into objects a colonist can pick up.
+/datum/unit_test/rimstation_opening_crate
+
+/datum/unit_test/rimstation_opening_crate/Run()
+	var/obj/structure/closet/crate/colony_supplies/crate = allocate(/obj/structure/closet/crate/colony_supplies)
+	// Mapped-in crates fill on LateInitialize; allocate() does not run that, so drive it directly.
+	crate.fill_from_package()
+
+	var/list/contents_by_type = list()
+	for(var/obj/item/carried in crate)
+		contents_by_type[carried.type] += 1
+	TEST_ASSERT(length(contents_by_type), "The colony supply crate came up empty, so the colony starts with nothing.")
+
+	var/datum/colony_opening_package/package = new
+	allocated += package
+	for(var/item_type in package.shared_supplies)
+		var/found = FALSE
+		for(var/spawned_type in contents_by_type)
+			if(ispath(spawned_type, item_type))
+				found = TRUE
+				break
+		TEST_ASSERT(found, "The colony supply crate is missing [item_type] from the opening package.")
+
+	// Stacks have to arrive as one stack carrying a count, not as one object per unit.
+	for(var/obj/item/stack/bundle in crate)
+		TEST_ASSERT(bundle.amount > 0, "A stack in the supply crate arrived with no amount.")
+
+
 /**
  * The colony generator has to stay deterministic.
  *

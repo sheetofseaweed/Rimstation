@@ -10,9 +10,11 @@
 /area/rimstation_colony/surface/landing)
 "aad" = (
 /obj/effect/landmark/rimstation_colony_spawn,
+/obj/structure/closet/crate/colony_supplies,
 /turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_colony/surface/landing)
 "aae" = (
+/obj/structure/colony_core,
 /obj/effect/landmark/rimstation_settlement_center,
 /turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_colony/surface/landing)

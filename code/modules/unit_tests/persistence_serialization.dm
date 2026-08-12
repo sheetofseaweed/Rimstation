@@ -39,8 +39,11 @@
 	TEST_ASSERT(isfloorturf(test_turf), "Expected object limit test turf to be a floor")
 
 	var/old_object_limit = CONFIG_GET(number/persistent_max_object_limit_per_turf)
-	var/obj/item/stack/sheet/iron/first_sheet = allocate(/obj/item/stack/sheet/iron, test_turf)
-	allocate(/obj/item/stack/sheet/iron, test_turf)
+	// RIMSTATION EDIT START - ORG: two /obj/item/stack/sheet/iron. Stacks merge into one object, so the turf
+	// only ever held a single item and the object limit was never reached.
+	var/obj/item/wrench/first_sheet = allocate(/obj/item/wrench, test_turf)
+	allocate(/obj/item/wrench, test_turf)
+	// RIMSTATION EDIT END
 
 	CONFIG_SET(number/persistent_max_object_limit_per_turf, 1)
 	SSworld_save.reset_current_save_diagnostics()
@@ -49,12 +52,13 @@
 
 	TEST_ASSERT_NOTNULL(map, "Expected write_map() to return data when the object limit is reached")
 	TEST_ASSERT_EQUAL(SSworld_save.current_save_diagnostics["skip_reasons"]["object_limit"], 1, "Expected one object limit skip to be recorded")
-	TEST_ASSERT_EQUAL(SSworld_save.current_save_diagnostics["skip_types"]["[first_sheet.type]"], 1, "Expected one skipped iron sheet to be counted for the object limit")
+	TEST_ASSERT_EQUAL(SSworld_save.current_save_diagnostics["skip_types"]["[first_sheet.type]"], 1, "Expected one skipped item to be counted for the object limit") // RIMSTATION EDIT: ORG - "iron sheet"
 
 /datum/unit_test/persistence_serialization_cancel_metrics
 
 /datum/unit_test/persistence_serialization_cancel_metrics/Run()
-	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 5, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
+	// RIMSTATION EDIT: ORG - x + 5, which is past the end of the test room and so never a floor.
+	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 4, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
 	TEST_ASSERT(isfloorturf(test_turf), "Expected cancel test turf to be a floor")
 
 	allocate(/obj/item/stack/sheet/iron, test_turf)

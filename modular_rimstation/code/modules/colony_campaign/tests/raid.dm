@@ -124,6 +124,114 @@
 	TEST_ASSERT_EQUAL(raid.outcome, COLONY_RAID_OUTCOME_CANCELLED, "A raid that could not deploy did not record itself as cancelled.")
 
 
+/**
+ * Reachability is the check that stops attackers spawning inside sealed rock.
+ *
+ * A landmark cannot promise this: the surface is generated after the map is authored, so generation can and
+ * does seal insertion points inside closed pockets. Attackers spawned there just stand still.
+ */
+/datum/unit_test/rimstation_raid_reachability
+
+/datum/unit_test/rimstation_raid_reachability/Run()
+	var/datum/colony_raid/raid = new
+	allocated += raid
+
+	// Nothing here may replace a turf: run_loc_floor_bottom_left is shared with every later test, and turfs
+	// are not restored on teardown the way allocated objects are. Swapping one in poisons the whole suite.
+	var/turf/origin = run_loc_floor_bottom_left
+	var/list/reachable = raid.build_route_map(origin)
+	TEST_ASSERT(length(reachable), "The flood fill found nothing walkable next to an open floor turf.")
+
+	// Neighbours of an open floor are reachable; the origin's own ring seeds the fill.
+	var/turf/open/neighbour = get_step(origin, EAST)
+	if(istype(neighbour) && !neighbour.density)
+		TEST_ASSERT(reachable[neighbour], "An adjacent open floor turf was not considered reachable.")
+		// Parent links have to lead home, or waypoint chains would be built from nothing.
+		TEST_ASSERT_EQUAL(reachable[neighbour], origin, "A turf adjacent to the origin did not record the origin as its route parent.")
+
+	// A dense object makes a turf unwalkable, which is the same rejection generated rock relies on.
+	var/turf/blocked_turf = get_step(origin, WEST)
+	TEST_ASSERT_NOTNULL(blocked_turf, "The test room had no turf west of the origin to block.")
+	var/obj/structure/blocker = allocate(/obj/structure/girder, blocked_turf)
+	TEST_ASSERT(blocker.density, "The structure used to block a turf was not dense, so this proves nothing.")
+	TEST_ASSERT(!raid.is_walkable_turf(blocked_turf), "A turf holding a dense structure was treated as walkable.")
+
+	// And a fresh fill must now route around it rather than through it.
+	var/list/reachable_after = raid.build_route_map(origin)
+	TEST_ASSERT(!reachable_after[blocked_turf], "The flood fill walked through a turf blocked by a dense structure.")
+
+
+/**
+ * Waypoints have to be short enough for a basic mob to actually path to.
+ *
+ * This is the constraint that made two earlier attempts fail: basic-mob JPS refuses any path longer than
+ * AI_MAX_PATH_LENGTH, so an attacker handed a destination 110 tiles away just stands still. Nothing about
+ * "the objective was assigned" catches that, which is why the spacing itself is asserted.
+ */
+/datum/unit_test/rimstation_raid_waypoint_range
+
+/datum/unit_test/rimstation_raid_waypoint_range/Run()
+	TEST_ASSERT(COLONY_RAID_WAYPOINT_SPACING < AI_MAX_PATH_LENGTH, "Raid waypoints are spaced [COLONY_RAID_WAYPOINT_SPACING] tiles apart, beyond the [AI_MAX_PATH_LENGTH] tile limit basic mobs will path, so attackers would never move.")
+	TEST_ASSERT(COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE < COLONY_RAID_WAYPOINT_SPACING, "The waypoint arrival radius is not smaller than the spacing, so attackers would skip legs of their route.")
+
+	var/datum/colony_raid/raid = new
+	allocated += raid
+	var/obj/structure/colony_core/core = allocate(/obj/structure/colony_core)
+	raid.objective_ref = WEAKREF(core)
+
+	// With no route map there is nothing to sample, so the chain must still end somewhere usable.
+	var/list/turf/chain = raid.build_waypoint_chain(run_loc_floor_bottom_left)
+	TEST_ASSERT(length(chain), "A waypoint chain came back empty, leaving attackers with nowhere to go.")
+	TEST_ASSERT_EQUAL(chain[length(chain)], get_turf(core), "A waypoint chain did not end at the objective.")
+
+	// Attackers with no route still have to be pointed at something.
+	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/attacker = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
+	TEST_ASSERT(raid.assign_objective(attacker, null), "An attacker with no precomputed route was left without a destination.")
+	TEST_ASSERT_NOTNULL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], "An attacker was given no travel destination at all.")
+
+
+/**
+ * Attackers have to be told where to go.
+ *
+ * The inherited trooper AI fights well but has no reason to walk anywhere, so a raid that only spawns mobs
+ * produces attackers milling around the map edge. That shipped once; this is the assertion that catches it.
+ */
+/datum/unit_test/rimstation_raid_objective_routing
+
+/datum/unit_test/rimstation_raid_objective_routing/Run()
+	var/datum/colony_raid/raid = new
+	allocated += raid
+	var/obj/structure/colony_core/core = allocate(/obj/structure/colony_core)
+	raid.objective_ref = WEAKREF(core)
+
+	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/attacker = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
+	TEST_ASSERT_NOTNULL(attacker.ai_controller, "A raider spawned with no AI controller, so it could never be given an objective.")
+
+	TEST_ASSERT(raid.assign_objective(attacker, null), "The raid failed to assign its objective to an attacker.")
+	// Destinations are turfs, because waypoints along the approach route are turfs.
+	TEST_ASSERT_EQUAL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], get_turf(core), "The attacker was not pointed at the colony core.")
+
+	// The controller must actually consume that key, or setting it achieves nothing.
+	var/found_travel_subtree = FALSE
+	for(var/datum/ai_planning_subtree/subtree as anything in attacker.ai_controller.planning_subtrees)
+		if(istype(subtree, /datum/ai_planning_subtree/travel_to_point))
+			var/datum/ai_planning_subtree/travel_to_point/travel = subtree
+			if(travel.location_key == BB_TRAVEL_DESTINATION)
+				found_travel_subtree = TRUE
+				break
+	TEST_ASSERT(found_travel_subtree, "The raider AI has no travel subtree reading BB_TRAVEL_DESTINATION, so it would ignore its objective.")
+
+	// Retreat has to redirect them away from the objective rather than leaving them pressing it.
+	raid.set_state(COLONY_RAID_WARNING)
+	raid.set_state(COLONY_RAID_ASSEMBLING)
+	raid.set_state(COLONY_RAID_ARRIVING)
+	raid.set_state(COLONY_RAID_ASSAULTING)
+	raid.roster += WEAKREF(attacker)
+	raid.order_retreat()
+	TEST_ASSERT_EQUAL(raid.state, COLONY_RAID_RETREATING, "The raid did not enter its retreating state.")
+	TEST_ASSERT_NOTEQUAL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], get_turf(core), "A retreating attacker was still heading for the colony core.")
+
+
 /// Resolution has to clean up after itself, or a finished raid keeps ticking.
 /datum/unit_test/rimstation_raid_resolution
 

@@ -368,6 +368,8 @@
 #include "wizard_loadout.dm"
 // RIMSTATION ADDITION START - Campaign unit tests
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/opening.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_manifest.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/map_directory_security.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/planet.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid.dm"

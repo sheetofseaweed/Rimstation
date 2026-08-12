@@ -92,6 +92,39 @@
  *
  * Returns the config for the map to load.
  */
+// RIMSTATION EDIT ADDITION START - Nesting-aware map directory whitelist.
+/// Strips any trailing slashes so "_maps/persistence/" and "_maps/persistence" compare equal.
+/proc/trim_trailing_slashes(text)
+	while(length(text) && copytext(text, -1) == "/")
+		text = copytext(text, 1, -1)
+	return text
+
+/**
+ * TRUE when `directory` is a whitelisted map root, or a save folder inside the persistence root.
+ *
+ * Whitelisted roots match exactly. Callers that want a file in a subfolder of `_maps` or `data` pass that
+ * subfolder as part of the *filename*, which is why nesting is not allowed generally - permitting it would
+ * turn "data" into a licence to read any directory under it.
+ *
+ * Persistence is the one exception: its saves live in timestamped subdirectories of MAP_PERSISTENT_DIRECTORY
+ * and are named at runtime, so they cannot be expressed as a filename against a fixed root.
+ *
+ * Traversal is refused outright rather than normalised away, because a caller that needs ".." to reach its
+ * map is doing something this proc should not be helping with.
+ */
+/proc/is_whitelisted_map_directory(directory)
+	if(!directory || findtext(directory, ".."))
+		return FALSE
+
+	var/normalised = trim_trailing_slashes(directory)
+	for(var/allowed in MAP_DIRECTORY_WHITELIST)
+		if(normalised == trim_trailing_slashes(allowed))
+			return TRUE
+
+	var/persistence_root = trim_trailing_slashes(MAP_PERSISTENT_DIRECTORY)
+	return findtext(normalised, "[persistence_root]/") == 1
+// RIMSTATION EDIT ADDITION END
+
 /proc/load_map_config(filename = null, directory = null, error_if_missing = TRUE, persistence_save = FALSE)
 	var/datum/map_config/configuring_map = load_default_map_config()
 
@@ -99,9 +132,15 @@
 
 		//Default to MAP_DIRECTORY_MAPS if no directory is passed
 		if(directory)
-			if(!(directory in MAP_DIRECTORY_WHITELIST) && !CONFIG_GET(flag/persistent_save_enabled))
+			// RIMSTATION EDIT START - ORG: !(directory in MAP_DIRECTORY_WHITELIST) && !CONFIG_GET(flag/persistent_save_enabled)
+			// The old check switched the whitelist off entirely whenever persistence was enabled, which is the
+			// configuration this repository ships. Persistence needs it because saves live in timestamped
+			// subdirectories that never match the whitelist exactly - so allow nesting instead of allowing
+			// everything.
+			if(!is_whitelisted_map_directory(directory))
 				log_world("map directory not in whitelist: [directory] for map [filename]")
 				return configuring_map
+			// RIMSTATION EDIT END
 		else
 			directory = MAP_DIRECTORY_MAPS
 
