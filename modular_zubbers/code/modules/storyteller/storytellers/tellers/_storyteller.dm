@@ -91,6 +91,9 @@
 /// Find and buy a valid event from a track.
 /datum/storyteller/proc/find_and_buy_event_from_track(track)
 	. = FALSE
+	// RIMSTATION EDIT ADDITION - Do not start new events while a campaign checkpoint is being written.
+	if(!SScampaign.can_mutate_world())
+		return FALSE
 	var/datum/round_event_control/picked_event
 	if(SSgamemode.forced_next_events[track]) //Forced event by admin
 		/// Dont check any prerequisites, it has been forced by an admin

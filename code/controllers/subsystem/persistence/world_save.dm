@@ -104,6 +104,11 @@ SUBSYSTEM_DEF(world_save)
 	return FALSE
 #endif
 
+/// The save's completion marker filename, exposed because SAVE_COMPLETION_MARKER is undefined at the end of
+/// this file and campaign checkpoint validation needs to check for it.
+/datum/controller/subsystem/world_save/proc/get_save_completion_marker()
+	return SAVE_COMPLETION_MARKER
+
 /**
  * TRUE when `destination` is somewhere this server is willing to write a save.
  *

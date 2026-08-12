@@ -3301,6 +3301,8 @@
 #include "modular_rimstation\code\modules\colony_campaign\objectives\colony_core.dm"
 #include "modular_rimstation\code\modules\colony_campaign\opening\loadout.dm"
 #include "modular_rimstation\code\modules\colony_campaign\persistence\campaign_subsystem.dm"
+#include "modular_rimstation\code\modules\colony_campaign\persistence\checkpoint.dm"
+#include "modular_rimstation\code\modules\colony_campaign\persistence\storage.dm"
 #include "modular_rimstation\code\modules\colony_campaign\persistence\manifest.dm"
 #include "modular_rimstation\code\modules\colony_campaign\opening\supply_crate.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\composition.dm"

@@ -143,6 +143,10 @@
 /// mistaken for ordinary autosaves by the pruning or scanning code.
 #define CAMPAIGN_STORAGE_ROOT "data/colony_campaign/"
 
+/// Filename written last inside a staged checkpoint, marking the whole set as finished.
+/// Lives here rather than beside the checkpoint code because storage.dm is included after checkpoint.dm.
+#define CHECKPOINT_COMPLETION_MARKER "checkpoint_complete.json"
+
 /// How far in from the map edge a raid may arrive.
 #define COLONY_RAID_EDGE_BAND 6
 /// How close to the settlement centre a raid may never arrive.

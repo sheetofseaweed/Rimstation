@@ -280,6 +280,13 @@
 	if(state != COLONY_RAID_QUEUED)
 		return FALSE
 
+	// A raid starting mid-commit would put attackers into a world that is being written to disk, producing a
+	// checkpoint that matches no moment that ever existed.
+	if(!SScampaign.can_mutate_world())
+		log_game("Colony raid [raid_id] cancelled: the campaign is committing a checkpoint.")
+		resolve_raid(COLONY_RAID_OUTCOME_CANCELLED, "the campaign was committing a checkpoint")
+		return FALSE
+
 	insertion_turfs = find_insertion_turfs()
 	if(!length(insertion_turfs))
 		log_game("Colony raid [raid_id] cancelled: no validated insertion points.")

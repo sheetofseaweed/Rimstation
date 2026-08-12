@@ -110,3 +110,39 @@ SUBSYSTEM_DEF(campaign)
 /// TRUE when a campaign is being played, which is what campaign-aware code keys off.
 /datum/controller/subsystem/campaign/proc/is_campaign_active()
 	return !isnull(manifest) && campaign_state != CAMPAIGN_STATE_NONE
+
+/**
+ * FALSE while the world must stop changing underneath a commit.
+ *
+ * A checkpoint is written by walking the map, so anything that mutates it mid-walk produces a save that
+ * matches no moment that ever existed - half the town before a raid arrived, half after. Callers that start
+ * new world-changing activity ask here first.
+ */
+/datum/controller/subsystem/campaign/proc/can_mutate_world()
+	return campaign_state != CAMPAIGN_STATE_COMMITTING
+
+/**
+ * Runs a full commit: stage the checkpoint, then point the manifest at it.
+ *
+ * Returns TRUE only if the campaign now points at a new checkpoint. Any failure leaves the previously
+ * committed checkpoint live and drops into recovery rather than defeat - a commit that did not work is an
+ * infrastructure problem, not a lost colony.
+ */
+/datum/controller/subsystem/campaign/proc/perform_commit()
+	if(campaign_state != CAMPAIGN_STATE_COMMITTING)
+		return FALSE
+	if(!manifest)
+		enter_recovery("a commit ran with no campaign manifest")
+		return FALSE
+
+	var/checkpoint_id = "checkpoint-[manifest.chapter]"
+	var/datum/campaign_checkpoint/checkpoint = new(manifest.campaign_id, manifest.generation_id, checkpoint_id)
+
+	if(!checkpoint.stage(manifest) || !checkpoint.commit(manifest))
+		qdel(checkpoint)
+		enter_recovery("the chapter could not be committed")
+		return FALSE
+
+	qdel(checkpoint)
+	set_campaign_state(CAMPAIGN_STATE_INTERMISSION, "committed checkpoint [checkpoint_id]")
+	return TRUE
