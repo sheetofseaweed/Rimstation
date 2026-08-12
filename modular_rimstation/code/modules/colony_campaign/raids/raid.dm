@@ -382,7 +382,7 @@
 		for(var/i in 1 to composition[mob_type])
 			var/turf/arrival = pick(insertion_turfs)
 			var/mob/living/attacker = new mob_type(arrival)
-			attacker.faction = list(faction)
+			attacker.set_faction(list(faction))
 			assign_objective(attacker, chains_by_turf[arrival])
 			roster += WEAKREF(attacker)
 			// Phase 1 raids are AI-complete by design; Phase 5 is what offers these to ghosts.

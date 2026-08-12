@@ -104,6 +104,19 @@ SUBSYSTEM_DEF(world_save)
 	return FALSE
 #endif
 
+/**
+ * TRUE when `destination` is somewhere this server is willing to write a save.
+ *
+ * Campaign checkpoint directories are built from IDs that ultimately come off disk, so the destination is
+ * treated as untrusted: it has to sit under a known root and must not traverse out of it.
+ */
+/datum/controller/subsystem/world_save/proc/is_valid_save_destination(destination)
+	if(!istext(destination) || !length(destination) || findtext(destination, ".."))
+		return FALSE
+	if(findtext(destination, MAP_PERSISTENT_DIRECTORY) == 1)
+		return TRUE
+	return findtext(destination, CAMPAIGN_STORAGE_ROOT) == 1
+
 /// TRUE when this server is allowed to write a world save at all.
 /datum/controller/subsystem/world_save/proc/can_save_world()
 	if(save_writing_blocked())
@@ -112,10 +125,20 @@ SUBSYSTEM_DEF(world_save)
 // RIMSTATION EDIT ADDITION END
 
 /// Saves map z-levels in the world based on PERSISTENT_SAVE_ENABLED config options in config/persistence.txt
-/datum/controller/subsystem/world_save/proc/save_world(list/z_levels, silent=FALSE)
+// RIMSTATION EDIT: ORG - save_world(list/z_levels, silent=FALSE), returning only TRUE/FALSE.
+/**
+ * With `destination_directory` set, the save is written there instead of into the shared timestamped pool.
+ *
+ * Returns the directory that was written on success, so a campaign can record exactly which checkpoint it
+ * just staged rather than inferring it from a timestamp and hoping nothing else saved in between.
+ */
+/datum/controller/subsystem/world_save/proc/save_world(list/z_levels, silent=FALSE, destination_directory = null)
 	// RIMSTATION EDIT ADDITION START - Gate every caller here; the autosave path never checked the config.
 	if(!can_save_world())
 		log_world("World map save skipped at [server_timestamp()]: saving is disabled or read-only.")
+		return FALSE
+	if(destination_directory && !is_valid_save_destination(destination_directory))
+		log_world("World map save refused: [destination_directory] is not a permitted save destination.")
 		return FALSE
 	// RIMSTATION EDIT ADDITION END
 	if(save_in_progress)
@@ -126,10 +149,15 @@ SUBSYSTEM_DEF(world_save)
 	if(!silent)
 		to_chat(world, span_boldannounce("World map save initiated at [server_timestamp()]"))
 
-	var/save_succeeded = save_persistent_maps(z_levels, silent)
-	if(save_succeeded)
+	var/save_succeeded = save_persistent_maps(z_levels, silent, destination_directory)
+	if(!save_succeeded)
+		return FALSE
+	// RIMSTATION EDIT START - Campaign checkpoints are not autosaves and must not be pruned by autosave count.
+	if(!destination_directory)
 		prune_old_autosaves()
-	return save_succeeded
+	// Hand back where it landed, so a campaign can point its manifest at exactly this checkpoint.
+	return current_save_directory || TRUE
+	// RIMSTATION EDIT END
 
 /datum/controller/subsystem/world_save/proc/request_save_cancel(reason = "manual request")
 	if(!save_in_progress)
@@ -448,8 +476,27 @@ SUBSYSTEM_DEF(world_save)
 
 /// Based on the last recent save, get a list of all z levels as numbers which have the specific trait
 /// Will return null if no traits match or a save file doesn't exist yet
-/datum/controller/subsystem/world_save/proc/cache_z_levels_map_configs()
-	var/last_save_name = get_last_save()
+// RIMSTATION EDIT: ORG - cache_z_levels_map_configs() with no argument, always scanning for the newest save.
+/**
+ * When `exact_save_name` is supplied, that save is loaded or nothing is.
+ *
+ * The scanning behaviour below is what lets an older town come back from the dead: it walks every save on
+ * disk and takes the newest loadable one. A campaign knows exactly which checkpoint belongs to its active
+ * generation, so it names it - and a named checkpoint that fails validation is a hard failure, never a
+ * licence to substitute a different save.
+ */
+/datum/controller/subsystem/world_save/proc/cache_z_levels_map_configs(exact_save_name = null)
+	var/last_save_name
+	if(exact_save_name)
+		if(save_loading_blocked())
+			return null
+		if(!is_save_loadable(exact_save_name))
+			log_world("ERROR: Named persistence checkpoint [exact_save_name] is not loadable; refusing to substitute another save.")
+			return null
+		last_save_name = exact_save_name
+	else
+		last_save_name = get_last_save()
+
 	if(!last_save_name)
 		log_world("WARNING: No valid persistence saves found")
 		return null // no valid saves exist
@@ -582,7 +629,7 @@ SUBSYSTEM_DEF(world_save)
 
 	return FALSE
 
-/datum/controller/subsystem/world_save/proc/save_persistent_maps(list/z_levels, silent=FALSE)
+/datum/controller/subsystem/world_save/proc/save_persistent_maps(list/z_levels, silent=FALSE, destination_directory = null) // RIMSTATION EDIT: ORG - no destination_directory
 	save_in_progress = TRUE
 	save_cancel_requested = FALSE
 	current_save_metrics = list()
@@ -596,7 +643,9 @@ SUBSYSTEM_DEF(world_save)
 	GLOB.TGM_total_turfs = 0
 	GLOB.TGM_total_areas = 0
 
-	var/map_save_directory = get_current_persistence_map_directory()
+	// RIMSTATION EDIT: ORG - always get_current_persistence_map_directory(). A campaign stages into its own
+	// working checkpoint directory instead of dropping another timestamp into the shared save pool.
+	var/map_save_directory = destination_directory || get_current_persistence_map_directory()
 	current_save_directory = map_save_directory
 	var/save_flags = get_save_flags()
 	var/overall_save_start = REALTIMEOFDAY

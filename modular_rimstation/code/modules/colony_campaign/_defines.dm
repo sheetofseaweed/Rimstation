@@ -139,6 +139,10 @@
 /// Manifest layout version. Bump with a migration, never in place.
 #define CAMPAIGN_MANIFEST_SCHEMA_VERSION 1
 
+/// Root of all campaign-owned storage. Kept out of _maps/persistence so campaign checkpoints are never
+/// mistaken for ordinary autosaves by the pruning or scanning code.
+#define CAMPAIGN_STORAGE_ROOT "data/colony_campaign/"
+
 /// How far in from the map edge a raid may arrive.
 #define COLONY_RAID_EDGE_BAND 6
 /// How close to the settlement centre a raid may never arrive.

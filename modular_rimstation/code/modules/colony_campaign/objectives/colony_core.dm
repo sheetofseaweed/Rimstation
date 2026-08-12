@@ -107,7 +107,7 @@
 	for(var/mob/living/nearby in range(capture_radius, src))
 		if(nearby.stat == DEAD)
 			continue
-		if(faction_check(nearby.faction, contesting_factions))
+		if(faction_check(nearby.get_faction(), contesting_factions))
 			return TRUE
 	return FALSE
 

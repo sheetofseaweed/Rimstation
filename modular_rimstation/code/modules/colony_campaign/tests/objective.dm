@@ -58,7 +58,7 @@
 
 	// A raider only counts once its faction has been registered by a raid.
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/raider = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
-	raider.faction = list("test_raiders")
+	raider.set_faction(list("test_raiders"))
 	raider.forceMove(get_turf(core))
 	TEST_ASSERT(!core.has_hostiles_present(), "A raider took the core before any raid registered its faction.")
 
