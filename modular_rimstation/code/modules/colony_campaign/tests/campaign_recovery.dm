@@ -26,6 +26,10 @@
 	var/datum/campaign_manifest/saved_manifest
 	var/saved_checkpoint_type
 	var/saved_recovery_selection
+	var/datum/colony_chapter_outcome/saved_outcome
+	/// Raw pointer file contents. It names which campaign the *server* runs, so it lives outside any campaign
+	/// directory and would survive this test's cleanup, redirecting a real boot at a deleted test campaign.
+	var/saved_pointer
 
 /// Puts SScampaign into a known empty state and takes custody of it for the duration of the test.
 /datum/unit_test/campaign_failure_path/proc/take_campaign()
@@ -33,9 +37,12 @@
 	saved_manifest = SScampaign.manifest
 	saved_checkpoint_type = SScampaign.checkpoint_type
 	saved_recovery_selection = SScampaign.recovery_selection
+	saved_outcome = SScampaign.chapter_outcome
+	saved_pointer = fexists(active_campaign_pointer_path()) ? rustg_file_read(active_campaign_pointer_path()) : null
 
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
 	SScampaign.manifest = null
+	SScampaign.chapter_outcome = null
 	SScampaign.recovery_selection = null
 	SScampaign.recovery_selected_by = null
 	SScampaign.checkpoint_type = /datum/campaign_checkpoint/unit_test_stub
@@ -57,11 +64,20 @@
 	SScampaign.checkpoint_type = saved_checkpoint_type
 	SScampaign.recovery_selection = saved_recovery_selection
 	SScampaign.recovery_selected_by = null
+	SScampaign.chapter_outcome = saved_outcome
 	saved_manifest = null
+	saved_outcome = null
 
 	var/campaign_root = campaign_path(test_campaign_id)
 	if(campaign_root)
 		fdel("[campaign_root]/")
+
+	// Put the server's own campaign pointer back exactly as it was, including having been absent.
+	var/pointer_path = active_campaign_pointer_path()
+	if(isnull(saved_pointer))
+		fdel(pointer_path)
+	else
+		rustg_file_write(saved_pointer, pointer_path)
 	return ..()
 
 

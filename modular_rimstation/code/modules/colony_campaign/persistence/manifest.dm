@@ -118,6 +118,67 @@
 	)
 
 /**
+ * Brings a record up to the current schema, one version at a time.
+ *
+ * Returns a migrated copy, or null if the record cannot be brought forward. Versions are never skipped: a
+ * campaign written several versions ago arrives at the current shape by passing through every step, rather
+ * than through a shortcut somebody has to remember to update when a new version lands.
+ *
+ * The caller's record is never touched. A migration that stops halfway must leave the original exactly as it
+ * was on disk, because that original is still the only copy of the campaign.
+ */
+/proc/migrate_campaign_manifest_record(list/data)
+	RETURN_TYPE(/list)
+	if(!islist(data))
+		return null
+
+	var/incoming_version = data["schema_version"]
+	if(!isnum(incoming_version) || incoming_version < 1 || incoming_version != round(incoming_version))
+		log_game("Campaign manifest rejected: '[incoming_version]' is not a schema version.")
+		return null
+
+	// Fail closed on the future. A record from a newer build carries fields this one cannot preserve, and
+	// loading it would mean writing it back with those fields silently dropped.
+	if(incoming_version > CAMPAIGN_MANIFEST_SCHEMA_VERSION)
+		log_game("Campaign manifest rejected: schema version [incoming_version] is newer than this build understands ([CAMPAIGN_MANIFEST_SCHEMA_VERSION]).")
+		return null
+
+	var/list/record = deep_copy_list(data)
+	while(record["schema_version"] < CAMPAIGN_MANIFEST_SCHEMA_VERSION)
+		var/from_version = record["schema_version"]
+		switch(from_version)
+			if(1)
+				record = migrate_campaign_manifest_v1_to_v2(record)
+			else
+				log_game("Campaign manifest rejected: no migration exists from schema version [from_version].")
+				return null
+
+		if(!islist(record))
+			log_game("Campaign manifest rejected: the migration from schema version [from_version] failed.")
+			return null
+		if(record["schema_version"] != from_version + 1)
+			log_game("Campaign manifest rejected: the migration from schema version [from_version] did not advance the version.")
+			return null
+
+	return record
+
+/**
+ * Schema 1 to 2: generations are counted.
+ *
+ * Version 1 stored no generation number, because a campaign only ever read the generation it was on. Naming
+ * the *next* one without consulting older generations needs a count. A version 1 record describes whichever
+ * generation it is on, so it becomes the first unless it already carries a usable number - which records
+ * written between the field appearing and this version bump do.
+ */
+/proc/migrate_campaign_manifest_v1_to_v2(list/record)
+	RETURN_TYPE(/list)
+	var/existing_number = record["generation_number"]
+	if(!isnum(existing_number) || existing_number < 1 || existing_number != round(existing_number))
+		record["generation_number"] = 1
+	record["schema_version"] = 2
+	return record
+
+/**
  * Loads a record produced by serialize(). Returns TRUE on success.
  *
  * Everything is validated before anything is assigned. A half-applied manifest is worse than no manifest,
@@ -128,21 +189,24 @@
 		log_game("Campaign manifest rejected: record is not a list.")
 		return FALSE
 
+	var/list/migrated = migrate_campaign_manifest_record(data)
+	if(!islist(migrated))
+		return FALSE
+
 	var/datum/campaign_manifest/candidate = new
-	candidate.schema_version = data["schema_version"]
-	candidate.campaign_id = data["campaign_id"]
-	candidate.generation_id = data["generation_id"]
-	// Records written before generations were counted have no number; they are the first one by definition.
-	candidate.generation_number = isnum(data["generation_number"]) ? data["generation_number"] : 1
-	candidate.active_checkpoint_id = data["active_checkpoint_id"]
-	candidate.planet_record = islist(data["planet_record"]) ? data["planet_record"] : list()
-	candidate.chapter = data["chapter"]
-	candidate.campaign_clock = data["campaign_clock"]
-	candidate.storyteller_state = islist(data["storyteller_state"]) ? data["storyteller_state"] : list()
-	candidate.record_references = islist(data["record_references"]) ? data["record_references"] : list()
-	candidate.last_outcome = data["last_outcome"]
-	candidate.generation_closed = !!data["generation_closed"]
-	candidate.closure_reason = data["closure_reason"]
+	candidate.schema_version = migrated["schema_version"]
+	candidate.campaign_id = migrated["campaign_id"]
+	candidate.generation_id = migrated["generation_id"]
+	candidate.generation_number = migrated["generation_number"]
+	candidate.active_checkpoint_id = migrated["active_checkpoint_id"]
+	candidate.planet_record = islist(migrated["planet_record"]) ? migrated["planet_record"] : list()
+	candidate.chapter = migrated["chapter"]
+	candidate.campaign_clock = migrated["campaign_clock"]
+	candidate.storyteller_state = islist(migrated["storyteller_state"]) ? migrated["storyteller_state"] : list()
+	candidate.record_references = islist(migrated["record_references"]) ? migrated["record_references"] : list()
+	candidate.last_outcome = migrated["last_outcome"]
+	candidate.generation_closed = !!migrated["generation_closed"]
+	candidate.closure_reason = migrated["closure_reason"]
 
 	if(!candidate.validate())
 		qdel(candidate)

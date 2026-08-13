@@ -19,6 +19,54 @@
 /// How many superseded manifests to keep for recovery.
 #define CAMPAIGN_MANIFEST_HISTORY 5
 
+/// Where the server records which campaign it runs.
+/proc/active_campaign_pointer_path()
+	return "[CAMPAIGN_STORAGE_ROOT][CAMPAIGN_ACTIVE_POINTER]"
+
+/**
+ * The campaign this server runs, or null if it runs none.
+ *
+ * A server is told this rather than working it out. Several campaigns can sit in storage at once, and choosing
+ * between them by scanning would mean which colony you get depends on the order a directory listing comes back
+ * in - the same class of accident as loading the newest save on disk.
+ */
+/proc/read_active_campaign_id()
+	var/path = active_campaign_pointer_path()
+	if(!fexists(path))
+		return null
+
+	var/list/record = safely_decode_json(rustg_file_read(path))
+	if(!islist(record))
+		log_world("Campaign pointer at [path] is unreadable; this server will run no campaign this round.")
+		return null
+
+	var/campaign_id = record["campaign_id"]
+	if(!is_safe_campaign_id(campaign_id))
+		log_world("Campaign pointer names '[campaign_id]', which cannot be a campaign id; this server will run no campaign this round.")
+		return null
+	return campaign_id
+
+/// Records which campaign this server runs from the next boot onwards. Verified by reading it back.
+/proc/write_active_campaign_id(campaign_id)
+	if(!is_safe_campaign_id(campaign_id))
+		return FALSE
+
+	rustg_file_write(json_encode(list(
+		"campaign_id" = campaign_id,
+		"recorded_at" = "[world.realtime]",
+	)), active_campaign_pointer_path())
+	return read_active_campaign_id() == campaign_id
+
+/// Every campaign in storage that has a manifest to load. Offered to an admin, never chosen automatically.
+/proc/list_campaign_ids()
+	RETURN_TYPE(/list)
+	var/list/campaign_ids = list()
+	for(var/entry in flist(CAMPAIGN_STORAGE_ROOT))
+		var/campaign_id = trim_trailing_slashes("[entry]")
+		if(is_safe_campaign_id(campaign_id) && read_latest_manifest_sequence(campaign_id))
+			campaign_ids += campaign_id
+	return campaign_ids
+
 /// Root directory for one campaign. Returns null if the id could build a path outside the storage root.
 /proc/campaign_path(campaign_id)
 	if(!is_safe_campaign_id(campaign_id))

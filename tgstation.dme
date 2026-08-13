@@ -3300,6 +3300,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\objectives\chapter_outcome.dm"
 #include "modular_rimstation\code\modules\colony_campaign\objectives\colony_core.dm"
 #include "modular_rimstation\code\modules\colony_campaign\opening\loadout.dm"
+#include "modular_rimstation\code\modules\colony_campaign\persistence\admin_verbs.dm"
 #include "modular_rimstation\code\modules\colony_campaign\persistence\campaign_subsystem.dm"
 #include "modular_rimstation\code\modules\colony_campaign\persistence\checkpoint.dm"
 #include "modular_rimstation\code\modules\colony_campaign\persistence\storage.dm"

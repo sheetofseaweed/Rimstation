@@ -136,8 +136,13 @@
 	CAMPAIGN_STATE_RECOVERY = list(CAMPAIGN_STATE_LOADING, CAMPAIGN_STATE_ACTIVE), \
 )
 
-/// Manifest layout version. Bump with a migration, never in place.
-#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 1
+/**
+ * Manifest layout version. Bump with a migration, never in place.
+ *
+ * 1: original layout.
+ * 2: generations are counted, so the next one can be named without reading the previous ones.
+ */
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 2
 
 /**
  * Root of all campaign-owned storage.
@@ -149,8 +154,12 @@
  */
 #define CAMPAIGN_STORAGE_ROOT "_maps/colony_campaign/"
 
-/// Campaign a server runs unless something names another one.
+/// Name offered when starting a campaign, if the admin has no preference.
 #define CAMPAIGN_DEFAULT_ID "colony"
+
+/// Names which campaign this server runs. Without it a server has no way to know, since several campaigns can
+/// sit side by side in storage and picking by scan would make the colony depend on directory order.
+#define CAMPAIGN_ACTIVE_POINTER "active_campaign.json"
 
 /// Filename written last inside a staged checkpoint, marking the whole set as finished.
 /// Lives here rather than beside the checkpoint code because storage.dm is included after checkpoint.dm.

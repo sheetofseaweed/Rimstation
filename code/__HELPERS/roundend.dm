@@ -298,8 +298,14 @@ GLOBAL_LIST_INIT(achievements_unlocked, list())
 	//Collects persistence features
 	SSpersistence.collect_data()
 	SSpersistent_paintings.save_paintings()
-	if(CONFIG_GET(flag/persistent_save_enabled))
+	// RIMSTATION EDIT START - ORG: if(CONFIG_GET(flag/persistent_save_enabled))
+	// A campaign owns what becomes of its own world. It gets the last word on the chapter first, then the
+	// shared autosave pool is skipped entirely - writing a colony there would either resurrect one that was
+	// lost or bury the committed checkpoint under a newer save of the same ground.
+	SScampaign.resolve_chapter_at_round_end()
+	if(SScampaign.should_run_legacy_roundend_save())
 		SSworld_save.save_world()
+	// RIMSTATION EDIT END
 
 	//stop collecting feedback during grifftime
 	SSblackbox.Seal()

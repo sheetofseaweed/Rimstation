@@ -23,7 +23,7 @@
 	var/state = COLONY_CORE_SECURE
 	/// Uninterrupted hostile control accumulated so far, in deciseconds.
 	var/capture_progress = 0
-	/// The chapter result this core reports into. Set by whatever runs the chapter.
+	/// Overrides the campaign's chapter result, so the objective can be tested without a campaign running.
 	var/datum/colony_chapter_outcome/chapter_outcome
 	/// Repeating alert timer, live only while contested. Stoppable so Destroy() can cancel it.
 	var/alert_timer_id
@@ -40,9 +40,19 @@
 	// but the distinction matters to whatever is recording why the chapter ended.
 	if(state != COLONY_CORE_CAPTURED)
 		SEND_SIGNAL(src, COMSIG_COLONY_CORE_DESTROYED, src)
-		chapter_outcome?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was destroyed")
+		get_chapter_outcome()?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was destroyed")
 	chapter_outcome = null
 	return ..()
+
+/**
+ * The record this core reports a loss into.
+ *
+ * Read rather than assigned, because a core is placed during mapload - long before a chapter exists to report
+ * into - so any assignment at creation time would capture null and quietly never resolve anything.
+ */
+/obj/structure/colony_core/proc/get_chapter_outcome()
+	RETURN_TYPE(/datum/colony_chapter_outcome)
+	return chapter_outcome || SScampaign.chapter_outcome
 
 /obj/structure/colony_core/examine(mob/user)
 	. = ..()
@@ -88,7 +98,7 @@
 		state = COLONY_CORE_CAPTURED
 		stop_progress_alerts()
 		SEND_SIGNAL(src, COMSIG_COLONY_CORE_CAPTURED, src)
-		chapter_outcome?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was captured")
+		get_chapter_outcome()?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was captured")
 		announce_captured()
 
 	return state

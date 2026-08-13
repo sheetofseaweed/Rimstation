@@ -61,7 +61,9 @@
  * outright under UNIT_TESTS - so the tests replace this and let the rest of staging run for real.
  */
 /datum/campaign_checkpoint/proc/stage_world_artifacts()
-	return SSworld_save.save_world(silent = TRUE, destination_directory = artifact_path)
+	// Not silent: writing the colony takes real time at round end, and a save nobody can see happening is
+	// indistinguishable from one that never ran.
+	return SSworld_save.save_world(destination_directory = artifact_path)
 
 /**
  * TRUE when every artifact this checkpoint claims is present and readable.

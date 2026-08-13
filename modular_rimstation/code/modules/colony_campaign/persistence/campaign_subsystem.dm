@@ -22,15 +22,68 @@ SUBSYSTEM_DEF(campaign)
 	var/recovery_selection
 	/// Who made that selection.
 	var/recovery_selected_by
+	/// Result record for the chapter being played. Everything that can decide a chapter reports into this one.
+	var/datum/colony_chapter_outcome/chapter_outcome
+	/// Set while the world is being written outside a commit, which needs the same stillness a commit does.
+	var/world_quiesced = FALSE
 
 /datum/controller/subsystem/campaign/Initialize()
+	RegisterSignal(SSticker, COMSIG_TICKER_ROUND_STARTING, PROC_REF(on_round_starting))
 #ifdef UNIT_TESTS
 	// A test run must not adopt whatever campaign the server happens to have on disk, in either direction.
 	return SS_INIT_SUCCESS
 #else
-	evaluate_boot_state(CAMPAIGN_DEFAULT_ID)
+	// Which campaign to run is read from disk, never assumed: a server that is told nothing runs nothing.
+	var/campaign_id = read_active_campaign_id()
+	if(campaign_id)
+		evaluate_boot_state(campaign_id)
 	return SS_INIT_SUCCESS
 #endif
+
+/// The round starting is what starts the chapter, on servers that are running a campaign at all.
+/datum/controller/subsystem/campaign/proc/on_round_starting(datum/source, start_time)
+	SIGNAL_HANDLER
+	if(!is_campaign_active())
+		return
+	begin_chapter()
+
+/**
+ * Starts a campaign that does not exist yet, and plays this round as its first chapter.
+ *
+ * Refuses to start on top of anything already on disk. A campaign is the only copy of its colony, so "start a
+ * campaign" must never be a command that can quietly replace one.
+ */
+/datum/controller/subsystem/campaign/proc/create_campaign(campaign_id, started_by)
+	if(!is_safe_campaign_id(campaign_id))
+		return FALSE
+	if(is_campaign_active())
+		log_admin("Campaign creation refused: [campaign_id] was requested while a campaign is already running.")
+		return FALSE
+
+	var/datum/campaign_manifest/existing = load_active_campaign_manifest(campaign_id)
+	if(existing)
+		qdel(existing)
+		log_admin("Campaign creation refused: [campaign_id] already exists on disk.")
+		return FALSE
+
+	var/datum/campaign_manifest/fresh = new(campaign_id, "generation-1")
+	fresh.planet_record = build_generation_planet_record(campaign_id, 1)
+	if(isnull(write_campaign_manifest(fresh)))
+		log_admin("Campaign creation failed: [campaign_id] could not be written to disk.")
+		return FALSE
+
+	// Recorded before the chapter starts: a campaign this server cannot find again next boot is a lost colony,
+	// and it is better to refuse now than to play a chapter that quietly goes nowhere.
+	if(!write_active_campaign_id(campaign_id))
+		log_admin("Campaign creation failed: [campaign_id] could not be recorded as this server's campaign.")
+		return FALSE
+
+	manifest = fresh
+	if(!begin_load(fresh))
+		return FALSE
+
+	log_game("Campaign [campaign_id] created by [started_by || "unknown"].")
+	return begin_chapter()
 
 /**
  * Decides, once per boot, which of the four situations this server is in.
@@ -43,12 +96,14 @@ SUBSYSTEM_DEF(campaign)
 /datum/controller/subsystem/campaign/proc/evaluate_boot_state(campaign_id)
 	var/datum/campaign_manifest/found = load_active_campaign_manifest(campaign_id)
 	if(!found)
-		// No campaign on this server. Ordinary persistence applies and nothing here interferes with it.
+		// Named as this server's campaign but unreadable, which is a colony that will not appear this round.
+		log_world("Campaign '[campaign_id]' has no manifest that loads; this server will run no campaign this round.")
 		return campaign_state
 
 	if(found.generation_closed)
 		manifest = found
 		begin_next_generation(found.closure_reason || "the previous generation was lost")
+		log_world("Campaign [campaign_id]: previous generation was lost, opening [manifest.generation_id] on a new world.")
 		return campaign_state
 
 	if(!begin_load(found))
@@ -57,6 +112,7 @@ SUBSYSTEM_DEF(campaign)
 	if(!chapter_ended_cleanly(found))
 		enter_recovery("chapter [found.chapter] never finished; falling back to the last committed checkpoint")
 
+	log_world("Campaign [campaign_id]: [found.generation_id], chapter [found.chapter], loading [select_checkpoint_for_boot() || "a newly generated world"].")
 	return campaign_state
 
 /**
@@ -118,7 +174,11 @@ SUBSYSTEM_DEF(campaign)
 	if(!set_campaign_state(CAMPAIGN_STATE_ACTIVE, "chapter [manifest.chapter] started"))
 		return FALSE
 
+	// A fresh record per chapter. Carrying the previous one over would let last chapter's loss decide this one.
+	QDEL_NULL(chapter_outcome)
+	chapter_outcome = new
 	mark_chapter_opened(manifest.chapter)
+	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
 	return TRUE
 
 /**
@@ -357,6 +417,56 @@ SUBSYSTEM_DEF(campaign)
 	return !isnull(manifest) && campaign_state != CAMPAIGN_STATE_NONE
 
 /**
+ * TRUE when the inherited round-end world save should run.
+ *
+ * A campaign decides for itself what becomes of its world, and the answer is frequently "nothing": a lost
+ * colony must not be written down at all, and a won one is preserved by a commit into its own generation
+ * rather than by another timestamp in the shared autosave pool. Saving on top of that would either resurrect
+ * a colony that was lost or bury a committed checkpoint under a newer save of the same ground.
+ *
+ * Either half of the campaign being set counts as a campaign owning the world, since a transition in progress
+ * is still a campaign.
+ */
+/datum/controller/subsystem/campaign/proc/should_run_legacy_roundend_save()
+	if(manifest || campaign_state != CAMPAIGN_STATE_NONE)
+		return FALSE
+	return CONFIG_GET(flag/persistent_save_enabled)
+
+/**
+ * The chapter's verdict, taken as the round ends.
+ *
+ * A colony nothing managed to take is a colony that held, so an unresolved chapter succeeds and the evolved
+ * town is committed. That has to be the rule: a commit is the only way a campaign advances, and if an ordinary
+ * round ending counted as anything else, a colony could never keep what it built.
+ *
+ * A server that is killed never reaches this proc at all, and that is precisely what separates the two cases.
+ * It leaves a chapter opened with no ending, which the next boot reads as recovery rather than as a result.
+ *
+ * Anything that already decided - a defeat, an admin abort, a commit that has run - is left alone.
+ */
+/datum/controller/subsystem/campaign/proc/resolve_chapter_at_round_end()
+	if(!is_campaign_active())
+		return FALSE
+	if(campaign_state in list(CAMPAIGN_STATE_INTERMISSION, CAMPAIGN_STATE_RESET_PENDING, CAMPAIGN_STATE_DEFEATED, CAMPAIGN_STATE_RECOVERY))
+		return FALSE
+
+	if(!chapter_outcome)
+		return enter_recovery("the round ended with no chapter result to act on")
+
+	if(!chapter_outcome.is_resolved())
+		chapter_outcome.resolve(COLONY_OUTCOME_SUCCESS, "the colony held through the chapter")
+
+	// From here the result is acted on rather than only recorded, which is what this flag exists to mark.
+	chapter_outcome.touched_persistence = TRUE
+
+	if(chapter_outcome.result == COLONY_OUTCOME_FAILURE)
+		return declare_defeat(chapter_outcome.reason)
+
+	if(!request_commit(chapter_outcome))
+		return enter_recovery("the chapter succeeded but could not be approved for a commit")
+	return perform_commit()
+
+/**
  * FALSE while the world must stop changing underneath a commit.
  *
  * A checkpoint is written by walking the map, so anything that mutates it mid-walk produces a save that
@@ -364,7 +474,43 @@ SUBSYSTEM_DEF(campaign)
  * new world-changing activity ask here first.
  */
 /datum/controller/subsystem/campaign/proc/can_mutate_world()
-	return campaign_state != CAMPAIGN_STATE_COMMITTING
+	return !world_quiesced && campaign_state != CAMPAIGN_STATE_COMMITTING
+
+/**
+ * Writes a checkpoint without promoting it.
+ *
+ * The point of a snapshot is that it changes nothing: the committed pointer is untouched, so this is a copy an
+ * admin can fall back to rather than a decision about what the campaign is. Recovering from one is a separate,
+ * explicit act.
+ *
+ * It walks the map exactly as a commit does, so it holds the world still for the duration - a snapshot taken
+ * while a raid moves through it shows half the colony before the raid and half after.
+ */
+/datum/controller/subsystem/campaign/proc/create_snapshot(snapshot_id, created_by)
+	if(!manifest)
+		return FALSE
+	if(!can_mutate_world())
+		log_admin("Campaign snapshot [snapshot_id] refused: the world is already being written.")
+		return FALSE
+
+	var/datum/campaign_checkpoint/snapshot = new checkpoint_type(manifest.campaign_id, manifest.generation_id, snapshot_id)
+	if(!snapshot.artifact_path)
+		qdel(snapshot)
+		log_admin("Campaign snapshot refused: '[snapshot_id]' cannot be a checkpoint id.")
+		return FALSE
+
+	world_quiesced = TRUE
+	var/staged = snapshot.stage(manifest)
+	world_quiesced = FALSE
+	qdel(snapshot)
+
+	if(!staged)
+		log_admin("Campaign snapshot [snapshot_id] failed while being written; nothing was promoted.")
+		return FALSE
+
+	log_admin("Campaign snapshot [snapshot_id] written by [created_by || "unknown"]. The committed checkpoint is unchanged.")
+	message_admins("Campaign snapshot [snapshot_id] written by [created_by || "unknown"]. It is a fallback copy, not a commit.")
+	return TRUE
 
 /**
  * Runs a full commit: stage the checkpoint, then point the manifest at it.
@@ -394,4 +540,5 @@ SUBSYSTEM_DEF(campaign)
 	// finished chapter to the next boot.
 	mark_chapter_ended(played_chapter, COLONY_OUTCOME_SUCCESS, last_state_reason)
 	set_campaign_state(CAMPAIGN_STATE_INTERMISSION, "committed checkpoint [checkpoint_id]")
+	message_admins("Colony campaign [manifest.campaign_id] committed [checkpoint_id]. The colony returns next round as chapter [manifest.chapter].")
 	return TRUE

@@ -38,8 +38,6 @@
 	var/list/turf/insertion_turfs
 	/// The core this raid is trying to take.
 	var/datum/weakref/objective_ref
-	/// Chapter result this raid reports into.
-	var/datum/colony_chapter_outcome/chapter_outcome
 
 	/// Seconds of warning before the assault begins.
 	var/warning_duration = 2 MINUTES
@@ -64,7 +62,6 @@
 	roster = null
 	insertion_turfs = null
 	objective_ref = null
-	chapter_outcome = null
 	return ..()
 
 /**
