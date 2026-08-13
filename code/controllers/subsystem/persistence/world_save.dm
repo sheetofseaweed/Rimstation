@@ -266,7 +266,19 @@ SUBSYSTEM_DEF(world_save)
 /datum/controller/subsystem/world_save/proc/get_save_directory_key(save_directory_name)
 	return replacetext("[save_directory_name]", "/", "")
 
+// RIMSTATION EDIT ADDITION START - Campaign checkpoints are named by directory, not by pool entry.
+/// TRUE when `save_directory_name` addresses campaign storage rather than the timestamped autosave pool.
+/datum/controller/subsystem/world_save/proc/is_campaign_checkpoint_directory(save_directory_name)
+	if(!istext(save_directory_name) || findtext(save_directory_name, ".."))
+		return FALSE
+	return findtext(save_directory_name, CAMPAIGN_STORAGE_ROOT) == 1
+// RIMSTATION EDIT ADDITION END
+
 /datum/controller/subsystem/world_save/proc/get_save_directory_path(save_directory_name)
+	// RIMSTATION EDIT ADDITION - A campaign checkpoint lives in its own generation's directory, so it is
+	// already a full path. Flattening it into a pool entry name would address a directory that never exists.
+	if(is_campaign_checkpoint_directory(save_directory_name))
+		return trim_trailing_slashes(save_directory_name)
 	return "[MAP_PERSISTENT_DIRECTORY][get_save_directory_key(save_directory_name)]"
 
 /datum/controller/subsystem/world_save/proc/read_save_completion_data(save_directory_name)

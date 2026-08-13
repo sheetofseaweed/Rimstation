@@ -6,6 +6,7 @@ SUBSYSTEM_DEF(mapping)
 		/datum/controller/subsystem/job,
 		/datum/controller/subsystem/processing/station,
 		/datum/controller/subsystem/processing/reagents,
+		/datum/controller/subsystem/campaign, // RIMSTATION EDIT ADDITION - loadWorld() asks it which checkpoint to load.
 	)
 	runlevels = ALL
 
@@ -531,8 +532,17 @@ Used by the AI doomsday and the self-destruct nuke.
 	var/list/FailedZs = list()
 	var/list/persistent_save_z_levels = CONFIG_GET(keyed_list/persistent_save_z_levels)
 
-	if(CONFIG_GET(flag/persistent_save_enabled))
+	// RIMSTATION EDIT START - ORG: always cache_z_levels_map_configs() with no argument.
+	// Scanning takes the newest loadable save on disk, which for a campaign means a closed generation's town
+	// can be picked up after the generation that owned it was lost. A campaign names its own checkpoint, and
+	// naming nothing means it intends to generate a new world rather than settle for an older one.
+	if(SScampaign.is_campaign_active())
+		var/campaign_checkpoint_directory = SScampaign.select_checkpoint_for_boot()
+		if(campaign_checkpoint_directory)
+			SSworld_save.cache_z_levels_map_configs(campaign_checkpoint_directory)
+	else if(CONFIG_GET(flag/persistent_save_enabled))
 		SSworld_save.cache_z_levels_map_configs()
+	// RIMSTATION EDIT END
 
 	// ensure we have space_level datums for compiled-in maps
 	InitializeDefaultZLevels()

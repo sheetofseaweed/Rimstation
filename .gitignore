@@ -204,6 +204,8 @@ Temporary Items
 /_maps/templates.dm
 /_maps/persistence/*
 !/_maps/persistence/.gitkeep
+#campaign checkpoints are server-local; a colony belongs to its server, not to the repository
+/_maps/colony_campaign/
 
 #dmm palette file. You really should be using StrongDMM instead.
 *.dmm-pal

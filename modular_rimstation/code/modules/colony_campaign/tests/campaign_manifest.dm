@@ -77,6 +77,8 @@
  * active, so a lost generation cannot be quietly resumed.
  */
 /datum/unit_test/rimstation_campaign_lifecycle
+	/// Starting a chapter records that it started, so this test owns a campaign id it can clean up.
+	var/test_campaign_id = "unit-test-lifecycle"
 
 /datum/unit_test/rimstation_campaign_lifecycle/Run()
 	var/original_state = SScampaign.campaign_state
@@ -85,7 +87,7 @@
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
 	SScampaign.manifest = null
 
-	var/datum/campaign_manifest/manifest = new("campaign-test", "generation-1")
+	var/datum/campaign_manifest/manifest = new(test_campaign_id, "generation-1")
 	allocated += manifest
 	manifest.active_checkpoint_id = "checkpoint-1"
 
@@ -120,9 +122,16 @@
 	SScampaign.campaign_state = original_state
 	SScampaign.manifest = original_manifest
 
+/datum/unit_test/rimstation_campaign_lifecycle/Destroy()
+	var/campaign_root = campaign_path(test_campaign_id)
+	if(campaign_root)
+		fdel("[campaign_root]/")
+	return ..()
+
 
 /// Defeat closes a generation for good; recovery leaves everything exactly where it was.
 /datum/unit_test/rimstation_campaign_defeat_versus_recovery
+	var/test_campaign_id = "unit-test-defeat-recovery"
 
 /datum/unit_test/rimstation_campaign_defeat_versus_recovery/Run()
 	var/original_state = SScampaign.campaign_state
@@ -130,7 +139,7 @@
 
 	// Defeat: the checkpoint pointer is cleared and the generation is closed.
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
-	var/datum/campaign_manifest/losing = new("campaign-test", "generation-1")
+	var/datum/campaign_manifest/losing = new(test_campaign_id, "generation-1")
 	allocated += losing
 	losing.active_checkpoint_id = "checkpoint-1"
 	SScampaign.manifest = losing
@@ -148,7 +157,7 @@
 
 	// Recovery: an abnormal ending must not touch the checkpoint at all.
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
-	var/datum/campaign_manifest/interrupted = new("campaign-test", "generation-2")
+	var/datum/campaign_manifest/interrupted = new(test_campaign_id, "generation-2")
 	allocated += interrupted
 	interrupted.active_checkpoint_id = "checkpoint-7"
 	SScampaign.manifest = interrupted
@@ -165,3 +174,9 @@
 
 	SScampaign.campaign_state = original_state
 	SScampaign.manifest = original_manifest
+
+/datum/unit_test/rimstation_campaign_defeat_versus_recovery/Destroy()
+	var/campaign_root = campaign_path(test_campaign_id)
+	if(campaign_root)
+		fdel("[campaign_root]/")
+	return ..()

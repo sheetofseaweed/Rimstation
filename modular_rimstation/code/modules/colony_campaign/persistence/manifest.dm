@@ -14,6 +14,8 @@
 	var/campaign_id
 	/// The current generation. A new one is created when a generation is lost.
 	var/generation_id
+	/// How many generations this campaign has had, this one included. Names the next one without reading it.
+	var/generation_number = 1
 	/// Committed checkpoint this generation loads from. Null once the generation is closed.
 	var/active_checkpoint_id
 	/// Serialized /datum/planet_definition for this generation's world.
@@ -82,6 +84,10 @@
 			log_game("Campaign manifest rejected: closed generation [generation_id] still claims checkpoint [active_checkpoint_id].")
 			return FALSE
 
+	if(!isnum(generation_number) || generation_number < 1)
+		log_game("Campaign manifest rejected: invalid generation number '[generation_number]'.")
+		return FALSE
+
 	if(!isnum(chapter) || chapter < 1)
 		log_game("Campaign manifest rejected: invalid chapter '[chapter]'.")
 		return FALSE
@@ -99,6 +105,7 @@
 		"schema_version" = schema_version,
 		"campaign_id" = campaign_id,
 		"generation_id" = generation_id,
+		"generation_number" = generation_number,
 		"active_checkpoint_id" = active_checkpoint_id,
 		"planet_record" = planet_record?.Copy() || list(),
 		"chapter" = chapter,
@@ -125,6 +132,8 @@
 	candidate.schema_version = data["schema_version"]
 	candidate.campaign_id = data["campaign_id"]
 	candidate.generation_id = data["generation_id"]
+	// Records written before generations were counted have no number; they are the first one by definition.
+	candidate.generation_number = isnum(data["generation_number"]) ? data["generation_number"] : 1
 	candidate.active_checkpoint_id = data["active_checkpoint_id"]
 	candidate.planet_record = islist(data["planet_record"]) ? data["planet_record"] : list()
 	candidate.chapter = data["chapter"]
@@ -142,6 +151,7 @@
 	schema_version = candidate.schema_version
 	campaign_id = candidate.campaign_id
 	generation_id = candidate.generation_id
+	generation_number = candidate.generation_number
 	active_checkpoint_id = candidate.active_checkpoint_id
 	planet_record = candidate.planet_record
 	chapter = candidate.chapter

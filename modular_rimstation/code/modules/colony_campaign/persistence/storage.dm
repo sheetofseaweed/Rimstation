@@ -32,19 +32,54 @@
 		return null
 	return "[campaign_root]/generations/[generation_id]"
 
-/// Where a checkpoint is staged before it is committed to.
-/proc/campaign_working_path(campaign_id, generation_id, checkpoint_id)
-	var/generation_root = campaign_generation_path(campaign_id, generation_id)
-	if(!generation_root || !is_safe_campaign_id(checkpoint_id))
-		return null
-	return "[generation_root]/working/[checkpoint_id]"
-
-/// Where committed checkpoints live.
+/**
+ * Where one checkpoint's artifacts live, staged and committed alike.
+ *
+ * There is deliberately no separate staging directory. With no rename available, moving a finished checkpoint
+ * somewhere else would mean copying every byte of the map and opening a second failure window for no gain -
+ * so a checkpoint is written once, in place, and promotion is the manifest naming it. An uncommitted directory
+ * sitting beside a committed one is exactly what an admin recovery selection browses.
+ */
 /proc/campaign_checkpoint_path(campaign_id, generation_id, checkpoint_id)
 	var/generation_root = campaign_generation_path(campaign_id, generation_id)
 	if(!generation_root || !is_safe_campaign_id(checkpoint_id))
 		return null
 	return "[generation_root]/checkpoints/[checkpoint_id]"
+
+/// Every checkpoint directory a generation has on disk, committed or not.
+/proc/list_campaign_checkpoint_ids(campaign_id, generation_id)
+	RETURN_TYPE(/list)
+	var/list/checkpoint_ids = list()
+	var/generation_root = campaign_generation_path(campaign_id, generation_id)
+	if(!generation_root)
+		return checkpoint_ids
+
+	for(var/entry in flist("[generation_root]/checkpoints/"))
+		var/checkpoint_id = trim_trailing_slashes("[entry]")
+		if(is_safe_campaign_id(checkpoint_id))
+			checkpoint_ids += checkpoint_id
+	return checkpoint_ids
+
+/// Record that a chapter was started. Its absence at boot means the chapter was never reached.
+/proc/campaign_chapter_open_path(campaign_id, generation_id, chapter)
+	var/generation_root = campaign_generation_path(campaign_id, generation_id)
+	if(!generation_root || !isnum(chapter) || chapter < 1)
+		return null
+	return "[generation_root]/[CAMPAIGN_CHAPTER_OPEN_PREFIX][chapter].json"
+
+/// Record that a chapter finished for a legible reason. An open chapter with no end record was interrupted.
+/proc/campaign_chapter_end_path(campaign_id, generation_id, chapter)
+	var/generation_root = campaign_generation_path(campaign_id, generation_id)
+	if(!generation_root || !isnum(chapter) || chapter < 1)
+		return null
+	return "[generation_root]/[CAMPAIGN_CHAPTER_END_PREFIX][chapter].json"
+
+/// Where a generation records that it was closed for good.
+/proc/campaign_closure_path(campaign_id, generation_id)
+	var/generation_root = campaign_generation_path(campaign_id, generation_id)
+	if(!generation_root)
+		return null
+	return "[generation_root]/[CAMPAIGN_CLOSURE_RECORD]"
 
 /// Path of one numbered manifest.
 /proc/campaign_manifest_path(campaign_id, sequence)

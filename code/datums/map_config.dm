@@ -122,7 +122,12 @@
 			return TRUE
 
 	var/persistence_root = trim_trailing_slashes(MAP_PERSISTENT_DIRECTORY)
-	return findtext(normalised, "[persistence_root]/") == 1
+	if(findtext(normalised, "[persistence_root]/") == 1)
+		return TRUE
+
+	// Campaign checkpoints are named at runtime too, one directory per generation and chapter.
+	var/campaign_root = trim_trailing_slashes(CAMPAIGN_STORAGE_ROOT)
+	return findtext(normalised, "[campaign_root]/") == 1
 // RIMSTATION EDIT ADDITION END
 
 /proc/load_map_config(filename = null, directory = null, error_if_missing = TRUE, persistence_save = FALSE)

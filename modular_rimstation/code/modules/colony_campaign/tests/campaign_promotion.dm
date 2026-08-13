@@ -78,7 +78,7 @@
 
 	var/datum/campaign_checkpoint/checkpoint = new(test_campaign_id, "generation-1", "checkpoint-1")
 	allocated += checkpoint
-	TEST_ASSERT_NOTNULL(checkpoint.working_path, "A checkpoint with safe ids produced no working path.")
+	TEST_ASSERT_NOTNULL(checkpoint.artifact_path, "A checkpoint with safe ids produced no artifact path.")
 
 	// Nothing staged yet: not complete, and not committable.
 	TEST_ASSERT(!checkpoint.is_complete(), "An unstaged checkpoint reported itself complete.")
@@ -86,20 +86,20 @@
 	TEST_ASSERT_NULL(manifest.active_checkpoint_id, "A refused commit still pointed the manifest at the checkpoint.")
 
 	// Files present but no completion marker is exactly the crashed-mid-stage case.
-	rustg_file_write(json_encode(manifest.serialize()), "[checkpoint.working_path]/campaign.json")
+	rustg_file_write(json_encode(manifest.serialize()), "[checkpoint.artifact_path]/campaign.json")
 	TEST_ASSERT(!checkpoint.is_complete(), "A checkpoint with artifacts but no completion marker reported itself complete.")
 	TEST_ASSERT(!checkpoint.commit(manifest), "A checkpoint missing its completion marker was committed.")
 
 	// A checkpoint whose campaign record belongs to another generation must not validate.
 	var/datum/campaign_manifest/foreign = new(test_campaign_id, "generation-other")
 	allocated += foreign
-	rustg_file_write(json_encode(foreign.serialize()), "[checkpoint.working_path]/campaign.json")
+	rustg_file_write(json_encode(foreign.serialize()), "[checkpoint.artifact_path]/campaign.json")
 	TEST_ASSERT(!checkpoint.validate_artifacts(), "A checkpoint describing a different generation passed validation.")
 
 	// Unsafe ids never produce a path to write to at all.
 	var/datum/campaign_checkpoint/traversing = new(test_campaign_id, "generation-1", "../escape")
 	allocated += traversing
-	TEST_ASSERT_NULL(traversing.working_path, "A checkpoint with a traversing id produced a usable path.")
+	TEST_ASSERT_NULL(traversing.artifact_path, "A checkpoint with a traversing id produced a usable path.")
 	TEST_ASSERT(!traversing.stage(manifest), "A checkpoint with a traversing id was staged.")
 
 /datum/unit_test/rimstation_campaign_checkpoint_completion/Destroy()
@@ -117,6 +117,8 @@
  * sites, not just where it is defined, because a quiesce nobody consults is decoration.
  */
 /datum/unit_test/rimstation_campaign_quiesce
+	/// Starting a chapter records that it started, so this test owns a campaign id it can clean up.
+	var/test_campaign_id = "unit-test-quiesce"
 
 /datum/unit_test/rimstation_campaign_quiesce/Run()
 	var/original_state = SScampaign.campaign_state
@@ -126,7 +128,7 @@
 
 	// Drive the campaign into committing through the legal path.
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
-	var/datum/campaign_manifest/manifest = new("unit-test-quiesce", "generation-1")
+	var/datum/campaign_manifest/manifest = new(test_campaign_id, "generation-1")
 	allocated += manifest
 	SScampaign.manifest = manifest
 	SScampaign.begin_load(manifest)
@@ -148,6 +150,12 @@
 	SScampaign.campaign_state = original_state
 	SScampaign.manifest = original_manifest
 
+/datum/unit_test/rimstation_campaign_quiesce/Destroy()
+	var/campaign_root = campaign_path(test_campaign_id)
+	if(campaign_root)
+		fdel("[campaign_root]/")
+	return ..()
+
 
 /// Campaign paths are built from ids that came off disk, so every level refuses to escape its root.
 /datum/unit_test/rimstation_campaign_paths
@@ -159,9 +167,11 @@
 	// An unsafe id at any level poisons the whole path, so every level returns null rather than a partial one.
 	TEST_ASSERT_NULL(campaign_path("../escape"), "An unsafe campaign id produced a path.")
 	TEST_ASSERT_NULL(campaign_generation_path("alpha", "../escape"), "An unsafe generation id produced a path.")
-	TEST_ASSERT_NULL(campaign_working_path("alpha", "gen-1", "../escape"), "An unsafe checkpoint id produced a working path.")
+	TEST_ASSERT_NULL(campaign_checkpoint_path("alpha", "gen-1", "../escape"), "An unsafe checkpoint id produced a checkpoint path.")
 	TEST_ASSERT_NULL(campaign_checkpoint_path("../escape", "gen-1", "checkpoint-1"), "An unsafe campaign id produced a checkpoint path.")
 	TEST_ASSERT_NULL(campaign_manifest_path("alpha", 0), "A manifest sequence below 1 produced a path.")
+	TEST_ASSERT_NULL(campaign_chapter_open_path("alpha", "gen-1", 0), "A chapter below 1 produced an open-chapter path.")
+	TEST_ASSERT_NULL(campaign_closure_path("../escape", "gen-1"), "An unsafe campaign id produced a closure path.")
 
 	// Sequence parsing has to reject anything that is not a numbered manifest.
 	TEST_ASSERT_EQUAL(extract_manifest_sequence("manifest.7.json"), 7, "A numbered manifest filename was not parsed.")

@@ -126,7 +126,7 @@
  * readable answer. Note defeat leads only to reset_pending: there is no path from defeated back to active.
  */
 #define CAMPAIGN_STATE_TRANSITIONS list( \
-	CAMPAIGN_STATE_NONE = list(CAMPAIGN_STATE_LOADING), \
+	CAMPAIGN_STATE_NONE = list(CAMPAIGN_STATE_LOADING, CAMPAIGN_STATE_RECOVERY), \
 	CAMPAIGN_STATE_LOADING = list(CAMPAIGN_STATE_ACTIVE, CAMPAIGN_STATE_RECOVERY), \
 	CAMPAIGN_STATE_ACTIVE = list(CAMPAIGN_STATE_COMMITTING, CAMPAIGN_STATE_DEFEATED, CAMPAIGN_STATE_RECOVERY), \
 	CAMPAIGN_STATE_COMMITTING = list(CAMPAIGN_STATE_INTERMISSION, CAMPAIGN_STATE_RECOVERY), \
@@ -139,13 +139,30 @@
 /// Manifest layout version. Bump with a migration, never in place.
 #define CAMPAIGN_MANIFEST_SCHEMA_VERSION 1
 
-/// Root of all campaign-owned storage. Kept out of _maps/persistence so campaign checkpoints are never
-/// mistaken for ordinary autosaves by the pruning or scanning code.
-#define CAMPAIGN_STORAGE_ROOT "data/colony_campaign/"
+/**
+ * Root of all campaign-owned storage.
+ *
+ * Under `_maps/` rather than `data/` because a map config resolves its DMM as `_maps/<map_path>/<map_file>`,
+ * with the prefix hardcoded - a checkpoint stored anywhere else can be written but never loaded again. It is
+ * still kept out of `_maps/persistence/`, so the autosave scanning and pruning code never sees a campaign
+ * checkpoint: being invisible to `get_last_save()` is what stops a lost town from being picked up again.
+ */
+#define CAMPAIGN_STORAGE_ROOT "_maps/colony_campaign/"
+
+/// Campaign a server runs unless something names another one.
+#define CAMPAIGN_DEFAULT_ID "colony"
 
 /// Filename written last inside a staged checkpoint, marking the whole set as finished.
 /// Lives here rather than beside the checkpoint code because storage.dm is included after checkpoint.dm.
 #define CHECKPOINT_COMPLETION_MARKER "checkpoint_complete.json"
+
+/// Written when a chapter starts and matched by an end record when it finishes. An open record with no end
+/// is the signature of a crash, and is what keeps an interrupted round from being read as a defeat.
+#define CAMPAIGN_CHAPTER_OPEN_PREFIX "chapter_open."
+/// Written when a chapter ends for any legible reason, win or loss.
+#define CAMPAIGN_CHAPTER_END_PREFIX "chapter_end."
+/// Immutable record of why a generation was closed. Written once and never rewritten.
+#define CAMPAIGN_CLOSURE_RECORD "closure.json"
 
 /// How far in from the map edge a raid may arrive.
 #define COLONY_RAID_EDGE_BAND 6
