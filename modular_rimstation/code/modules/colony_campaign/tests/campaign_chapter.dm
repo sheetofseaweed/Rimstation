@@ -69,6 +69,12 @@
 	TEST_ASSERT_EQUAL(SScampaign.evaluate_boot_state(booted_id), CAMPAIGN_STATE_LOADING, "Booting the recorded campaign did not load it.")
 	TEST_ASSERT_EQUAL(SScampaign.select_checkpoint_for_boot(), campaign_checkpoint_path(test_campaign_id, "generation-1", "checkpoint-1"), "The boot after a commit would not load the colony that was committed.")
 
+	// The recorded planet is the one terrain would actually be built from, not just a field in a file.
+	var/datum/planet_definition/campaign_world = new
+	allocated += campaign_world
+	TEST_ASSERT(campaign_world.deserialize(SScampaign.manifest.planet_record), "A campaign's recorded planet could not be loaded, so terrain would fall back to the fixed development world.")
+	TEST_ASSERT_NOTEQUAL(campaign_world.root_seed, RIMSTATION_DEVELOPMENT_PLANET_SEED, "A campaign was recorded as being on the shared development world, so every campaign would generate identical terrain.")
+
 	// A pointer naming something unusable must not be honoured.
 	rustg_file_write(json_encode(list("campaign_id" = "../escape")), active_campaign_pointer_path())
 	TEST_ASSERT_NULL(read_active_campaign_id(), "A pointer naming an id that escapes the storage root was honoured.")

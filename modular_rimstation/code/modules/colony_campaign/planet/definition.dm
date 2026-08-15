@@ -141,16 +141,28 @@
 /**
  * The planet the colony map is currently generated from.
  *
- * A placeholder seam. Phase 2 gives SScampaign ownership of this, loading the record from the campaign
- * manifest so a saved town regenerates on the world it was built on. Until then it hands out one fixed
- * development world, which is still reproducible - just not yet chosen per campaign.
+ * A running campaign builds on the world its own manifest recorded. That is what makes a generation keep its
+ * terrain between chapters, and what makes the generation after a defeat genuinely a different world rather
+ * than the same ground with the buildings cleared off it.
+ *
+ * Servers not running a campaign fall back to one fixed development world, which is reproducible but the same
+ * every time.
  */
 GLOBAL_DATUM(rimstation_active_planet, /datum/planet_definition)
 
 /proc/get_active_colony_planet()
 	RETURN_TYPE(/datum/planet_definition)
-	if(!GLOB.rimstation_active_planet)
-		GLOB.rimstation_active_planet = new /datum/planet_definition(RIMSTATION_DEVELOPMENT_PLANET_SEED, "rimstation-development")
+	if(GLOB.rimstation_active_planet)
+		return GLOB.rimstation_active_planet
+
+	var/datum/planet_definition/from_campaign = new
+	if(SScampaign.manifest && from_campaign.deserialize(SScampaign.manifest.planet_record))
+		GLOB.rimstation_active_planet = from_campaign
+		log_world("Colony terrain will be generated from campaign planet '[from_campaign.planet_id]'.")
+		return from_campaign
+	qdel(from_campaign)
+
+	GLOB.rimstation_active_planet = new /datum/planet_definition(RIMSTATION_DEVELOPMENT_PLANET_SEED, "rimstation-development")
 	return GLOB.rimstation_active_planet
 
 /// TRUE when both records would generate the same world and carry the same campaign metadata.
