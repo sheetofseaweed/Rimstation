@@ -141,8 +141,21 @@
  *
  * 1: original layout.
  * 2: generations are counted, so the next one can be named without reading the previous ones.
+ * 3: the colony carries its research between chapters.
  */
-#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 2
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 3
+
+/// Research record layout version. Migrated alongside the manifest that carries it.
+#define COLONY_RESEARCH_SCHEMA_VERSION 1
+
+/**
+ * How much more research costs during a campaign.
+ *
+ * A station researches for one round and is scrapped; a colony keeps what it learns for good. At station
+ * prices a campaign would own the whole techweb within a couple of sessions, so the same research is stretched
+ * across the campaign rather than replaced with a second currency.
+ */
+#define CAMPAIGN_RESEARCH_COST_MULTIPLIER 5
 
 /**
  * Root of all campaign-owned storage.

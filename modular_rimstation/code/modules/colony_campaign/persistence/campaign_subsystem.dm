@@ -26,6 +26,8 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/colony_chapter_outcome/chapter_outcome
 	/// Set while the world is being written outside a commit, which needs the same stillness a commit does.
 	var/world_quiesced = FALSE
+	/// The colony's research, as it stood when the chapter began. Recaptured from the live techweb on commit.
+	var/datum/colony_research_record/research
 
 /datum/controller/subsystem/campaign/Initialize()
 	RegisterSignal(SSticker, COMSIG_TICKER_ROUND_STARTING, PROC_REF(on_round_starting))
@@ -164,6 +166,9 @@ SUBSYSTEM_DEF(campaign)
 		return FALSE
 	if(loading_manifest)
 		manifest = loading_manifest
+		// Belongs to the manifest, not to the subsystem: carrying it across would give a new generation the
+		// research of the one that was lost.
+		research = null
 	return TRUE
 
 /// Marks the loaded campaign as being played.
@@ -177,6 +182,7 @@ SUBSYSTEM_DEF(campaign)
 	// A fresh record per chapter. Carrying the previous one over would let last chapter's loss decide this one.
 	QDEL_NULL(chapter_outcome)
 	chapter_outcome = new
+	restore_research()
 	mark_chapter_opened(manifest.chapter)
 	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
 	return TRUE
@@ -412,6 +418,56 @@ SUBSYSTEM_DEF(campaign)
 	message_admins("Campaign will load recovery snapshot [checkpoint_id], selected by [selected_by || "unknown"]. The committed checkpoint is unchanged.")
 	return TRUE
 
+/**
+ * Puts the colony's stored research back into this round's techweb.
+ *
+ * Called as the chapter begins, because a techweb is rebuilt from nothing every round - an ordinary shift has
+ * no memory, and remembering is the whole difference between a campaign and a shift.
+ */
+/datum/controller/subsystem/campaign/proc/restore_research()
+	if(!manifest)
+		return FALSE
+
+	research = new
+	if(length(manifest.research_record) && !research.deserialize(manifest.research_record))
+		// Refusing to load is not the same as having researched nothing, so this is said out loud rather than
+		// quietly handing the colony a blank techweb.
+		log_game("Campaign [manifest.campaign_id] has an unreadable research record; this chapter starts from a fresh techweb.")
+		message_admins("The colony's research record could not be read. This chapter starts from an unresearched techweb.")
+		return FALSE
+
+	var/datum/techweb/web = get_colony_techweb()
+	if(!web)
+		log_game("Campaign [manifest.campaign_id] found no techweb to restore its research into.")
+		return FALSE
+
+	var/restored = research.restore_into(web)
+	if(restored)
+		log_game("Campaign [manifest.campaign_id] restored [restored] researched nodes.")
+	return TRUE
+
+/**
+ * Reads this round's research back out of the techweb and into the manifest.
+ *
+ * Done at commit rather than as research happens, so a chapter that is lost or interrupted does not carry its
+ * research forward - what the colony keeps is what it held when the chapter was preserved.
+ */
+/datum/controller/subsystem/campaign/proc/capture_research()
+	if(!manifest)
+		return FALSE
+
+	var/datum/techweb/web = get_colony_techweb()
+	if(!web)
+		return FALSE
+
+	if(!research)
+		research = new
+	if(!research.capture_from(web))
+		return FALSE
+
+	manifest.research_record = research.serialize()
+	return TRUE
+
 /// TRUE when a campaign is being played, which is what campaign-aware code keys off.
 /datum/controller/subsystem/campaign/proc/is_campaign_active()
 	return !isnull(manifest) && campaign_state != CAMPAIGN_STATE_NONE
@@ -525,6 +581,10 @@ SUBSYSTEM_DEF(campaign)
 	if(!manifest)
 		enter_recovery("a commit ran with no campaign manifest")
 		return FALSE
+
+	// Taken before the checkpoint is staged, so the research written into the campaign record is the research
+	// that belongs to the world being preserved alongside it.
+	capture_research()
 
 	var/played_chapter = manifest.chapter
 	var/checkpoint_id = "checkpoint-[played_chapter]"

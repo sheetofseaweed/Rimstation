@@ -20,6 +20,8 @@
 	var/active_checkpoint_id
 	/// Serialized /datum/planet_definition for this generation's world.
 	var/list/planet_record
+	/// Serialized /datum/colony_research_record. What this colony has researched and banked.
+	var/list/research_record
 	/// Which chapter is next.
 	var/chapter = 1
 	/// Accumulated campaign time in deciseconds.
@@ -40,6 +42,7 @@
 	src.campaign_id = campaign_id
 	src.generation_id = generation_id
 	planet_record = list()
+	research_record = list()
 	storyteller_state = list()
 	record_references = list()
 
@@ -108,6 +111,7 @@
 		"generation_number" = generation_number,
 		"active_checkpoint_id" = active_checkpoint_id,
 		"planet_record" = planet_record?.Copy() || list(),
+		"research_record" = research_record?.Copy() || list(),
 		"chapter" = chapter,
 		"campaign_clock" = campaign_clock,
 		"storyteller_state" = storyteller_state?.Copy() || list(),
@@ -149,6 +153,8 @@
 		switch(from_version)
 			if(1)
 				record = migrate_campaign_manifest_v1_to_v2(record)
+			if(2)
+				record = migrate_campaign_manifest_v2_to_v3(record)
 			else
 				log_game("Campaign manifest rejected: no migration exists from schema version [from_version].")
 				return null
@@ -179,6 +185,19 @@
 	return record
 
 /**
+ * Schema 2 to 3: the colony carries its research between chapters.
+ *
+ * A campaign from before research was persisted has none recorded, so it starts from whatever a fresh techweb
+ * gives it. Nothing it has already built is affected; only what it keeps from here on changes.
+ */
+/proc/migrate_campaign_manifest_v2_to_v3(list/record)
+	RETURN_TYPE(/list)
+	if(!islist(record["research_record"]))
+		record["research_record"] = list()
+	record["schema_version"] = 3
+	return record
+
+/**
  * Loads a record produced by serialize(). Returns TRUE on success.
  *
  * Everything is validated before anything is assigned. A half-applied manifest is worse than no manifest,
@@ -200,6 +219,7 @@
 	candidate.generation_number = migrated["generation_number"]
 	candidate.active_checkpoint_id = migrated["active_checkpoint_id"]
 	candidate.planet_record = islist(migrated["planet_record"]) ? migrated["planet_record"] : list()
+	candidate.research_record = islist(migrated["research_record"]) ? migrated["research_record"] : list()
 	candidate.chapter = migrated["chapter"]
 	candidate.campaign_clock = migrated["campaign_clock"]
 	candidate.storyteller_state = islist(migrated["storyteller_state"]) ? migrated["storyteller_state"] : list()
@@ -218,6 +238,7 @@
 	generation_number = candidate.generation_number
 	active_checkpoint_id = candidate.active_checkpoint_id
 	planet_record = candidate.planet_record
+	research_record = candidate.research_record
 	chapter = candidate.chapter
 	campaign_clock = candidate.campaign_clock
 	storyteller_state = candidate.storyteller_state

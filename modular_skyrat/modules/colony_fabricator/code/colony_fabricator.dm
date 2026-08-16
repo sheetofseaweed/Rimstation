@@ -21,8 +21,16 @@
 	. = ..()
 	AddElement(/datum/element/repackable, repacked_type, 5 SECONDS)
 	AddElement(/datum/element/manufacturer_examine, COMPANY_FRONTIER)
+	// RIMSTATION EDIT START - ORG: only the admin techweb line below.
+	// A campaign colony builds what it has actually researched, so it points at the colony's own techweb.
+	// Assigned rather than connect_techweb()'d, because post_machine_initialize() connects whatever is set
+	// here; connecting twice registers the update signals twice and the second registration runtimes.
+	if(SScampaign.is_campaign_active())
+		stored_research = get_colony_techweb()
+	else
+	// RIMSTATION EDIT END
 	// We don't get new designs but can't print stuff if something's not researched, so we use the web that has everything researched
-	stored_research = locate(/datum/techweb/admin) in SSresearch.techwebs
+		stored_research = locate(/datum/techweb/admin) in SSresearch.techwebs
 	soundloop = new(src, FALSE)
 	if(!mapload)
 		flick("colony_lathe_deploy", src) // Sick ass deployment animation
@@ -57,6 +65,12 @@
 
 // We take from all nodes even unresearched ones
 /obj/machinery/rnd/production/colony_lathe/update_designs()
+	// RIMSTATION EDIT ADDITION START - During a campaign the colony's research is the gate, and the parent
+	// already filters by exactly that. Taking every design here regardless would make researching pointless.
+	if(SScampaign.is_campaign_active())
+		return ..()
+	// RIMSTATION EDIT ADDITION END
+
 	var/previous_design_count = cached_designs.len
 
 	cached_designs.Cut()
