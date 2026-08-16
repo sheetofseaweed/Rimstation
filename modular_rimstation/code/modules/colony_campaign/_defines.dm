@@ -142,11 +142,32 @@
  * 1: original layout.
  * 2: generations are counted, so the next one can be named without reading the previous ones.
  * 3: the colony carries its research between chapters.
+ * 4: the settlement carries its ledger between chapters.
  */
-#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 3
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 4
 
 /// Research record layout version. Migrated alongside the manifest that carries it.
 #define COLONY_RESEARCH_SCHEMA_VERSION 1
+
+/// Settlement ledger layout version. Migrated alongside the manifest that carries it.
+#define COLONY_LEDGER_SCHEMA_VERSION 1
+
+/**
+ * Which bank account holds the settlement's money.
+ *
+ * The cargo budget, because it is the account order consoles and payment components already spend from - a
+ * separate colony purse would be money the rest of the game could not see.
+ */
+#define CAMPAIGN_LEDGER_ACCOUNT ACCOUNT_CAR
+
+// Ledger categories. Broad on purpose: an entry says which kind of activity moved the money, and the reason
+// code says what specifically happened.
+#define LEDGER_CATEGORY_TRADE "trade"
+#define LEDGER_CATEGORY_INCIDENT "incident"
+#define LEDGER_CATEGORY_RESEARCH "research"
+#define LEDGER_CATEGORY_SALVAGE "salvage"
+#define LEDGER_CATEGORY_UPKEEP "upkeep"
+#define LEDGER_CATEGORY_ADMIN "admin"
 
 /**
  * How much more research costs during a campaign.

@@ -16,6 +16,8 @@
 	var/checkpoint_id
 	/// Directory holding this checkpoint's artifacts.
 	var/artifact_path
+	/// Fingerprint of the ledger as staged, recorded in the completion marker and rechecked on validation.
+	var/staged_ledger_hash
 
 /datum/campaign_checkpoint/New(campaign_id, generation_id, checkpoint_id)
 	. = ..()
@@ -45,6 +47,7 @@
 
 	// Campaign-shaped state travels beside the map, not inside it.
 	rustg_file_write(json_encode(manifest.serialize()), "[artifact_path]/campaign.json")
+	staged_ledger_hash = hash_campaign_ledger_record(manifest.ledger_record)
 
 	if(!validate_artifacts())
 		log_game("Campaign checkpoint [checkpoint_id] failed artifact validation; it will not be committed.")
@@ -91,10 +94,19 @@
 
 	var/datum/campaign_manifest/staged = new
 	var/record_is_valid = staged.deserialize(campaign_record)
+	var/list/staged_ledger = staged.ledger_record
 	qdel(staged)
 	if(!record_is_valid)
 		log_game("Campaign checkpoint [checkpoint_id] contains a campaign record that does not validate.")
 		return FALSE
+
+	// Once the checkpoint is finished, its marker names the ledger it was written with. A mismatch means the
+	// accounts on disk are not the accounts this checkpoint committed, so it is not safe to recover from.
+	var/list/completion = safely_decode_json(rustg_file_read("[artifact_path]/[CHECKPOINT_COMPLETION_MARKER]"))
+	if(islist(completion) && completion["ledger_hash"])
+		if(completion["ledger_hash"] != hash_campaign_ledger_record(staged_ledger))
+			log_game("Campaign checkpoint [checkpoint_id] carries a ledger that does not match the one it recorded.")
+			return FALSE
 
 	return TRUE
 
@@ -116,6 +128,9 @@
 		"campaign_id" = campaign_id,
 		"written_at" = "[world.realtime]",
 		"files" = files,
+		// Fingerprint of the accounts as they were written, so a checkpoint can prove later that the ledger it
+		// still holds is the one it committed rather than something edited afterwards.
+		"ledger_hash" = staged_ledger_hash,
 	)
 
 /**

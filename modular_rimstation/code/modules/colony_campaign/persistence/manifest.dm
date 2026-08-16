@@ -22,6 +22,8 @@
 	var/list/planet_record
 	/// Serialized /datum/colony_research_record. What this colony has researched and banked.
 	var/list/research_record
+	/// Serialized /datum/settlement_ledger. What the settlement owns and how it came to own it.
+	var/list/ledger_record
 	/// Which chapter is next.
 	var/chapter = 1
 	/// Accumulated campaign time in deciseconds.
@@ -43,6 +45,7 @@
 	src.generation_id = generation_id
 	planet_record = list()
 	research_record = list()
+	ledger_record = list()
 	storyteller_state = list()
 	record_references = list()
 
@@ -112,6 +115,7 @@
 		"active_checkpoint_id" = active_checkpoint_id,
 		"planet_record" = planet_record?.Copy() || list(),
 		"research_record" = research_record?.Copy() || list(),
+		"ledger_record" = ledger_record?.Copy() || list(),
 		"chapter" = chapter,
 		"campaign_clock" = campaign_clock,
 		"storyteller_state" = storyteller_state?.Copy() || list(),
@@ -147,7 +151,10 @@
 		log_game("Campaign manifest rejected: schema version [incoming_version] is newer than this build understands ([CAMPAIGN_MANIFEST_SCHEMA_VERSION]).")
 		return null
 
-	var/list/record = deep_copy_list(data)
+	// deep_copy_list() does not handle associative lists nested inside plain ones - it turns each element into
+	// an associative key and loses the rest. Ledger entries are exactly that shape, so the copy has to be the
+	// variant written for it, or a campaign quietly loses its history every time it is loaded.
+	var/list/record = deep_copy_list_alt(data)
 	while(record["schema_version"] < CAMPAIGN_MANIFEST_SCHEMA_VERSION)
 		var/from_version = record["schema_version"]
 		switch(from_version)
@@ -155,6 +162,8 @@
 				record = migrate_campaign_manifest_v1_to_v2(record)
 			if(2)
 				record = migrate_campaign_manifest_v2_to_v3(record)
+			if(3)
+				record = migrate_campaign_manifest_v3_to_v4(record)
 			else
 				log_game("Campaign manifest rejected: no migration exists from schema version [from_version].")
 				return null
@@ -198,6 +207,19 @@
 	return record
 
 /**
+ * Schema 3 to 4: the settlement carries its ledger between chapters.
+ *
+ * A campaign from before the ledger existed has no recorded history, so it starts with an empty one rather
+ * than an invented balance. What it owns physically is unaffected; only what is written down changes.
+ */
+/proc/migrate_campaign_manifest_v3_to_v4(list/record)
+	RETURN_TYPE(/list)
+	if(!islist(record["ledger_record"]))
+		record["ledger_record"] = list()
+	record["schema_version"] = 4
+	return record
+
+/**
  * Loads a record produced by serialize(). Returns TRUE on success.
  *
  * Everything is validated before anything is assigned. A half-applied manifest is worse than no manifest,
@@ -220,6 +242,7 @@
 	candidate.active_checkpoint_id = migrated["active_checkpoint_id"]
 	candidate.planet_record = islist(migrated["planet_record"]) ? migrated["planet_record"] : list()
 	candidate.research_record = islist(migrated["research_record"]) ? migrated["research_record"] : list()
+	candidate.ledger_record = islist(migrated["ledger_record"]) ? migrated["ledger_record"] : list()
 	candidate.chapter = migrated["chapter"]
 	candidate.campaign_clock = migrated["campaign_clock"]
 	candidate.storyteller_state = islist(migrated["storyteller_state"]) ? migrated["storyteller_state"] : list()
@@ -239,6 +262,7 @@
 	active_checkpoint_id = candidate.active_checkpoint_id
 	planet_record = candidate.planet_record
 	research_record = candidate.research_record
+	ledger_record = candidate.ledger_record
 	chapter = candidate.chapter
 	campaign_clock = candidate.campaign_clock
 	storyteller_state = candidate.storyteller_state

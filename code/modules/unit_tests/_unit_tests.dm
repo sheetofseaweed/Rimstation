@@ -376,6 +376,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_recovery.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/fabrication_gate.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_roundend.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/ledger.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/map_directory_security.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/planet.dm"

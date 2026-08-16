@@ -28,6 +28,8 @@ SUBSYSTEM_DEF(campaign)
 	var/world_quiesced = FALSE
 	/// The colony's research, as it stood when the chapter began. Recaptured from the live techweb on commit.
 	var/datum/colony_research_record/research
+	/// What the settlement owns and how it came to own it. Written through on every change.
+	var/datum/settlement_ledger/ledger
 
 /datum/controller/subsystem/campaign/Initialize()
 	RegisterSignal(SSticker, COMSIG_TICKER_ROUND_STARTING, PROC_REF(on_round_starting))
@@ -166,9 +168,10 @@ SUBSYSTEM_DEF(campaign)
 		return FALSE
 	if(loading_manifest)
 		manifest = loading_manifest
-		// Belongs to the manifest, not to the subsystem: carrying it across would give a new generation the
-		// research of the one that was lost.
+		// Belongs to the manifest, not to the subsystem: carrying either across would give a new generation the
+		// research and the savings of the one that was lost.
 		research = null
+		ledger = null
 	return TRUE
 
 /// Marks the loaded campaign as being played.
@@ -183,6 +186,7 @@ SUBSYSTEM_DEF(campaign)
 	QDEL_NULL(chapter_outcome)
 	chapter_outcome = new
 	restore_research()
+	restore_ledger()
 	mark_chapter_opened(manifest.chapter)
 	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
 	return TRUE
@@ -447,6 +451,100 @@ SUBSYSTEM_DEF(campaign)
 	return TRUE
 
 /**
+ * The settlement's ledger, built from the manifest the first time it is asked for.
+ *
+ * Materialised on demand for the same reason the research record is: nothing has to be ordered correctly
+ * between the manifest arriving and something wanting to spend money.
+ */
+/datum/controller/subsystem/campaign/proc/get_ledger()
+	RETURN_TYPE(/datum/settlement_ledger)
+	if(!manifest)
+		return null
+
+	if(!ledger)
+		ledger = new
+		if(length(manifest.ledger_record) && !ledger.deserialize(manifest.ledger_record))
+			log_game("Campaign [manifest.campaign_id] has an unreadable ledger; the settlement's accounts start empty.")
+			message_admins("The settlement ledger could not be read. Its balance and history have been reset.")
+	return ledger
+
+/// Writes the live ledger back into the manifest, which is what a commit will store.
+/datum/controller/subsystem/campaign/proc/sync_ledger()
+	if(manifest && ledger)
+		manifest.ledger_record = ledger.serialize()
+
+/// Puts the settlement's money back into this round's account, which starts every round from scratch.
+/datum/controller/subsystem/campaign/proc/restore_ledger()
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement)
+		return FALSE
+
+	var/datum/bank_account/account = get_settlement_account()
+	if(!account)
+		log_game("Campaign [manifest.campaign_id] found no settlement account to restore its balance into.")
+		return FALSE
+
+	// A campaign that has never recorded anything keeps whatever the round granted, so a first chapter is not
+	// forced to start at zero credits.
+	if(!length(manifest.ledger_record))
+		settlement.capture_from(account)
+		sync_ledger()
+		return TRUE
+
+	settlement.restore_into(account)
+	return TRUE
+
+/**
+ * Spends the settlement's money. Returns TRUE only if it had it.
+ *
+ * Routed through here rather than called on the ledger so that nothing can move the settlement's money without
+ * the change reaching the record that survives the round.
+ */
+/datum/controller/subsystem/campaign/proc/try_debit(amount, category, reason_code, actor_id, related_id)
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement || !settlement.try_debit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+		return FALSE
+	sync_ledger()
+	return TRUE
+
+/// Adds to the settlement's money and records why.
+/datum/controller/subsystem/campaign/proc/credit(amount, category, reason_code, actor_id, related_id)
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement || !settlement.credit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+		return FALSE
+	sync_ledger()
+	return TRUE
+
+/// Moves a resource quantity and records why. Refuses to take more than the settlement holds.
+/datum/controller/subsystem/campaign/proc/adjust_resource(resource_id, amount, category, reason_code, actor_id, related_id)
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement || !settlement.adjust_resource(resource_id, amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+		return FALSE
+	sync_ledger()
+	return TRUE
+
+/// Records something worth remembering that moved neither money nor materials.
+/datum/controller/subsystem/campaign/proc/record_nonfinancial(category, reason_code, actor_id, related_id)
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement || !settlement.record_nonfinancial(category, reason_code, actor_id, related_id, manifest.campaign_clock))
+		return FALSE
+	sync_ledger()
+	return TRUE
+
+/// Reads the round's closing balance back out of the account, so spending outside the ledger is not lost.
+/datum/controller/subsystem/campaign/proc/capture_ledger()
+	var/datum/settlement_ledger/settlement = get_ledger()
+	if(!settlement)
+		return FALSE
+
+	var/datum/bank_account/account = get_settlement_account()
+	if(account && !settlement.capture_from(account))
+		return FALSE
+
+	sync_ledger()
+	return TRUE
+
+/**
  * Reads this round's research back out of the techweb and into the manifest.
  *
  * Done at commit rather than as research happens, so a chapter that is lost or interrupted does not carry its
@@ -582,9 +680,10 @@ SUBSYSTEM_DEF(campaign)
 		enter_recovery("a commit ran with no campaign manifest")
 		return FALSE
 
-	// Taken before the checkpoint is staged, so the research written into the campaign record is the research
-	// that belongs to the world being preserved alongside it.
+	// Taken before the checkpoint is staged, so the research and accounts written into the campaign record are
+	// the ones belonging to the world being preserved alongside them.
 	capture_research()
+	capture_ledger()
 
 	var/played_chapter = manifest.chapter
 	var/checkpoint_id = "checkpoint-[played_chapter]"
