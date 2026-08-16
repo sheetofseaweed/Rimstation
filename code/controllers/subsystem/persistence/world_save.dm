@@ -42,15 +42,7 @@ SUBSYSTEM_DEF(world_save)
 	if(CONFIG_GET(number/persistent_autosave_period) > 0 && CONFIG_GET(flag/persistent_save_enabled))
 		wait = CONFIG_GET(number/persistent_autosave_period) HOURS
 
-	for(var/obj/child in GLOB.save_containers_children)
-		var/parent_id = child.save_container_child_id
-		child.forceMove(GLOB.save_containers_parents[parent_id])
-		child.save_container_child_id = null
-
-	for(var/parent_id in GLOB.save_containers_parents)
-		var/obj/parent = GLOB.save_containers_parents[parent_id]
-		parent.update_appearance()
-		parent.save_container_parent_id = null
+	link_loaded_containers() // RIMSTATION EDIT: ORG - the two loops now inside this proc, extracted so tests can drive them
 
 	if(SSatoms.world_save_loaders.len)
 		if(CONFIG_GET(flag/persistent_save_enabled))
@@ -68,6 +60,37 @@ SUBSYSTEM_DEF(world_save)
 	GLOB.save_containers_children.Cut()
 
 	return SS_INIT_SUCCESS
+
+// RIMSTATION EDIT ADDITION START
+/**
+ * Re-links objects loaded from a persistent save back onto the containers they were saved from.
+ *
+ * Objects stored inside a container move into its contents. Objects stuck to it re-attach through
+ * /datum/component/sticker instead, which parks them in nullspace itself.
+ */
+/datum/controller/subsystem/world_save/proc/link_loaded_containers()
+	for(var/obj/child in GLOB.save_containers_children)
+		var/parent_id = child.save_container_child_id
+		var/atom/container = GLOB.save_containers_parents[parent_id]
+		var/list/stick_offset = child.save_sticker_offset
+		if(stick_offset)
+			child.save_sticker_offset = null
+			child.save_container_child_id = null
+			// a container that failed to load would otherwise strand the sticker in nullspace forever
+			if(isnull(container) || length(stick_offset) < 2)
+				qdel(child)
+				continue
+			child.restore_stuck_to(container, stick_offset[1], stick_offset[2])
+			continue
+
+		child.forceMove(container)
+		child.save_container_child_id = null
+
+	for(var/parent_id in GLOB.save_containers_parents)
+		var/obj/parent = GLOB.save_containers_parents[parent_id]
+		parent.update_appearance()
+		parent.save_container_parent_id = null
+// RIMSTATION EDIT ADDITION END
 
 /datum/controller/subsystem/world_save/fire(resumed = FALSE)
 	if(!was_first_roundstart_autosave_skipped) // prevents pointless autosave at the start of the game

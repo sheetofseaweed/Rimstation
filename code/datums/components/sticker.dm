@@ -19,6 +19,13 @@
 	var/datum/callback/peel_callback
 	/// Text added to the atom's examine when stickered.
 	var/examine_text
+	// RIMSTATION EDIT ADDITION START - the overlay stores these pre-offset, and the map serializer needs the
+	// original cursor coordinates to hand back to stick_to_atom()/attempt_attach() on load.
+	/// Horizontal cursor coordinate the sticker was applied at.
+	var/px = 0
+	/// Vertical cursor coordinate the sticker was applied at.
+	var/py = 0
+	// RIMSTATION EDIT ADDITION END
 
 /datum/component/sticker/Initialize(atom/stickering_atom, dir = NORTH, px = 0, py = 0, datum/callback/stick_callback, datum/callback/peel_callback, examine_text)
 	if(!isatom(parent))
@@ -78,6 +85,10 @@
 /// Handles overlay creation from supplied atom, adds created icon to the parent object, moves source atom to the nullspace.
 /datum/component/sticker/proc/stick(atom/movable/stickering_atom, px, py)
 	our_sticker = stickering_atom
+	// RIMSTATION EDIT ADDITION - callers pass unvalidated cursor coordinates, which are null when the click had
+	// none. null behaves as 0 in the offset maths below, so normalise here rather than persisting a null.
+	src.px = isnum(px) ? px : 0
+	src.py = isnum(py) ? py : 0
 	our_sticker.moveToNullspace()
 	RegisterSignals(our_sticker, list(COMSIG_QDELETING, COMSIG_MOVABLE_MOVED), PROC_REF(sticker_gone))
 

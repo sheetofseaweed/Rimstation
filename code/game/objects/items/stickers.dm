@@ -38,7 +38,9 @@
 /obj/item/sticker/Initialize(mapload)
 	. = ..()
 
-	if(length(icon_states))
+	// RIMSTATION EDIT: ORG - if(length(icon_states)). A persistent save restores the rolled icon_state as a map
+	// var, and re-rolling here would throw it away. An explicitly set state now wins; unset ones still randomise.
+	if(length(icon_states) && icon_state == initial(icon_state))
 		icon_state = pick(icon_states)
 
 /obj/item/sticker/Bump(atom/bumped_atom)

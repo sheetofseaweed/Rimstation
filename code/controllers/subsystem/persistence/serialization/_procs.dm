@@ -14,6 +14,17 @@
 	/// We use this to store and retrieve any datum information on an object inside a list
 	var/list/persistent_datum_data
 
+// RIMSTATION EDIT ADDITION START - stickers and labels live in a component, not in vars, so nothing about them
+// survived a save. The stuck atom is written out as a container child of what it is stuck to; these carry the
+// attachment offsets, which only the component knows.
+/atom/movable
+	/// Cursor coordinates this atom was stuck to its container at, as list(px, py). Set on load to re-attach it.
+	var/list/save_sticker_offset
+
+/// Maps a stuck atom to the list(px, py) it is attached at, for the duration of a map save
+GLOBAL_LIST_EMPTY(save_sticker_offsets)
+// RIMSTATION EDIT ADDITION END
+
 /// A list of all parent containers storing objects inside (used via map save/load)
 GLOBAL_LIST_EMPTY(save_containers_parents)
 /// A list of all children that are stored inside parent containers (used via map save/load)
@@ -100,6 +111,8 @@ GLOBAL_LIST_EMPTY(save_containers_children)
 			GLOB.save_containers_children[target_obj] = parent_container_id_tag
 
 		target_obj.on_object_saved(map_string, current_loc, obj_blacklist)
+		// RIMSTATION EDIT ADDITION - a labelled item inside a container is still labelled
+		target_obj.save_attached_stickers(map_string, current_loc, obj_blacklist)
 		var/metadata = generate_tgm_metadata(target_obj)
 		TGM_MAP_BLOCK(map_string, target_obj.type, metadata)
 
@@ -117,6 +130,8 @@ GLOBAL_LIST_EMPTY(save_containers_children)
 		GLOB.save_containers_children[target_obj] = parent_container_id_tag
 
 		target_obj.on_object_saved(map_string, current_loc, obj_blacklist)
+		// RIMSTATION EDIT ADDITION - a labelled item inside a container is still labelled
+		target_obj.save_attached_stickers(map_string, current_loc, obj_blacklist)
 		var/metadata = generate_tgm_metadata(target_obj)
 		TGM_MAP_BLOCK(map_string, target_obj.type, metadata)
 
@@ -128,6 +143,9 @@ GLOBAL_LIST_EMPTY(save_containers_children)
 		.[NAMEOF(src, save_container_parent_id)] = GLOB.save_containers_parents[src]
 	if(GLOB.save_containers_children[src])
 		.[NAMEOF(src, save_container_child_id)] = GLOB.save_containers_children[src]
+	// RIMSTATION EDIT ADDITION - marks this child as stuck to its container rather than stored inside it
+	if(GLOB.save_sticker_offsets[src])
+		.[NAMEOF(src, save_sticker_offset)] = GLOB.save_sticker_offsets[src]
 	return .
 
 /obj/PersistentInitialize()

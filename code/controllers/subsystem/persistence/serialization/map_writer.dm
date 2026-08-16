@@ -11,6 +11,7 @@
 /proc/reset_write_map_state()
 	GLOB.save_containers_parents.Cut()
 	GLOB.save_containers_children.Cut()
+	GLOB.save_sticker_offsets.Cut() // RIMSTATION EDIT ADDITION
 
 /proc/cancel_write_map()
 	SSworld_save.record_serialization_failure("cancel_requested")
@@ -202,6 +203,9 @@
 					//This is what causes lockers and machines to save stuff inside of them
 					if((save_flags & SAVE_OBJECTS_PROPERTIES))
 						target_atom.on_object_saved(current_header, pull_from, obj_blacklist)
+						// RIMSTATION EDIT ADDITION - runs after on_object_saved() so it can share a container id
+						// with any contents that proc already saved
+						target_atom.save_attached_stickers(current_header, pull_from, obj_blacklist)
 
 					var/metadata = generate_tgm_metadata(target_atom, save_flags)
 					TGM_MAP_BLOCK(current_header, target_atom.type, metadata)
