@@ -58,6 +58,19 @@
 	occurrences--
 
 ///Gets occurences. Has to use the getter to properly handle shared occurences
+/**
+ * How much the running campaign wants this event right now. 1 when nothing is running.
+ *
+ * RIMSTATION EDIT ADDITION - lets a campaign that has just been battered see fewer disasters and more quiet
+ * events, using the tags the storyteller already reads. Returning 1 outside campaign mode is deliberate: an
+ * ordinary shift must weigh its events exactly as it did before.
+ */
+/datum/round_event_control/proc/get_campaign_weight_multiplier()
+	if(!SScampaign?.is_campaign_active())
+		return 1
+	var/datum/colony_story_state/story = SScampaign.get_story_state()
+	return story ? story.get_event_weight_multiplier(tags) : 1
+
 /datum/round_event_control/proc/get_occurences()
 	if(shared_occurence_type)
 		if(!shared_occurences[shared_occurence_type])

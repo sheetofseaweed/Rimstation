@@ -376,6 +376,8 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_recovery.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/fabrication_gate.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_roundend.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/incident_content.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/incidents.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/ledger.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/map_directory_security.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
@@ -385,6 +387,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/persistence_guard.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/telemetry.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller_recovery.dm"
 // RIMSTATION ADDITION END
 // SKYRAT EDIT START
 #include "~skyrat\automapper.dm"

@@ -166,6 +166,8 @@
 		if(occurences)
 			///If the event has occured already, apply a penalty multiplier based on amount of occurences
 			weight_total -= event.reoccurence_penalty_multiplier * weight_total * (1 - (event_repetition_multiplier ** occurences))
+		// RIMSTATION EDIT ADDITION - a running campaign bends the weight by what the colony has been through.
+		weight_total *= event.get_campaign_weight_multiplier()
 		/// Write it
 		event.calculated_weight = round(weight_total, 1)
 

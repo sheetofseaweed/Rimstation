@@ -160,6 +160,101 @@
  */
 #define CAMPAIGN_LEDGER_ACCOUNT ACCOUNT_CAR
 
+/// Admin event-panel heading for colony incidents. Its own so the five controls group together rather than
+/// scattering across station categories none of them really belong to.
+#define EVENT_CATEGORY_COLONY "Colony"
+
+// Colony incident lifecycle. Strictly forward, like a raid's: the warning is the colony's chance to prepare
+// and cannot be skipped. Cancellation is the one jump out, and it is available until the incident resolves.
+#define COLONY_INCIDENT_QUEUED "queued"
+#define COLONY_INCIDENT_WARNING "warning"
+#define COLONY_INCIDENT_ACTIVE "active"
+#define COLONY_INCIDENT_RESOLVING "resolving"
+#define COLONY_INCIDENT_RESOLVED "resolved"
+#define COLONY_INCIDENT_CANCELLED "cancelled"
+
+/// Ordered lifecycle. Position in this list is what makes a transition forward or backward.
+#define COLONY_INCIDENT_STATE_ORDER list( \
+	COLONY_INCIDENT_QUEUED, \
+	COLONY_INCIDENT_WARNING, \
+	COLONY_INCIDENT_ACTIVE, \
+	COLONY_INCIDENT_RESOLVING, \
+	COLONY_INCIDENT_RESOLVED, \
+)
+
+// What kind of story an incident tells. The storyteller buys a category; the campaign picks which incident
+// within it, so pacing and content stay separable.
+#define COLONY_INCIDENT_CATEGORY_POSITIVE "positive"
+#define COLONY_INCIDENT_CATEGORY_NEUTRAL "neutral"
+#define COLONY_INCIDENT_CATEGORY_ENVIRONMENTAL "environmental"
+#define COLONY_INCIDENT_CATEGORY_SOCIAL "social"
+#define COLONY_INCIDENT_CATEGORY_RESOURCE "resource"
+
+#define COLONY_INCIDENT_CATEGORIES list( \
+	COLONY_INCIDENT_CATEGORY_POSITIVE, \
+	COLONY_INCIDENT_CATEGORY_NEUTRAL, \
+	COLONY_INCIDENT_CATEGORY_ENVIRONMENTAL, \
+	COLONY_INCIDENT_CATEGORY_SOCIAL, \
+	COLONY_INCIDENT_CATEGORY_RESOURCE, \
+)
+
+/**
+ * Where a colony decision can be answered.
+ *
+ * Per incident rather than global. A trader hailing the settlement belongs on a communications console and
+ * would be absurd answered by touching the colony core; a dispute between colonists is the opposite. A colony
+ * with no console has an in-game problem to solve, not a broken incident.
+ */
+#define INCIDENT_ANSWER_CONSOLE (1<<0)
+#define INCIDENT_ANSWER_COLONY_CORE (1<<1)
+
+/// How long the colony gets to answer before a decision expires unanswered.
+#define COLONY_DECISION_TIMEOUT (3 MINUTES)
+
+/// How many recent incidents count against repeating one. Short: a colony should not remember forever.
+#define COLONY_INCIDENT_HISTORY_WINDOW 4
+
+/// Story state layout version. Lives inside the manifest's storyteller_state, which needs no schema of its own.
+#define COLONY_STORY_SCHEMA_VERSION 1
+/// How many incident results the pacing state keeps.
+#define COLONY_STORY_INCIDENT_WINDOW 8
+/**
+ * Bounds on how far pacing may bend an event's weight.
+ *
+ * Never zero at the bottom: a multiplier that reaches zero retires an event silently, which is indistinguishable
+ * from a bug. Never unbounded at the top: one favoured event crowding out every other is its own kind of bad
+ * pacing.
+ */
+#define COLONY_STORY_MIN_MULTIPLIER 0.25
+#define COLONY_STORY_MAX_MULTIPLIER 2
+/// Recovery at or above which the colony is too battered to be handed another disaster.
+#define COLONY_STORY_HARD_RECOVERY 80
+/// Selection weight an incident starts from before recency is taken off it.
+#define COLONY_INCIDENT_BASE_WEIGHT 100
+/**
+ * The least an incident's weight can fall to.
+ *
+ * Never zero. Recency should make the same story less likely, never impossible - otherwise a category whose
+ * incidents have all run recently becomes unbuyable, and the storyteller quietly loses a whole kind of event
+ * at exactly the moment the colony has been through the most.
+ */
+#define COLONY_INCIDENT_MINIMUM_WEIGHT 5
+
+// Incident tags. Shared flavour, used to stop the same kind of thing landing twice in a row.
+#define INCIDENT_TAG_ARRIVAL "arrival"
+#define INCIDENT_TAG_WEATHER "weather"
+#define INCIDENT_TAG_TRADE "trade"
+#define INCIDENT_TAG_UNREST "unrest"
+#define INCIDENT_TAG_HARVEST "harvest"
+#define INCIDENT_TAG_MINING "mining"
+
+/// The colony came out ahead, or did what the incident asked.
+#define COLONY_INCIDENT_OUTCOME_SUCCEEDED "succeeded"
+/// The colony came out behind.
+#define COLONY_INCIDENT_OUTCOME_FAILED "failed"
+/// Nobody engaged with it, which is a legitimate answer and not a failure.
+#define COLONY_INCIDENT_OUTCOME_IGNORED "ignored"
+
 // Ledger categories. Broad on purpose: an entry says which kind of activity moved the money, and the reason
 // code says what specifically happened.
 #define LEDGER_CATEGORY_TRADE "trade"

@@ -291,6 +291,9 @@
 		return FALSE
 
 	set_state(COLONY_RAID_WARNING)
+	// A raid is the serious threat pacing measures everything else against, so it is recorded the moment it is
+	// committed to rather than at its outcome - a raid survived is still a chapter that was not a rest.
+	SScampaign.note_major_threat()
 	telemetry.insertion_direction = describe_insertion_direction()
 	// Sample the settlement before anything is shot at, so damage is a difference rather than a guess.
 	telemetry.sample_settlement_integrity()

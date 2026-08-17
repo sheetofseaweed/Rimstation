@@ -30,6 +30,14 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/colony_research_record/research
 	/// What the settlement owns and how it came to own it. Written through on every change.
 	var/datum/settlement_ledger/ledger
+	/// Incidents running right now, so nothing schedules over the top of one already in progress.
+	var/list/active_incidents
+	/// Serialized results of incidents this chapter, oldest first. Read by pacing, not by play.
+	var/list/incident_history
+	/// What the colony has been through, and how much slack it is owed. Persisted with the campaign.
+	var/datum/colony_story_state/story_state
+	/// TRUE once this chapter has thrown something serious at the colony, so a win is not mistaken for a rest.
+	var/faced_major_threat_this_chapter = FALSE
 
 /datum/controller/subsystem/campaign/Initialize()
 	RegisterSignal(SSticker, COMSIG_TICKER_ROUND_STARTING, PROC_REF(on_round_starting))
@@ -172,6 +180,7 @@ SUBSYSTEM_DEF(campaign)
 		// research and the savings of the one that was lost.
 		research = null
 		ledger = null
+		story_state = null
 	return TRUE
 
 /// Marks the loaded campaign as being played.
@@ -185,6 +194,7 @@ SUBSYSTEM_DEF(campaign)
 	// A fresh record per chapter. Carrying the previous one over would let last chapter's loss decide this one.
 	QDEL_NULL(chapter_outcome)
 	chapter_outcome = new
+	faced_major_threat_this_chapter = FALSE
 	restore_research()
 	restore_ledger()
 	mark_chapter_opened(manifest.chapter)
@@ -287,6 +297,11 @@ SUBSYSTEM_DEF(campaign)
 		manifest.active_checkpoint_id = null
 		manifest.last_outcome = COLONY_OUTCOME_FAILURE
 
+		var/datum/colony_story_state/story = get_story_state()
+		if(story)
+			story.advance_chapter(COLONY_OUTCOME_FAILURE, TRUE)
+			sync_story_state()
+
 		write_generation_closure(reason, lost_checkpoint_id)
 		mark_chapter_ended(lost_chapter, COLONY_OUTCOME_FAILURE, reason)
 
@@ -339,6 +354,12 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/campaign_manifest/fresh = new(manifest.campaign_id, "generation-[next_number]")
 	fresh.generation_number = next_number
 	fresh.planet_record = build_generation_planet_record(manifest.campaign_id, next_number)
+
+	// The campaign remembers how old it is; the new colony inherits none of the previous one's scars.
+	var/datum/colony_story_state/story = get_story_state()
+	if(story)
+		story.reset_for_new_generation()
+		fresh.storyteller_state = story.serialize()
 
 	if(isnull(write_campaign_manifest(fresh)))
 		enter_recovery("a new generation could not be written to disk")
@@ -566,6 +587,173 @@ SUBSYSTEM_DEF(campaign)
 	manifest.research_record = research.serialize()
 	return TRUE
 
+/**
+ * Which incidents of `incident_category` could run right now.
+ *
+ * Asked before the storyteller spends anything, so a category with no runnable incident is simply never
+ * bought. Concrete incidents arrive with Phase 3 Task 5; until then every category is legitimately empty and
+ * the controls stay unbuyable, which is the correct behaviour rather than a gap.
+ */
+/datum/controller/subsystem/campaign/proc/get_eligible_incident_types(incident_category)
+	RETURN_TYPE(/list)
+	var/list/eligible = list()
+	if(!incident_category || !is_campaign_active())
+		return eligible
+
+	for(var/datum/colony_incident/incident_type as anything in subtypesof(/datum/colony_incident))
+		if(initial(incident_type.category) != incident_category)
+			continue
+		if(is_abstract_incident(incident_type))
+			continue
+		eligible += incident_type
+
+	return eligible
+
+/// TRUE for incident types that exist to be inherited from rather than run.
+/datum/controller/subsystem/campaign/proc/is_abstract_incident(datum/colony_incident/incident_type)
+	return initial(incident_type.abstract_incident)
+
+/**
+ * The most recent incident results, newest first.
+ *
+ * Deliberately short. The point is to stop the same story landing twice running, not to give the colony a
+ * permanent memory that eventually rules everything out.
+ */
+/datum/controller/subsystem/campaign/proc/get_recent_incident_records(window = COLONY_INCIDENT_HISTORY_WINDOW)
+	RETURN_TYPE(/list)
+	var/list/recent = list()
+	if(!length(incident_history))
+		return recent
+
+	for(var/index = length(incident_history); index >= 1 && length(recent) < window; index--)
+		recent += list(incident_history[index])
+	return recent
+
+/**
+ * How strongly this incident should be preferred right now.
+ *
+ * Two penalties, both fading with distance: having run recently, and sharing a flavour with something that
+ * ran recently. The first stops repeats, the second stops three different storms in a row from feeling like
+ * one long storm.
+ *
+ * Floored rather than allowed to reach zero, so recency can never empty a category out entirely.
+ */
+/datum/controller/subsystem/campaign/proc/get_incident_selection_weight(datum/colony_incident/incident_type)
+	var/weight = COLONY_INCIDENT_BASE_WEIGHT
+	var/list/recent = get_recent_incident_records()
+	if(!length(recent))
+		return weight
+
+	var/list/own_tags = get_colony_incident_tags(incident_type)
+	var/distance = 0
+	for(var/list/record as anything in recent)
+		distance++
+		// Newest counts most. A repeat two incidents ago matters less than the one that just happened.
+		var/recency = (length(recent) - distance + 1) / length(recent)
+
+		if(record["incident_type"] == "[incident_type]")
+			weight -= round(70 * recency)
+			continue
+
+		var/list/record_tags = record["tags"]
+		if(!islist(record_tags))
+			continue
+		for(var/tag in own_tags)
+			if(tag in record_tags)
+				weight -= round(25 * recency)
+				break
+
+	return max(weight, COLONY_INCIDENT_MINIMUM_WEIGHT)
+
+/**
+ * Builds one incident of the given category, or null if none can run.
+ *
+ * Eligibility is asked of the candidate itself rather than guessed at from outside: an incident knows what it
+ * needs, and building one only to discard it is cheap next to getting the answer wrong. Which of the eligible
+ * ones gets built is weighted against what the colony has been through lately.
+ */
+/datum/controller/subsystem/campaign/proc/create_incident(incident_category)
+	RETURN_TYPE(/datum/colony_incident)
+	var/list/candidates = get_eligible_incident_types(incident_category)
+	if(!length(candidates))
+		return null
+
+	var/list/weighted = list()
+	for(var/incident_type in candidates)
+		weighted[incident_type] = get_incident_selection_weight(incident_type)
+
+	while(length(weighted))
+		var/incident_type = pick_weight(weighted)
+		weighted -= incident_type
+
+		var/datum/colony_incident/candidate = new incident_type
+		if(candidate.can_begin())
+			LAZYADD(active_incidents, candidate)
+			return candidate
+		qdel(candidate)
+
+	return null
+
+/**
+ * What the colony has been through, built from the manifest the first time it is asked for.
+ *
+ * Kept in `storyteller_state`, a manifest field that has been carried and migrated since Phase 2 with nothing
+ * reading it - so pacing memory needs no schema of its own.
+ */
+/datum/controller/subsystem/campaign/proc/get_story_state()
+	RETURN_TYPE(/datum/colony_story_state)
+	if(!manifest)
+		return null
+
+	if(!story_state)
+		story_state = new
+		if(length(manifest.storyteller_state) && !story_state.deserialize(manifest.storyteller_state))
+			log_game("Campaign [manifest.campaign_id] has an unreadable pacing record; the colony's recent history starts empty.")
+	return story_state
+
+/// Writes the live pacing state back into the manifest, which is what a commit will store.
+/datum/controller/subsystem/campaign/proc/sync_story_state()
+	if(manifest && story_state)
+		manifest.storyteller_state = story_state.serialize()
+
+/**
+ * Files an incident's result against the chapter, and stops tracking the incident that produced it.
+ *
+ * This is the single wire between what happens and what pacing remembers: every incident resolves through
+ * here, so nothing has to remember to report itself separately.
+ */
+/datum/controller/subsystem/campaign/proc/record_incident_result(datum/colony_incident_result/incident_result)
+	if(!istype(incident_result))
+		return FALSE
+
+	var/list/record = incident_result.serialize()
+	LAZYADD(incident_history, list(record))
+
+	var/datum/colony_story_state/story = get_story_state()
+	if(story)
+		story.record_incident(record)
+		sync_story_state()
+	return TRUE
+
+/**
+ * Notes that the colony faced something serious this chapter.
+ *
+ * A chapter survived at the cost of a real fight is not a quiet one, and recovery must not fall for it -
+ * otherwise a colony that wins every raid is treated as though nothing has been happening to it.
+ */
+/datum/controller/subsystem/campaign/proc/note_major_threat()
+	faced_major_threat_this_chapter = TRUE
+	var/datum/colony_story_state/story = get_story_state()
+	if(story)
+		story.record_major_threat()
+		sync_story_state()
+	return TRUE
+
+/// Drops an incident that has stopped, so a finished one cannot block the next.
+/datum/controller/subsystem/campaign/proc/forget_incident(datum/colony_incident/incident)
+	LAZYREMOVE(active_incidents, incident)
+	return TRUE
+
 /// TRUE when a campaign is being played, which is what campaign-aware code keys off.
 /datum/controller/subsystem/campaign/proc/is_campaign_active()
 	return !isnull(manifest) && campaign_state != CAMPAIGN_STATE_NONE
@@ -684,6 +872,13 @@ SUBSYSTEM_DEF(campaign)
 	// the ones belonging to the world being preserved alongside them.
 	capture_research()
 	capture_ledger()
+
+	// Aged before the checkpoint is staged, so the campaign record preserved alongside the world describes the
+	// chapter that just ended rather than the one before it.
+	var/datum/colony_story_state/closing_story = get_story_state()
+	if(closing_story)
+		closing_story.advance_chapter(COLONY_OUTCOME_SUCCESS, faced_major_threat_this_chapter)
+		sync_story_state()
 
 	var/played_chapter = manifest.chapter
 	var/checkpoint_id = "checkpoint-[played_chapter]"
