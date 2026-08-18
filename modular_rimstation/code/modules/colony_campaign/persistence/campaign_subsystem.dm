@@ -30,6 +30,20 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/colony_research_record/research
 	/// What the settlement owns and how it came to own it. Written through on every change.
 	var/datum/settlement_ledger/ledger
+
+	/// Everyone this generation has known. Rebuilt from the manifest at the start of every chapter.
+	var/datum/colonist_roster/roster
+
+	/// Colonist ids seen at any point this chapter. Append-only until the chapter ends.
+	var/list/colonists_seen_this_chapter = list()
+
+	/**
+	 * Colonist id to a weakref of the body currently playing them.
+	 *
+	 * Written by bind_colonist() and cleared by the binding component when a body goes away. Its reader is the
+	 * equipment declaration, which has to find the live body behind a colonist while a save is being written.
+	 */
+	var/list/active_colonist_bodies = list()
 	/// Incidents running right now, so nothing schedules over the top of one already in progress.
 	var/list/active_incidents
 	/// Serialized results of incidents this chapter, oldest first. Read by pacing, not by play.
@@ -197,6 +211,7 @@ SUBSYSTEM_DEF(campaign)
 	faced_major_threat_this_chapter = FALSE
 	restore_research()
 	restore_ledger()
+	restore_roster()
 	mark_chapter_opened(manifest.chapter)
 	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
 	return TRUE
@@ -604,6 +619,129 @@ SUBSYSTEM_DEF(campaign)
 	return TRUE
 
 /**
+ * The colony's roster, built from the manifest the first time it is asked for.
+ *
+ * Materialised on demand for the same reason the ledger is: nothing has to be ordered correctly between the
+ * manifest arriving and somebody wanting to join.
+ */
+/datum/controller/subsystem/campaign/proc/get_roster()
+	RETURN_TYPE(/datum/colonist_roster)
+	if(!manifest)
+		return null
+
+	if(!roster)
+		roster = new
+		if(length(manifest.roster_record) && !roster.deserialize(manifest.roster_record))
+			log_game("Campaign [manifest.campaign_id] has an unreadable roster; this chapter starts with nobody written down.")
+			message_admins("The colony's roster could not be read. This chapter starts with an empty roster - do not commit it if the record matters.")
+	return roster
+
+/// Writes the live roster back into the manifest, which is what a commit will store.
+/datum/controller/subsystem/campaign/proc/sync_roster()
+	if(manifest && roster)
+		manifest.roster_record = roster.serialize()
+
+/// Starts the chapter from the roster the last one committed, and forgets who was here before it.
+/datum/controller/subsystem/campaign/proc/restore_roster()
+	if(!manifest)
+		return FALSE
+
+	colonists_seen_this_chapter = list()
+	active_colonist_bodies = list()
+	return !isnull(get_roster())
+
+/**
+ * Marks `body` as the one playing `record` this chapter, and counts their attendance.
+ *
+ * Attendance is credited here rather than at commit, on the same principle as death: it is recorded when it
+ * happens, so a chapter that ends badly still knows who turned up for it. Crediting is once per chapter per
+ * colonist, so rejoining after a disconnect does not inflate anybody's history.
+ */
+/datum/controller/subsystem/campaign/proc/bind_colonist(mob/living/body, datum/colonist_record/record)
+	if(!istype(body) || !istype(record))
+		return FALSE
+
+	var/datum/colonist_roster/colony = get_roster()
+	// A record has to be one of ours. Binding a body to a colonist the colony has never written down would
+	// produce attendance for somebody who does not exist here.
+	if(!colony || colony.get_record(record.colonist_id) != record)
+		return FALSE
+
+	var/datum/component/colonist_binding/existing = body.GetComponent(/datum/component/colonist_binding)
+	if(existing)
+		// Already bound to this colonist is success; bound to a different one is not something to silently fix.
+		return existing.colonist_id == record.colonist_id
+
+	if(!body.AddComponent(/datum/component/colonist_binding, record.colonist_id))
+		return FALSE
+
+	active_colonist_bodies[record.colonist_id] = WEAKREF(body)
+	if(!(record.colonist_id in colonists_seen_this_chapter))
+		colonists_seen_this_chapter += record.colonist_id
+		record.chapters_attended++
+
+	if(record.status != COLONIST_STATUS_DEAD)
+		record.status = COLONIST_STATUS_ACTIVE
+	return TRUE
+
+/**
+ * Forgets which body was playing a colonist. The record is untouched - a person does not stop existing.
+ *
+ * The weakref is compared rather than trusted, so a body being cleaned up long after it was replaced cannot
+ * unregister whichever body took its place.
+ */
+/datum/controller/subsystem/campaign/proc/forget_colonist_body(colonist_id, datum/weakref/body_ref)
+	if(active_colonist_bodies[colonist_id] != body_ref)
+		return FALSE
+
+	active_colonist_bodies -= colonist_id
+	return TRUE
+
+/// The body currently playing a colonist, or null if nobody is.
+/datum/controller/subsystem/campaign/proc/get_colonist_body(colonist_id)
+	RETURN_TYPE(/mob/living)
+	var/datum/weakref/body_ref = active_colonist_bodies[colonist_id]
+	return body_ref?.resolve()
+
+/// Records that a colonist died, at the moment it happened rather than at the end of the chapter.
+/datum/controller/subsystem/campaign/proc/note_colonist_death(colonist_id)
+	var/datum/colonist_roster/colony = get_roster()
+	if(!colony)
+		return FALSE
+
+	var/datum/colonist_record/record = colony.get_record(colonist_id)
+	if(!record || record.status == COLONIST_STATUS_DEAD)
+		return FALSE
+
+	record.status = COLONIST_STATUS_DEAD
+	log_game("Colony campaign [manifest?.campaign_id]: colonist [record.display_name] ([colonist_id]) died in chapter [manifest?.chapter].")
+	return TRUE
+
+/**
+ * Writes down who was actually here this chapter.
+ *
+ * Attendance was already counted as people arrived, so this is only the status sweep: everyone the chapter did
+ * not see becomes away. The sweep never touches the dead, because otherwise a colony would forget its dead
+ * simply by playing a chapter without them - which is every chapter after the one they died in.
+ */
+/datum/controller/subsystem/campaign/proc/capture_roster()
+	if(!manifest)
+		return FALSE
+
+	var/datum/colonist_roster/colony = get_roster()
+	if(!colony)
+		return FALSE
+
+	for(var/colonist_id in colony.records)
+		var/datum/colonist_record/record = colony.records[colonist_id]
+		if(record.status == COLONIST_STATUS_DEAD)
+			continue
+		record.status = (colonist_id in colonists_seen_this_chapter) ? COLONIST_STATUS_ACTIVE : COLONIST_STATUS_AWAY
+
+	sync_roster()
+	return TRUE
+
+/**
  * Which incidents of `incident_category` could run right now.
  *
  * Asked before the storyteller spends anything, so a category with no runnable incident is simply never
@@ -888,6 +1026,7 @@ SUBSYSTEM_DEF(campaign)
 	// the ones belonging to the world being preserved alongside them.
 	capture_research()
 	capture_ledger()
+	capture_roster()
 
 	// Aged before the checkpoint is staged, so the campaign record preserved alongside the world describes the
 	// chapter that just ended rather than the one before it.

@@ -143,14 +143,51 @@
  * 2: generations are counted, so the next one can be named without reading the previous ones.
  * 3: the colony carries its research between chapters.
  * 4: the settlement carries its ledger between chapters.
+ * 5: the colony remembers who lives in it.
  */
-#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 4
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 5
 
 /// Research record layout version. Migrated alongside the manifest that carries it.
 #define COLONY_RESEARCH_SCHEMA_VERSION 1
 
 /// Settlement ledger layout version. Migrated alongside the manifest that carries it.
 #define COLONY_LEDGER_SCHEMA_VERSION 1
+
+/// Colonist roster layout version. Migrated alongside the manifest that carries it.
+#define COLONY_ROSTER_SCHEMA_VERSION 1
+
+// What a colonist is to the campaign right now. A record is never deleted, only moved between these.
+/// Played this chapter.
+#define COLONIST_STATUS_ACTIVE "active"
+/// On the roster, but nobody played them this chapter. They have no body and are owed nothing.
+#define COLONIST_STATUS_AWAY "away"
+/// Died in the colony. Kept on the roster so the colony remembers them.
+#define COLONIST_STATUS_DEAD "dead"
+
+/// Every status a stored record is allowed to claim. Anything else is a corrupted or hand-edited record.
+#define COLONIST_STATUSES list( \
+	COLONIST_STATUS_ACTIVE, \
+	COLONIST_STATUS_AWAY, \
+	COLONIST_STATUS_DEAD, \
+)
+
+/**
+ * Every key a serialized colonist record is allowed to carry.
+ *
+ * Declared here rather than left implicit in serialize() so that adding a field is a deliberate act with a test
+ * behind it. The campaign must never grow a habit of storing whatever happens to be on a player.
+ */
+#define COLONIST_RECORD_FIELDS list( \
+	"colonist_id", \
+	"display_name", \
+	"owner_ckey", \
+	"generation_joined", \
+	"chapter_joined", \
+	"chapters_attended", \
+	"status", \
+	"skills", \
+	"home_point", \
+)
 
 /**
  * Which bank account holds the settlement's money.

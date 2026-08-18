@@ -369,6 +369,9 @@
 // RIMSTATION ADDITION START - Campaign unit tests
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/opening.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_chapter.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_chapter.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_record.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_roster.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_checkpoint.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_manifest.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_migration.dm"

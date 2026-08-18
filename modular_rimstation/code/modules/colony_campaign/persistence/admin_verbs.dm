@@ -184,4 +184,16 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 	var/list/snapshots = SScampaign.list_recovery_snapshots()
 	report += "Recoverable checkpoints: [length(snapshots) ? snapshots.Join(", ") : "none"]"
 
+	// Pacing is the thing you cannot see from in the world: recovery decides what the storyteller is willing
+	// to throw next, so it has to be readable somewhere or it can only be judged by guessing.
+	var/datum/colony_story_state/story = SScampaign.get_story_state()
+	if(story)
+		report += "---"
+		report += "Campaign age: [story.campaign_age] chapters ([story.chapter_age] this generation)"
+		report += "Recovery owed: [story.recovery]/100[story.is_recovering_hard() ? " - too battered for disasters" : ""]"
+		report += "Recent loss: [story.recent_loss]/100"
+		report += "Chapters since a major threat: [story.chapters_since_major_threat()]"
+		report += "Storms weighted at: [story.get_event_weight_multiplier(list(TAG_DESTRUCTIVE))]x, quiet events at [story.get_event_weight_multiplier(list(TAG_NEUTRAL))]x"
+		report += "Incidents remembered: [length(story.recent_incidents)]"
+
 	to_chat(user, boxed_message(span_notice(report.Join("\n"))))

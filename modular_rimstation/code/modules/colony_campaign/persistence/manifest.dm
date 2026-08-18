@@ -24,6 +24,8 @@
 	var/list/research_record
 	/// Serialized /datum/settlement_ledger. What the settlement owns and how it came to own it.
 	var/list/ledger_record
+	/// Serialized /datum/colonist_roster. Everyone this generation has known.
+	var/list/roster_record
 	/// Which chapter is next.
 	var/chapter = 1
 	/// Accumulated campaign time in deciseconds.
@@ -46,6 +48,7 @@
 	planet_record = list()
 	research_record = list()
 	ledger_record = list()
+	roster_record = list()
 	storyteller_state = list()
 	record_references = list()
 
@@ -116,6 +119,7 @@
 		"planet_record" = planet_record?.Copy() || list(),
 		"research_record" = research_record?.Copy() || list(),
 		"ledger_record" = ledger_record?.Copy() || list(),
+		"roster_record" = roster_record?.Copy() || list(),
 		"chapter" = chapter,
 		"campaign_clock" = campaign_clock,
 		"storyteller_state" = storyteller_state?.Copy() || list(),
@@ -164,6 +168,8 @@
 				record = migrate_campaign_manifest_v2_to_v3(record)
 			if(3)
 				record = migrate_campaign_manifest_v3_to_v4(record)
+			if(4)
+				record = migrate_campaign_manifest_v4_to_v5(record)
 			else
 				log_game("Campaign manifest rejected: no migration exists from schema version [from_version].")
 				return null
@@ -220,6 +226,20 @@
 	return record
 
 /**
+ * Schema 4 to 5: the colony remembers who lives in it.
+ *
+ * A campaign from before the roster existed has never written anybody down, so it starts with an empty one.
+ * Everyone already playing it becomes a newcomer on their next chapter, which is the honest answer - the colony
+ * genuinely has no record of what they did before this.
+ */
+/proc/migrate_campaign_manifest_v4_to_v5(list/record)
+	RETURN_TYPE(/list)
+	if(!islist(record["roster_record"]))
+		record["roster_record"] = list()
+	record["schema_version"] = 5
+	return record
+
+/**
  * Loads a record produced by serialize(). Returns TRUE on success.
  *
  * Everything is validated before anything is assigned. A half-applied manifest is worse than no manifest,
@@ -243,6 +263,7 @@
 	candidate.planet_record = islist(migrated["planet_record"]) ? migrated["planet_record"] : list()
 	candidate.research_record = islist(migrated["research_record"]) ? migrated["research_record"] : list()
 	candidate.ledger_record = islist(migrated["ledger_record"]) ? migrated["ledger_record"] : list()
+	candidate.roster_record = islist(migrated["roster_record"]) ? migrated["roster_record"] : list()
 	candidate.chapter = migrated["chapter"]
 	candidate.campaign_clock = migrated["campaign_clock"]
 	candidate.storyteller_state = islist(migrated["storyteller_state"]) ? migrated["storyteller_state"] : list()
@@ -263,6 +284,7 @@
 	planet_record = candidate.planet_record
 	research_record = candidate.research_record
 	ledger_record = candidate.ledger_record
+	roster_record = candidate.roster_record
 	chapter = candidate.chapter
 	campaign_clock = candidate.campaign_clock
 	storyteller_state = candidate.storyteller_state
