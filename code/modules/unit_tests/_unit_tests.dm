@@ -383,6 +383,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/planet.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/research_persistence.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/research_start.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/persistence_guard.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/telemetry.dm"

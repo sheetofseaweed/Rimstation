@@ -317,3 +317,17 @@
 #define COLONY_RAID_WAYPOINT_SPACING 15
 /// How close an attacker must get to a waypoint before it is handed the next one.
 #define COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE 3
+
+/**
+ * What a colony arrives already knowing.
+ *
+ * A station techweb researches two dozen starting nodes in New(), which hands a new settlement most of the
+ * curve for free. A colony gets the four that a landing party would plausibly bring: how to build, how to make
+ * parts, how to do science at all, and how to work raw material.
+ */
+#define CAMPAIGN_STARTING_RESEARCH_NODES list( \
+	TECHWEB_NODE_CONSTRUCTION, \
+	TECHWEB_NODE_PARTS, \
+	TECHWEB_NODE_FUNDIMENTAL_SCI, \
+	TECHWEB_NODE_MATERIAL_PROC, \
+)

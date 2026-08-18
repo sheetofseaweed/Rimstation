@@ -138,10 +138,13 @@
 			"name" = node.display_name,
 			"description" = node.description
 		)
-		if (LAZYLEN(node.research_costs))
+		// RIMSTATION EDIT: ORG - read node.research_costs directly. The price shown must be the price charged,
+		// and get_price() is what the purchase actually uses. See rdconsole.dm for the same fix.
+		var/list/displayed_costs = node.get_price(stored_research)
+		if (LAZYLEN(displayed_costs))
 			node_cache[compressed_id]["costs"] = list()
-			for (var/node_cost in node.research_costs)
-				node_cache[compressed_id]["costs"]["[compress_id(node_cost)]"] = node.research_costs[node_cost]
+			for (var/node_cost in displayed_costs)
+				node_cache[compressed_id]["costs"]["[compress_id(node_cost)]"] = displayed_costs[node_cost]
 		if (LAZYLEN(node.prereq_ids))
 			node_cache[compressed_id]["prereq_ids"] = list()
 			for (var/prerequisite_node in node.prereq_ids)

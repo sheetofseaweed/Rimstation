@@ -466,6 +466,17 @@ SUBSYSTEM_DEF(campaign)
 		log_game("Campaign [manifest.campaign_id] found no techweb to restore its research into.")
 		return FALSE
 
+	// Cut back before anything is restored, so the colony's own record is what widens the techweb rather than
+	// the station starting set the techweb granted itself.
+	if(CONFIG_GET(flag/campaign_restrict_starting_research))
+		var/removed = restrict_techweb_to_campaign_start(web)
+		if(removed)
+			log_game("Campaign [manifest.campaign_id] withheld [removed] station starting nodes.")
+
+	if(!CONFIG_GET(flag/campaign_research_persistence))
+		log_game("Campaign [manifest.campaign_id] is not carrying research between chapters; persistence is disabled in config.")
+		return TRUE
+
 	var/restored = research.restore_into(web)
 	if(restored)
 		log_game("Campaign [manifest.campaign_id] restored [restored] researched nodes.")
@@ -577,6 +588,11 @@ SUBSYSTEM_DEF(campaign)
 
 	var/datum/techweb/web = get_colony_techweb()
 	if(!web)
+		return FALSE
+
+	// Nothing is captured when persistence is off, so turning it back on later does not resurrect a chapter's
+	// research that the colony was told it would not keep.
+	if(!CONFIG_GET(flag/campaign_research_persistence))
 		return FALSE
 
 	if(!research)

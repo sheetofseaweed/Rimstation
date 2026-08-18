@@ -112,6 +112,38 @@
 	return !length(researched_node_ids) && !length(research_points)
 
 
+/**
+ * Cuts a techweb back to what a colony arrives knowing.
+ *
+ * A techweb researches every starting node in New() - two dozen of them - which hands a new settlement most of
+ * the curve for free. This removes everything outside the campaign's starting set and rebuilds the derived
+ * lists, so the colony begins where the curve begins.
+ *
+ * Nodes are removed rather than the set being built up, because New() has already run by the time anything can
+ * intervene. Returns how many were taken away.
+ */
+/proc/restrict_techweb_to_campaign_start(datum/techweb/web)
+	if(!istype(web))
+		return 0
+
+	var/list/allowed = CAMPAIGN_STARTING_RESEARCH_NODES
+	var/removed = 0
+	for(var/node_id in web.researched_nodes.Copy())
+		if(node_id in allowed)
+			continue
+		web.researched_nodes -= node_id
+		removed++
+
+	// The colony still has to actually know its starting set, even if the techweb never granted it.
+	for(var/node_id in allowed)
+		var/datum/techweb_node/node = SSresearch.techweb_node_by_id(node_id)
+		if(node && !web.researched_nodes[node_id])
+			web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE)
+
+	// Designs and availability are derived from researched nodes, so they are rebuilt rather than edited.
+	web.recalculate_nodes(recalculate_designs = TRUE)
+	return removed
+
 /// The techweb a colony's research is kept in. The station web, because it is the one everything already uses.
 /proc/get_colony_techweb()
 	RETURN_TYPE(/datum/techweb)
