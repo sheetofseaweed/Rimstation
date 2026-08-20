@@ -97,7 +97,7 @@
 /// Somewhere open near the colony core, so the drop is a short walk rather than an expedition.
 /datum/colony_incident/trader/proc/find_delivery_turf()
 	RETURN_TYPE(/turf)
-	var/obj/structure/colony_core/core = locate() in world
+	var/obj/structure/colony_core/core = get_colony_core()
 	if(!core)
 		return null
 

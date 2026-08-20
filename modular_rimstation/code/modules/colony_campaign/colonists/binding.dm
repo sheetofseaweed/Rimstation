@@ -30,8 +30,13 @@
 	RegisterSignal(parent, COMSIG_LIVING_DEATH, PROC_REF(on_colonist_death))
 
 /datum/component/colonist_binding/Destroy(force)
-	if(parent)
-		UnregisterSignal(parent, COMSIG_LIVING_DEATH)
+	// Written down on the way out, because commit can only read bodies that are still standing. A colonist who
+	// logged off or was gibbed would otherwise donate a chapter of learning to nobody.
+	var/mob/living/body = parent
+	if(istype(body))
+		SScampaign.capture_skills_for(colonist_id, body.mind)
+		UnregisterSignal(body, COMSIG_LIVING_DEATH)
+
 	SScampaign.forget_colonist_body(colonist_id, body_ref)
 	body_ref = null
 	return ..()

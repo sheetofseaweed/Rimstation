@@ -121,7 +121,8 @@
 	chapters_attended = incoming_attendance
 	status = incoming_status
 	skills = incoming_skills
-	home_point = (islist(data["home_point"]) && length(data["home_point"])) ? data["home_point"].Copy() : null
+	var/list/incoming_home = data["home_point"]
+	home_point = (islist(incoming_home) && length(incoming_home)) ? incoming_home.Copy() : null
 	return TRUE
 
 

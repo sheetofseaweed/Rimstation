@@ -96,8 +96,9 @@
 
 	// The same has to hold for a record arriving off disk, which is where a hand-edited file would come in.
 	var/list/stored = roster.serialize()
-	var/list/duplicated_entry = stored["records"][1].Copy()
-	stored["records"] += list(duplicated_entry)
+	var/list/stored_records = stored["records"]
+	var/list/first_record = stored_records[1]
+	stored["records"] += list(first_record.Copy())
 
 	var/datum/colonist_roster/loaded = new
 	allocated += loaded

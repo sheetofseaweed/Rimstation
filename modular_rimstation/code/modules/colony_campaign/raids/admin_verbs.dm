@@ -6,7 +6,7 @@
  * also what makes the vertical slice testable on demand instead of on the storyteller's schedule.
  */
 ADMIN_VERB(rimstation_start_colony_raid, R_ADMIN, "Start Colony Raid", "Begins a telegraphed raid on the colony core.", ADMIN_CATEGORY_EVENTS)
-	var/obj/structure/colony_core/core = locate() in world
+	var/obj/structure/colony_core/core = get_colony_core()
 	if(!core)
 		to_chat(user, span_warning("There is no colony core on this map."))
 		return

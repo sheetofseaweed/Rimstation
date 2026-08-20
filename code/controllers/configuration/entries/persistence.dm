@@ -59,4 +59,27 @@
  */
 /datum/config_entry/flag/campaign_restrict_starting_research
 	default = TRUE
+
+/**
+ * How much of a colonist's experience is lost each chapter, as a proportion.
+ *
+ * The counterweight to carrying skills between chapters: without one, a colonist only ratchets upward, since
+ * nothing in a campaign takes skill away. Ships at 0 - the mechanism exists, switched off - because the right
+ * rate cannot be judged before several chapters have actually been played. 0.1 costs a tenth per chapter.
+ */
+/datum/config_entry/number/campaign_skill_decay_per_chapter
+	default = 0
+	min_val = 0
+	max_val = 1
+	integer = FALSE
+
+/**
+ * Keep what colonists are wearing between chapters.
+ *
+ * Carbon mobs are excluded from the map save, so without this everything worn or carried is deleted at the end
+ * of every chapter and the colony undresses into a locker to avoid it. On, a stash or personal locker declares
+ * its colonists' belongings as it is written - nobody is undressed, and the clothes come back next chapter.
+ */
+/datum/config_entry/flag/campaign_equipment_persistence
+	default = TRUE
 // RIMSTATION EDIT ADDITION END

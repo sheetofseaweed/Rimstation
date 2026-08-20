@@ -13,7 +13,7 @@ ADMIN_VERB(rimstation_start_colony_campaign, R_ADMIN, "Start Colony Campaign", "
 		to_chat(user, span_warning("A campaign is already running: [SScampaign.manifest.campaign_id], generation [SScampaign.manifest.generation_id], chapter [SScampaign.manifest.chapter]."))
 		return
 
-	var/obj/structure/colony_core/core = locate() in world
+	var/obj/structure/colony_core/core = get_colony_core()
 	if(!core)
 		to_chat(user, span_warning("There is no colony core on this map. A campaign here could never be lost, only saved, which is not a campaign."))
 		return
@@ -183,6 +183,23 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 
 	var/list/snapshots = SScampaign.list_recovery_snapshots()
 	report += "Recoverable checkpoints: [length(snapshots) ? snapshots.Join(", ") : "none"]"
+
+	// Who the colony thinks lives here. The register console is the player-facing version of this.
+	var/datum/colonist_roster/roster = SScampaign.get_roster()
+	if(roster)
+		var/here = 0
+		var/away = 0
+		var/dead = 0
+		for(var/colonist_id in roster.records)
+			var/datum/colonist_record/record = roster.records[colonist_id]
+			switch(record.status)
+				if(COLONIST_STATUS_ACTIVE)
+					here++
+				if(COLONIST_STATUS_AWAY)
+					away++
+				if(COLONIST_STATUS_DEAD)
+					dead++
+		report += "Roster: [length(roster.records)] colonists - [here] here, [away] away, [dead] dead"
 
 	// Pacing is the thing you cannot see from in the world: recovery decides what the storyteller is willing
 	// to throw next, so it has to be readable somewhere or it can only be judged by guessing.

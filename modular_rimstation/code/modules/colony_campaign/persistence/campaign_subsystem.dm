@@ -44,6 +44,8 @@ SUBSYSTEM_DEF(campaign)
 	 * equipment declaration, which has to find the live body behind a colonist while a save is being written.
 	 */
 	var/list/active_colonist_bodies = list()
+	/// Which chapter the attendance window above describes. Null until somebody is seen.
+	var/seen_chapter
 	/// Incidents running right now, so nothing schedules over the top of one already in progress.
 	var/list/active_incidents
 	/// Serialized results of incidents this chapter, oldest first. Read by pacing, not by play.
@@ -209,9 +211,14 @@ SUBSYSTEM_DEF(campaign)
 	QDEL_NULL(chapter_outcome)
 	chapter_outcome = new
 	faced_major_threat_this_chapter = FALSE
-	restore_research()
+	// Asynchronous because this is reached from a signal handler and it is the one step here that sleeps:
+	// rebuilding the techweb runs recalculate_nodes(), which yields through stoplag(). Everything after it
+	// stays synchronous, so the chapter's state, ledger, roster and open marker are all in place before this
+	// proc returns - only the techweb finishes catching up a tick later, which nothing is waiting on.
+	INVOKE_ASYNC(src, PROC_REF(restore_research))
 	restore_ledger()
 	restore_roster()
+	warn_if_map_is_not_a_colony()
 	mark_chapter_opened(manifest.chapter)
 	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
 	return TRUE
@@ -641,13 +648,32 @@ SUBSYSTEM_DEF(campaign)
 	if(manifest && roster)
 		manifest.roster_record = roster.serialize()
 
-/// Starts the chapter from the roster the last one committed, and forgets who was here before it.
-/datum/controller/subsystem/campaign/proc/restore_roster()
-	if(!manifest)
+/**
+ * Makes sure the attendance window belongs to the chapter currently being played.
+ *
+ * Keyed on the chapter number rather than on being called at the right moment, because there is no reliable
+ * moment to call it. Roundstart colonists are bound during the ticker's equip_characters(), which runs before
+ * COMSIG_TICKER_ROUND_STARTING is what starts the chapter - so clearing the window when a chapter begins would
+ * throw away everybody who spawned with the round and mark the whole colony absent from a chapter it played.
+ *
+ * Returns TRUE when a new window was opened.
+ */
+/datum/controller/subsystem/campaign/proc/ensure_attendance_window()
+	var/playing_chapter = manifest?.chapter
+	if(seen_chapter == playing_chapter)
 		return FALSE
 
 	colonists_seen_this_chapter = list()
 	active_colonist_bodies = list()
+	seen_chapter = playing_chapter
+	return TRUE
+
+/// Starts the chapter from the roster the last one committed.
+/datum/controller/subsystem/campaign/proc/restore_roster()
+	if(!manifest)
+		return FALSE
+
+	ensure_attendance_window()
 	return !isnull(get_roster())
 
 /**
@@ -666,6 +692,10 @@ SUBSYSTEM_DEF(campaign)
 	// produce attendance for somebody who does not exist here.
 	if(!colony || colony.get_record(record.colonist_id) != record)
 		return FALSE
+
+	// Opened here rather than at chapter start, so a colonist bound before the chapter formally begins is still
+	// counted. See ensure_attendance_window().
+	ensure_attendance_window()
 
 	var/datum/component/colonist_binding/existing = body.GetComponent(/datum/component/colonist_binding)
 	if(existing)
@@ -696,6 +726,25 @@ SUBSYSTEM_DEF(campaign)
 
 	active_colonist_bodies -= colonist_id
 	return TRUE
+
+/**
+ * Which colonist a body is playing, or null if it is not playing one.
+ *
+ * Asked of the binding on the mob rather than of the registry, so it answers correctly for a body that is not
+ * the campaign's currently registered one - and so anything holding a mob can find its colonist without
+ * knowing an id first.
+ */
+/datum/controller/subsystem/campaign/proc/get_colonist_record_for_body(mob/living/body)
+	RETURN_TYPE(/datum/colonist_record)
+	if(!istype(body))
+		return null
+
+	var/datum/component/colonist_binding/binding = body.GetComponent(/datum/component/colonist_binding)
+	if(!binding)
+		return null
+
+	var/datum/colonist_roster/colony = get_roster()
+	return colony?.get_record(binding.colonist_id)
 
 /// The body currently playing a colonist, or null if nobody is.
 /datum/controller/subsystem/campaign/proc/get_colonist_body(colonist_id)
@@ -734,12 +783,31 @@ SUBSYSTEM_DEF(campaign)
 
 	for(var/colonist_id in colony.records)
 		var/datum/colonist_record/record = colony.records[colonist_id]
+
+		// Anybody still standing has their skills read now. Those who already left wrote theirs down as their
+		// binding came off, so their record is left exactly as they left it.
+		var/mob/living/body = get_colonist_body(colonist_id)
+		if(body)
+			capture_colonist_skills(record, body.mind)
+
 		if(record.status == COLONIST_STATUS_DEAD)
 			continue
 		record.status = (colonist_id in colonists_seen_this_chapter) ? COLONIST_STATUS_ACTIVE : COLONIST_STATUS_AWAY
 
 	sync_roster()
 	return TRUE
+
+/// Writes a colonist's skills into their record, if the campaign still has one for them.
+/datum/controller/subsystem/campaign/proc/capture_skills_for(colonist_id, datum/mind/mind)
+	if(!istype(mind))
+		return FALSE
+
+	var/datum/colonist_roster/colony = get_roster()
+	var/datum/colonist_record/record = colony?.get_record(colonist_id)
+	if(!record)
+		return FALSE
+
+	return capture_colonist_skills(record, mind)
 
 /**
  * Which incidents of `incident_category` could run right now.

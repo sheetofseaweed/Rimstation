@@ -121,3 +121,13 @@ CAMPAIGN_RESEARCH_PERSISTENCE
 ## RIMSTATION: start a campaign colony with only construction, stock parts, fundamental science and material
 ## processing researched, rather than the full station starting set. Comment out to start with everything.
 CAMPAIGN_RESTRICT_STARTING_RESEARCH
+
+## RIMSTATION: how much of a colonist's skill experience is lost each chapter, as a proportion of what they
+## have. 0 keeps everything they learned; 0.1 costs a tenth per chapter. Carrying skills with no decay only
+## ever ratchets upward, but the right rate cannot be judged until several chapters have been played.
+CAMPAIGN_SKILL_DECAY_PER_CHAPTER 0
+
+## RIMSTATION: keep what colonists are wearing between chapters. Carbon mobs are excluded from the map save,
+## so with this off everything worn or carried is deleted at the end of every chapter. Needs a colony stash or
+## a claimed personal locker somewhere on the map to keep it in.
+CAMPAIGN_EQUIPMENT_PERSISTENCE

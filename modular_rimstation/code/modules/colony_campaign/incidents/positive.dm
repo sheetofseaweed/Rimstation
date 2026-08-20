@@ -28,7 +28,7 @@
 	if(!..())
 		return FALSE
 	// Somewhere to arrive at, and someone to arrive to.
-	return !isnull(locate(/obj/structure/colony_core) in world)
+	return !isnull(get_colony_core())
 
 /datum/colony_incident/refugee/announce_warning()
 	priority_announce("Someone is approaching the settlement on foot from the wilds. They are asking to be let in.", "Colony Advisory")
@@ -113,7 +113,7 @@
  */
 /datum/colony_incident/refugee/proc/spawn_refugee(mob/dead/observer/candidate)
 	RETURN_TYPE(/mob/living/carbon/human)
-	var/obj/structure/colony_core/core = locate() in world
+	var/obj/structure/colony_core/core = get_colony_core()
 	var/turf/arrival_turf = core ? get_step(core, pick(GLOB.cardinals)) : null
 	if(!arrival_turf || arrival_turf.density)
 		arrival_turf = core ? get_turf(core) : null

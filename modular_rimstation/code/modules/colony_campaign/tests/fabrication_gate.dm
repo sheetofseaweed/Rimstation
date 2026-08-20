@@ -112,8 +112,10 @@
 	TEST_ASSERT(!(target_design in lathe.cached_designs), "The fabricator already offered '[target_design.id]' before it was researched.")
 
 	TEST_ASSERT(colony_web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE), "The node could not be researched.")
-	// The machine batches its updates behind a timer, so ask it directly rather than waiting on one.
-	lathe.update_designs()
+	// The machine batches its updates behind a two-second timer. Reconnecting it to the same techweb is the
+	// public way to make it rebuild now - update_designs() itself is protected, and reaching past that from a
+	// test would only prove the test can break the rules.
+	lathe.connect_techweb(colony_web)
 	TEST_ASSERT(target_design in lathe.cached_designs, "Researching '[node.id]' did not make '[target_design.id]' buildable at the colony fabricator.")
 
 	SScampaign.campaign_state = saved_state

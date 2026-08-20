@@ -187,4 +187,54 @@
 	TEST_ASSERT(findtext(map, "save_sticker_offset = list(12, 20)"), "Expected the stored item's stick offsets to be written to the map")
 
 #undef TEST_LABEL_TEXT
+
+#define TEST_ID_OWNER "Vera Holt"
+#define TEST_ID_ASSIGNMENT "Colonist"
+
+/**
+ * An ID card is almost entirely the data printed on it, and none of it was in the save whitelist.
+ *
+ * A card that survives a chapter as blank plastic is worse than one that was deleted, because it looks like it
+ * still works. Owner, age, assignment and access all have to reach the map.
+ */
+/datum/unit_test/persistence_serialization_id_card_saved
+
+/datum/unit_test/persistence_serialization_id_card_saved/Run()
+	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
+	TEST_ASSERT(isfloorturf(test_turf), "Expected the ID card test turf to be a floor")
+
+	var/obj/item/card/id/card = allocate(/obj/item/card/id, test_turf)
+	card.registered_name = TEST_ID_OWNER
+	card.registered_age = 27
+	card.assignment = TEST_ID_ASSIGNMENT
+	card.access = list(ACCESS_MAINT_TUNNELS)
+
+	var/map = write_map(test_turf.x, test_turf.y, test_turf.z, test_turf.x, test_turf.y, test_turf.z, SAVE_OBJECTS | SAVE_OBJECTS_VARIABLES | SAVE_OBJECTS_PROPERTIES)
+
+	TEST_ASSERT_NOTNULL(map, "Expected write_map() to return data for an ID card")
+	TEST_ASSERT(findtext(map, "registered_name = \"[TEST_ID_OWNER]\""), "Expected the card's owner to be written to the map, or it comes back belonging to nobody")
+	TEST_ASSERT(findtext(map, "registered_age = 27"), "Expected the card's registered age to be written to the map")
+	TEST_ASSERT(findtext(map, "assignment = \"[TEST_ID_ASSIGNMENT]\""), "Expected the card's assignment to be written to the map")
+	// Access levels are strings, so they land in the map quoted.
+	TEST_ASSERT(findtext(map, "access = list(\"[ACCESS_MAINT_TUNNELS]\")"), "Expected the card's access to be written to the map, or it comes back opening nothing")
+
+/// A trim is a singleton datum and cannot be written to a map. Its type can, and that is what has to be stored.
+/datum/unit_test/persistence_serialization_id_card_trim_saved
+
+/datum/unit_test/persistence_serialization_id_card_trim_saved/Run()
+	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
+	var/obj/item/card/id/card = allocate(/obj/item/card/id, test_turf)
+
+	SSid_access.apply_trim_to_card(card, /datum/id_trim/job/assistant)
+	TEST_ASSERT_NOTNULL(card.trim, "Expected the test to be able to put a trim on a card")
+
+	var/map = write_map(test_turf.x, test_turf.y, test_turf.z, test_turf.x, test_turf.y, test_turf.z, SAVE_OBJECTS | SAVE_OBJECTS_VARIABLES | SAVE_OBJECTS_PROPERTIES)
+
+	TEST_ASSERT_NOTNULL(map, "Expected write_map() to return data for a trimmed ID card")
+	TEST_ASSERT(findtext(map, "trim = [/datum/id_trim/job/assistant]"), "Expected the card's trim to be written to the map as a typepath")
+	// A datum reference written verbatim would be a useless string like \[0x2000001\].
+	TEST_ASSERT(!findtext(map, "trim = \"\["), "Expected the trim to be written as a typepath rather than a datum reference")
+
+#undef TEST_ID_OWNER
+#undef TEST_ID_ASSIGNMENT
 // RIMSTATION EDIT ADDITION END

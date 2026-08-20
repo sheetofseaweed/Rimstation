@@ -12,6 +12,7 @@
 	GLOB.save_containers_parents.Cut()
 	GLOB.save_containers_children.Cut()
 	GLOB.save_sticker_offsets.Cut() // RIMSTATION EDIT ADDITION
+	reset_colonist_stash_write_state() // RIMSTATION EDIT ADDITION
 
 /proc/cancel_write_map()
 	SSworld_save.record_serialization_failure("cancel_requested")

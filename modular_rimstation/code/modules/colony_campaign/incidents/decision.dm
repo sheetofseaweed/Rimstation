@@ -68,7 +68,7 @@ GLOBAL_LIST_EMPTY(rimstation_open_decisions)
 
 	// The core is a physical fallback: it always exists while the colony does, so a settlement with no console
 	// can still be asked things it ought to be able to answer.
-	if(accepts_source(INCIDENT_ANSWER_COLONY_CORE) && (locate(/obj/structure/colony_core) in world))
+	if(accepts_source(INCIDENT_ANSWER_COLONY_CORE) && get_colony_core())
 		reached = TRUE
 
 	if(!reached)

@@ -318,6 +318,18 @@
 	if(!available_roundstart && !available_latejoin) //map config disabled the job
 		return FALSE
 
+	// RIMSTATION EDIT ADDITION START - a colony runs exactly one job.
+	// Hiding rather than removing, deliberately. Returning FALSE above drops the job from SSjob's lookups as
+	// well as its selection pool, so anything asking for one by name gets null - set_overflow_role() and
+	// setup_officer_positions() both CRASH on exactly that. Clearing the joinable flag instead keeps every job
+	// datum where the rest of the game expects to find it, and only takes it off the menu.
+	if(is_colonist_only_map())
+		if(title != JOB_COLONIST)
+			job_flags &= ~JOB_NEW_PLAYER_JOINABLE
+	else if(title == JOB_COLONIST)
+		job_flags &= ~JOB_NEW_PLAYER_JOINABLE
+	// RIMSTATION EDIT ADDITION END
+
 	return TRUE
 
 /// Gets the message that shows up when spawning as this job

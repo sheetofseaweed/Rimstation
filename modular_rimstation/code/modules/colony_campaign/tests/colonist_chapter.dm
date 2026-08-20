@@ -12,6 +12,7 @@
 	var/datum/colonist_roster/saved_roster
 	var/list/saved_seen
 	var/list/saved_bodies
+	var/saved_seen_chapter
 
 /// Puts SScampaign on a throwaway campaign with an empty roster, and returns its manifest.
 /datum/unit_test/rimstation_colonist_chapter/proc/begin_test_campaign()
@@ -21,6 +22,7 @@
 	saved_roster = SScampaign.roster
 	saved_seen = SScampaign.colonists_seen_this_chapter
 	saved_bodies = SScampaign.active_colonist_bodies
+	saved_seen_chapter = SScampaign.seen_chapter
 
 	var/datum/campaign_manifest/manifest = new("unit-test-colonists", "generation-1")
 	allocated += manifest
@@ -29,6 +31,8 @@
 	SScampaign.roster = new
 	SScampaign.colonists_seen_this_chapter = list()
 	SScampaign.active_colonist_bodies = list()
+	// Null rather than the test's chapter, so the first binding opens a window belonging to this test.
+	SScampaign.seen_chapter = null
 	return manifest
 
 /datum/unit_test/rimstation_colonist_chapter/Destroy()
@@ -40,6 +44,7 @@
 	SScampaign.roster = saved_roster
 	SScampaign.colonists_seen_this_chapter = saved_seen
 	SScampaign.active_colonist_bodies = saved_bodies
+	SScampaign.seen_chapter = saved_seen_chapter
 	saved_manifest = null
 	saved_roster = null
 	saved_seen = null
@@ -97,6 +102,43 @@
 	// Capture happens once per chapter, but a commit can be attempted more than once after a failure.
 	TEST_ASSERT(SScampaign.capture_roster(), "The colony could not write down its roster a second time.")
 	TEST_ASSERT_EQUAL(vera.chapters_attended, 4, "Capturing the roster twice counted the same chapter twice.")
+
+
+/**
+ * Somebody who joined before the chapter formally began still played that chapter.
+ *
+ * Roundstart colonists are bound during the ticker's equip_characters(), which runs *before* the signal that
+ * starts the chapter. A chapter that cleared its attendance on starting would therefore forget everyone who
+ * spawned with the round and mark the entire colony absent from a chapter it spent playing. Attendance is
+ * keyed on the chapter number instead, so the order these two happen in stops mattering.
+ */
+/datum/unit_test/rimstation_colonist_chapter/attendance_survives_chapter_start
+
+/datum/unit_test/rimstation_colonist_chapter/attendance_survives_chapter_start/Run()
+	var/datum/campaign_manifest/manifest = begin_test_campaign()
+	manifest.chapter = 3
+
+	var/datum/colonist_record/vera = SScampaign.roster.find_or_create("playerone", "Vera Holt", generation_number = 1, chapter = 1)
+	vera.chapters_attended = 2
+
+	// Bound first, exactly as a roundstart colonist is.
+	var/mob/living/carbon/human/vera_body = allocate(/mob/living/carbon/human/consistent)
+	TEST_ASSERT(SScampaign.bind_colonist(vera_body, vera), "A colonist could not be bound before the chapter began.")
+
+	// The chapter then formally starts, which is where the attendance window used to be thrown away.
+	TEST_ASSERT(SScampaign.restore_roster(), "The chapter could not start after a colonist had already joined.")
+
+	TEST_ASSERT(SScampaign.capture_roster(), "The colony could not write down the chapter.")
+	TEST_ASSERT_EQUAL(vera.status, COLONIST_STATUS_ACTIVE, "A colonist who joined before the chapter began was marked absent from it.")
+	TEST_ASSERT_EQUAL(vera.chapters_attended, 3, "A colonist who joined before the chapter began was not credited for it.")
+	TEST_ASSERT_NOTNULL(SScampaign.get_colonist_body(vera.colonist_id), "Starting the chapter forgot which body was playing a colonist who had already joined.")
+
+	// A genuinely new chapter still starts from nobody, or attendance would accumulate across chapters forever.
+	manifest.chapter = 4
+	TEST_ASSERT(SScampaign.restore_roster(), "The next chapter could not start.")
+	TEST_ASSERT(SScampaign.capture_roster(), "The colony could not write down a chapter nobody played.")
+	TEST_ASSERT_EQUAL(vera.status, COLONIST_STATUS_AWAY, "A colonist counted as present in a later chapter they were never bound in.")
+	TEST_ASSERT_EQUAL(vera.chapters_attended, 3, "A colonist was credited with a chapter they did not play.")
 
 
 /**

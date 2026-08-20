@@ -30,11 +30,27 @@
 	/// Factions currently able to take this core. Empty outside a raid, so colonists and wildlife never count.
 	var/list/contesting_factions
 
+/**
+ * Every colony core that currently exists.
+ *
+ * Kept as a list because the alternative, `locate() in world`, also finds cores that have been qdel'd but not
+ * yet collected - so a colony whose core was destroyed would go on answering "yes, the core is over there" for
+ * as long as garbage collection took. Destroy() runs the moment a core is deleted, so this list never does.
+ */
+GLOBAL_LIST_EMPTY(rimstation_colony_cores)
+
+/// The colony's core, or null if it has none. Cheaper and more truthful than scanning the world for one.
+/proc/get_colony_core()
+	RETURN_TYPE(/obj/structure/colony_core)
+	return length(GLOB.rimstation_colony_cores) ? GLOB.rimstation_colony_cores[1] : null
+
 /obj/structure/colony_core/Initialize(mapload)
 	. = ..()
+	GLOB.rimstation_colony_cores += src
 	register_context()
 
 /obj/structure/colony_core/Destroy()
+	GLOB.rimstation_colony_cores -= src
 	stop_progress_alerts()
 	// Destroyed is not captured: an attacker who blows the core up has still taken the colony off the map,
 	// but the distinction matters to whatever is recording why the chapter ended.

@@ -83,6 +83,13 @@ SUBSYSTEM_DEF(world_save)
 			child.restore_stuck_to(container, stick_offset[1], stick_offset[2])
 			continue
 
+		// A container that failed to load would otherwise send its contents to nullspace, which deletes them as
+		// surely as never having saved them. Leaving the child on the turf it loaded onto means a destroyed
+		// locker drops belongings on the floor instead.
+		if(isnull(container))
+			child.save_container_child_id = null
+			continue
+
 		child.forceMove(container)
 		child.save_container_child_id = null
 

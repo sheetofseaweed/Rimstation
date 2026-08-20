@@ -156,6 +156,9 @@
 /// Colonist roster layout version. Migrated alongside the manifest that carries it.
 #define COLONY_ROSTER_SCHEMA_VERSION 1
 
+/// The only job a colony offers. A settlement has no departments and no chain of command to staff.
+#define JOB_COLONIST "Colonist"
+
 // What a colonist is to the campaign right now. A record is never deleted, only moved between these.
 /// Played this chapter.
 #define COLONIST_STATUS_ACTIVE "active"

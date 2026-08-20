@@ -33,5 +33,11 @@
 			"Baseturf": "/turf/open/openspace/rimstation",
 			"No Parallax": true
 		}
-	]
+	],
+	"job_changes": {
+		"Colonist": {
+			"total_positions": -1,
+			"spawn_positions": -1
+		}
+	}
 }
