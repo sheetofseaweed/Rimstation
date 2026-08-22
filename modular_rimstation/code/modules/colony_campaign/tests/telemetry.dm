@@ -38,6 +38,7 @@
 		"duration_seconds",
 		"controlled_units",
 		"ai_units",
+		"items_stolen",
 		"settlement_damage",
 		"outcome",
 	)

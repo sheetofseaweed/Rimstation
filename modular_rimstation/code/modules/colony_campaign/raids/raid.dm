@@ -38,6 +38,16 @@
 	var/list/turf/insertion_turfs
 	/// The core this raid is trying to take.
 	var/datum/weakref/objective_ref
+	/// What this raid came for. One of COLONY_RAID_GOAL_*.
+	var/goal = COLONY_RAID_GOAL_CORE
+	/// How many things have actually left the map. Loot still being carried has not been stolen yet.
+	var/extracted_loot = 0
+	/// Route maps for destinations that are not the core, keyed by destination turf.
+	var/list/secondary_route_maps
+	/// Where each attacker is currently headed, so nobody is re-routed every tick and never finishes a leg.
+	var/list/current_destinations
+	/// The single agreed way out. One exit means one route map rather than one per attacker.
+	var/turf/shared_exit
 
 	/// Seconds of warning before the assault begins.
 	var/warning_duration = 2 MINUTES
@@ -46,18 +56,48 @@
 	/// Record of what this raid did, submitted once at resolution.
 	var/datum/colony_raid_telemetry/telemetry
 
+/**
+ * Every raid that has not finished being cleaned up.
+ *
+ * Kept so that something deciding whether to start a raid can ask whether one is already happening. Two at
+ * once is not twice the story - they compete for the same insertion points and the same core.
+ */
+GLOBAL_LIST_EMPTY(colony_raids)
+
+/**
+ * The raid currently attacking the colony, or null if nothing is.
+ *
+ * A colony can lose its core to a fire or to somebody's bad decision as easily as to an attack, so this
+ * answering null is a real answer and not a lookup failure - it is what lets a loss say "no raid did this".
+ */
+/proc/get_attacking_colony_raid()
+	RETURN_TYPE(/datum/colony_raid)
+	for(var/datum/colony_raid/running as anything in GLOB.colony_raids)
+		if(running.state != COLONY_RAID_RESOLVED)
+			return running
+	return null
+
+/// TRUE when a raid is currently running. The question anything scheduling one needs answered.
+/proc/is_colony_raid_running()
+	return !isnull(get_attacking_colony_raid())
+
 /datum/colony_raid/New()
 	. = ..()
 	raid_id = "raid-[world.time]-[rand(1000, 9999)]"
 	roster = list()
 	insertion_turfs = list()
 	telemetry = new(raid_id)
+	GLOB.colony_raids += src
 
 /datum/colony_raid/Destroy(force)
+	GLOB.colony_raids -= src
 	cancel_timers()
 	STOP_PROCESSING(SSprocessing, src)
 	QDEL_NULL(telemetry)
 	route_map = null
+	secondary_route_maps = null
+	current_destinations = null
+	shared_exit = null
 	attacker_routes = null
 	roster = null
 	insertion_turfs = null
@@ -222,27 +262,28 @@
  *
  * Returned in travel order, ending at the objective.
  */
-/datum/colony_raid/proc/build_waypoint_chain(turf/from)
+/datum/colony_raid/proc/build_waypoint_chain(turf/from, list/using_route_map, atom/ending_at)
 	RETURN_TYPE(/list)
 	var/list/turf/chain = list()
+	using_route_map = using_route_map || route_map
+	ending_at = ending_at || objective_ref?.resolve()
 
 	// No route map means no intermediate legs, but the chain must still end somewhere: an attacker handed an
 	// empty chain has nowhere to go at all, which is the failure this whole mechanism exists to prevent.
-	if(length(route_map) && from)
+	if(length(using_route_map) && from)
 		var/turf/current = from
 		var/steps_since_waypoint = 0
-		// Walk parent links back toward the core. The origin has no parent, which terminates the loop.
-		while(route_map[current])
-			current = route_map[current]
+		// Walk parent links back toward the origin. The origin has no parent, which terminates the loop.
+		while(using_route_map[current])
+			current = using_route_map[current]
 			steps_since_waypoint++
 			if(steps_since_waypoint >= COLONY_RAID_WAYPOINT_SPACING)
 				chain += current
 				steps_since_waypoint = 0
 
-	// Always finish on the objective itself, however short the last leg is.
-	var/atom/objective = objective_ref?.resolve()
-	if(objective)
-		chain += get_turf(objective)
+	// Always finish on the destination itself, however short the last leg is.
+	if(ending_at)
+		chain += get_turf(ending_at)
 	return chain
 
 /**
@@ -276,6 +317,19 @@
 /datum/colony_raid/proc/begin_warning()
 	if(state != COLONY_RAID_QUEUED)
 		return FALSE
+
+	// Defaulted rather than demanded of the caller. Everything a raid does hangs off this one reference - the
+	// waypoint chain ends at it, the contesting faction is registered on it, and the capture clock only runs
+	// `if(core)` - so a raid built without one deploys, walks nowhere, and can never take anything. That is a
+	// silent failure that looks like broken pathfinding, and it is not something a caller should be able to
+	// cause by forgetting a line.
+	if(!objective_ref?.resolve())
+		var/obj/structure/colony_core/target = get_colony_core()
+		if(!target)
+			log_game("Colony raid [raid_id] cancelled: the colony has no core to attack.")
+			resolve_raid(COLONY_RAID_OUTCOME_CANCELLED, "the colony has no core to attack")
+			return FALSE
+		objective_ref = WEAKREF(target)
 
 	// A raid starting mid-commit would put attackers into a world that is being written to disk, producing a
 	// checkpoint that matches no moment that ever existed.
@@ -312,8 +366,13 @@
 /// Tells the colony what is coming, roughly from where, and how long it has.
 /datum/colony_raid/proc/announce_warning()
 	var/direction = describe_insertion_direction()
+	// What they came for is told to the colony up front, because it is what the colony would have to decide
+	// how to answer - defending the core and defending the stores are different plans.
+	var/intent = "They are moving on the colony core."
+	if(goal == COLONY_RAID_GOAL_THEFT)
+		intent = "They appear to be moving on the settlement's stores."
 	priority_announce(
-		"Hostile movement detected approaching from [direction]. Estimated contact in [DisplayTimeText(warning_duration)]. They are moving on the colony core.",
+		"Hostile movement detected approaching from [direction]. Estimated contact in [DisplayTimeText(warning_duration)]. [intent]",
 		"Colony Perimeter Alert",
 	)
 
@@ -356,20 +415,39 @@
 		return PROCESS_KILL
 
 	if(state == COLONY_RAID_ASSAULTING)
+		if(goal == COLONY_RAID_GOAL_THEFT)
+			work_the_theft()
 		update_attacker_routes()
 
-	if(state == COLONY_RAID_RETREATING)
-		// Survivors that made it back to the edge have left the chapter.
+	if(state == COLONY_RAID_RETREATING || goal == COLONY_RAID_GOAL_THEFT)
+		// Anyone leaving by the edge has left the chapter, and takes whatever they were holding with them.
+		// Checked during the assault as well as the retreat, because a thief does not wait to be beaten before
+		// going - getting away is the whole plan.
 		for(var/datum/weakref/attacker_ref as anything in roster)
 			var/mob/living/attacker = attacker_ref.resolve()
 			if(!attacker || attacker.stat == DEAD)
 				continue
-			if(is_edge_band_turf(get_turf(attacker)))
-				qdel(attacker)
+			if(!is_edge_band_turf(get_turf(attacker)))
+				continue
+			// Arriving and leaving happen on the same tiles: insertion points are edge tiles by definition. So
+			// standing on the edge only means departure once there is something to depart with, or once the
+			// raid has been called off. Without this a theft raid deletes its own attackers on its first tick,
+			// empty-handed, on the ground they just landed on.
+			if(state != COLONY_RAID_RETREATING && !length(get_raider_loot(attacker)))
+				continue
+			extract_raider(attacker)
+			qdel(attacker)
+
+	if(state == COLONY_RAID_RETREATING)
 		if(!living_attacker_count())
-			resolve_raid(COLONY_RAID_OUTCOME_REPELLED, "the survivors withdrew")
+			resolve_raid(finish_theft_outcome(), "the survivors withdrew")
 			return PROCESS_KILL
 		return
+
+	// A theft raid that has carried off everything it came for is finished, win or lose for the colony.
+	if(goal == COLONY_RAID_GOAL_THEFT && !length(find_loot_targets()) && !any_raider_carrying())
+		resolve_raid(finish_theft_outcome(), extracted_loot ? "the attackers left with what they came for" : "there was nothing left worth taking")
+		return PROCESS_KILL
 
 	// Enough of the roster is dead that the rest give up.
 	if(deployed_strength && ((deployed_strength - alive) / deployed_strength) >= casualty_threshold)
@@ -392,8 +470,15 @@
 			attacker.set_faction(list(faction))
 			assign_objective(attacker, chains_by_turf[arrival])
 			roster += WEAKREF(attacker)
-			// Phase 1 raids are AI-complete by design; Phase 5 is what offers these to ghosts.
+			offer_to_ghosts(attacker)
+			// Killing a thief has to return the goods, and troopers are DEL_ON_DEATH - so this has to be
+			// watching before anything can die carrying anything.
+			attacker.AddComponent(/datum/component/raider_loot)
+			// Counted as AI here and moved across if somebody takes it; a raid is assembled complete and
+			// volunteers only ever replace a unit that was already going to attack.
 			telemetry.ai_units++
+
+	offer_raid_to_ghosts()
 
 /**
  * Gives one attacker its approach route and points it at the first leg.
@@ -412,6 +497,66 @@
 	// With no route the objective is presumably already close, so head straight for it.
 	attacker_routes[attacker_ref] = length(route) ? route.Copy() : list(get_turf(objective))
 	return advance_waypoint(attacker, attacker_ref)
+
+/**
+ * Takes the marching orders off every surviving attacker.
+ *
+ * Called when the raid ends, whatever the reason. Survivors keep their own AI - they will still defend
+ * themselves if the colony comes after them - but they stop walking at an objective that is no longer theirs
+ * to take.
+ *
+ * It also removes a source of teardown noise. A travel destination is a turf, and move loops deliberately do
+ * not watch turfs for deletion ("we don't care", movement_types.dm) because turfs are not normally deleted -
+ * but a generation reset rebuilds the map and deletes all of them, leaving queued pathfinding requests holding
+ * a destination and a mob that both stopped existing. Clearing orders at the end of the fight means nothing is
+ * still trying to path when the world goes away.
+ */
+/datum/colony_raid/proc/stand_down_attackers()
+	for(var/datum/weakref/attacker_ref as anything in roster)
+		var/mob/living/attacker = attacker_ref.resolve()
+		if(!attacker?.ai_controller)
+			continue
+		attacker.ai_controller.clear_blackboard_key(BB_TRAVEL_DESTINATION)
+	attacker_routes = null
+
+/**
+ * Gives `attacker` a chain of short legs to `destination` and starts it on the first one.
+ *
+ * Everything goes through here rather than setting a travel destination directly, because basic-mob JPS
+ * refuses any path longer than AI_MAX_PATH_LENGTH - a raider handed a target sixty tiles away does not walk
+ * thirty and stop, it stands exactly still. Route maps are cached per destination and attackers share
+ * destinations, so this costs a couple of flood fills per raid rather than one per attacker.
+ *
+ * Sticky by design: an attacker already heading somewhere is left alone so it can finish its current leg.
+ */
+/datum/colony_raid/proc/route_attacker_to(mob/living/attacker, atom/destination)
+	if(!attacker?.ai_controller)
+		return FALSE
+	var/turf/goal_turf = get_turf(destination)
+	if(!goal_turf)
+		return FALSE
+
+	var/datum/weakref/attacker_ref = WEAKREF(attacker)
+	LAZYINITLIST(current_destinations)
+	if(current_destinations[attacker_ref] == goal_turf)
+		return TRUE
+
+	LAZYINITLIST(secondary_route_maps)
+	if(!secondary_route_maps[goal_turf])
+		secondary_route_maps[goal_turf] = build_route_map(goal_turf)
+
+	current_destinations[attacker_ref] = goal_turf
+	LAZYINITLIST(attacker_routes)
+	attacker_routes[attacker_ref] = build_waypoint_chain(get_turf(attacker), secondary_route_maps[goal_turf], goal_turf)
+	return advance_waypoint(attacker, attacker_ref)
+
+/// The way out everybody uses. Chosen once so the raid keeps one exit route rather than one per attacker.
+/datum/colony_raid/proc/get_shared_exit()
+	RETURN_TYPE(/turf)
+	if(shared_exit)
+		return shared_exit
+	shared_exit = length(insertion_turfs) ? pick(insertion_turfs) : null
+	return shared_exit
 
 /// Points an attacker at the next leg of its route. Returns TRUE if it now has somewhere to go.
 /datum/colony_raid/proc/advance_waypoint(mob/living/attacker, datum/weakref/attacker_ref)
@@ -446,12 +591,17 @@
 /datum/colony_raid/proc/order_retreat()
 	if(!set_state(COLONY_RAID_RETREATING))
 		return FALSE
-	var/turf/exit_point = length(insertion_turfs) ? pick(insertion_turfs) : null
+	// Routed rather than pointed at: the way out is usually further than AI_MAX_PATH_LENGTH, and an attacker
+	// handed a destination that far away stands still instead of retreating.
 	for(var/datum/weakref/attacker_ref as anything in roster)
 		var/mob/living/attacker = attacker_ref.resolve()
 		if(!attacker || attacker.stat == DEAD || !attacker.ai_controller)
 			continue
-		attacker.ai_controller.set_blackboard_key(BB_TRAVEL_DESTINATION, exit_point)
+		if(send_raider_home(attacker))
+			continue
+		// Nowhere to withdraw to. Standing orders still have to be cancelled, or calling off the attack would
+		// leave everybody marching on the objective exactly as before.
+		attacker.ai_controller.clear_blackboard_key(BB_TRAVEL_DESTINATION)
 	priority_announce("The surviving attackers are pulling back.", "Colony Perimeter Alert")
 	return TRUE
 
@@ -494,6 +644,7 @@
 	// The fight is over, so nothing can be taking the core any more.
 	var/obj/structure/colony_core/finished_core = objective_ref?.resolve()
 	finished_core?.unregister_contesting_faction(faction)
+	stand_down_attackers()
 
 	if(telemetry)
 		telemetry.outcome = outcome
@@ -507,6 +658,9 @@
 
 	log_game("Colony raid [raid_id] resolved as [outcome]: [reason].")
 	message_admins("Colony raid [raid_id] resolved as [outcome]: [reason].")
+	// Announced rather than reported to a particular caller, because a raid can be started by an admin verb or
+	// carried by a storyteller incident, and neither should have to be the one watching it finish.
+	SEND_SIGNAL(src, COMSIG_COLONY_RAID_RESOLVED, outcome, reason)
 	return TRUE
 
 /datum/colony_raid/proc/cancel_timers()

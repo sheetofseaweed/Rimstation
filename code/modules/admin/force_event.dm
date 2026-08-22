@@ -29,6 +29,7 @@ ADMIN_VERB(force_event, R_FUN, "Trigger Event", "Forces an event to occur.", ADM
 			EVENT_CATEGORY_AI = "robot",
 			EVENT_CATEGORY_ANOMALIES = "cloud-bolt",
 			EVENT_CATEGORY_BUREAUCRATIC = "print",
+			EVENT_CATEGORY_COLONY = "campground", // RIMSTATION EDIT ADDITION
 			EVENT_CATEGORY_ENGINEERING = "wrench",
 			EVENT_CATEGORY_ENTITIES = "ghost",
 			EVENT_CATEGORY_FRIENDLY = "face-smile",

@@ -392,6 +392,8 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/research_persistence.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/research_start.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_scheduling.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_theft.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/persistence_guard.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/telemetry.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller.dm"

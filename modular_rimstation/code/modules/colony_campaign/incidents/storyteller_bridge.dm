@@ -71,10 +71,12 @@
 		kill()
 		return
 
-	// The event's clock is in seconds of lifetime, and the incident states how long a colony gets to prepare.
+	// The event's clock is in seconds of lifetime, and the incident states both how long a colony gets to
+	// prepare and how long the thing itself runs. The second half matters for anything slower than a storm:
+	// a raid that is still being fought when its carrier event expires would be resolved as ignored.
 	announce_when = 1
 	start_when = max(2, round(incident.warning_duration / (1 SECONDS)))
-	end_when = start_when + 60
+	end_when = start_when + max(1, round(incident.active_duration / (1 SECONDS)))
 
 /datum/round_event/colony_incident/announce(fake)
 	incident?.begin_warning()
@@ -134,6 +136,21 @@
 	track = EVENT_TRACK_MODERATE
 	weight = 10
 	tags = list(TAG_DESTRUCTIVE, TAG_COMMUNAL)
+
+/**
+ * The one that comes for the colony.
+ *
+ * Bought on the storyteller's heaviest track and tagged destructive, so it competes with the other serious
+ * events for the same points and is withheld entirely while the colony is still recovering - which is the
+ * whole reason raids belong here rather than behind an admin verb.
+ */
+/datum/round_event_control/colony_incident/threat
+	name = "Colony Incident: Raid"
+	incident_category = COLONY_INCIDENT_CATEGORY_THREAT
+	description = "Someone comes to take what the colony has."
+	track = EVENT_TRACK_MAJOR
+	weight = 8
+	tags = list(TAG_DESTRUCTIVE, TAG_COMBAT, TAG_TARGETED)
 
 /datum/round_event_control/colony_incident/social
 	name = "Colony Incident: Dispute"

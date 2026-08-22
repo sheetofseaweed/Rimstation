@@ -810,6 +810,28 @@ SUBSYSTEM_DEF(campaign)
 	return capture_colonist_skills(record, mind)
 
 /**
+ * How many threat points a raid scheduled right now is worth.
+ *
+ * Deliberately small: a base, a growth term per chapter survived, a ceiling, and a reduction for a colony that
+ * is still recovering. It reuses the storyteller's own recovery figure rather than introducing a second,
+ * competing measure of how battered the settlement is - there should only ever be one answer to that.
+ *
+ * A fuller model - defences built, population actually online, economic reach - belongs with the rest of the
+ * raid work. This exists so that a scheduled raid grows with the colony instead of being the same fixed
+ * hundred points forever.
+ */
+/datum/controller/subsystem/campaign/proc/get_raid_threat_budget()
+	var/datum/colony_story_state/story = get_story_state()
+	var/chapters_survived = story?.campaign_age || 0
+	var/budget = COLONY_RAID_BASE_BUDGET + (chapters_survived * COLONY_RAID_BUDGET_PER_CHAPTER)
+	budget = min(budget, COLONY_RAID_MAX_BUDGET)
+
+	// Recovery runs 0-100 and already means "how much this colony is owed a quiet chapter". At its worst it
+	// halves the attack rather than cancelling it; refusing outright is the storyteller's job, not the budget's.
+	var/recovery_scale = 1 - (clamp(story?.recovery || 0, 0, 100) / 200)
+	return max(COLONY_RAID_BASE_BUDGET / 2, round(budget * recovery_scale))
+
+/**
  * Which incidents of `incident_category` could run right now.
  *
  * Asked before the storyteller spends anything, so a category with no runnable incident is simply never

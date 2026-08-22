@@ -30,6 +30,8 @@
 	var/list/tags
 	/// How long the colony gets between being told and the incident starting.
 	var/warning_duration = 1 MINUTES
+	/// How long the incident runs once it has begun, before its carrier gives up waiting and calls it ignored.
+	var/active_duration = 1 MINUTES
 	/// Current lifecycle state. Only ever changed through set_state().
 	var/state = COLONY_INCIDENT_QUEUED
 	/// Campaign clock at the moment it started and finished.

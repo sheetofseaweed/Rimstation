@@ -56,7 +56,7 @@ GLOBAL_LIST_EMPTY(rimstation_colony_cores)
 	// but the distinction matters to whatever is recording why the chapter ended.
 	if(state != COLONY_CORE_CAPTURED)
 		SEND_SIGNAL(src, COMSIG_COLONY_CORE_DESTROYED, src)
-		get_chapter_outcome()?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was destroyed")
+		record_chapter_loss("the colony core was destroyed")
 	chapter_outcome = null
 	return ..()
 
@@ -69,6 +69,22 @@ GLOBAL_LIST_EMPTY(rimstation_colony_cores)
 /obj/structure/colony_core/proc/get_chapter_outcome()
 	RETURN_TYPE(/datum/colony_chapter_outcome)
 	return chapter_outcome || SScampaign.chapter_outcome
+
+/**
+ * Records the chapter as lost, and names the raid that did it if one did.
+ *
+ * The outcome has carried a raid id and its telemetry since the beginning and nothing ever passed them, so a
+ * lost colony could say it had fallen but not to what. Attribution is looked up rather than handed in, because
+ * the core is destroyed by whatever destroys it - a fire, a stray explosion, somebody's bad afternoon - and
+ * only sometimes by an attack. No raid running means no raid to blame, which is the honest record.
+ */
+/obj/structure/colony_core/proc/record_chapter_loss(reason)
+	var/datum/colony_chapter_outcome/outcome = get_chapter_outcome()
+	if(!outcome)
+		return FALSE
+
+	var/datum/colony_raid/attacker = get_attacking_colony_raid()
+	return outcome.resolve(COLONY_OUTCOME_FAILURE, reason, attacker?.raid_id, attacker?.telemetry)
 
 /obj/structure/colony_core/examine(mob/user)
 	. = ..()
@@ -114,7 +130,7 @@ GLOBAL_LIST_EMPTY(rimstation_colony_cores)
 		state = COLONY_CORE_CAPTURED
 		stop_progress_alerts()
 		SEND_SIGNAL(src, COMSIG_COLONY_CORE_CAPTURED, src)
-		get_chapter_outcome()?.resolve(COLONY_OUTCOME_FAILURE, "the colony core was captured")
+		record_chapter_loss("the colony core was captured")
 		announce_captured()
 
 	return state

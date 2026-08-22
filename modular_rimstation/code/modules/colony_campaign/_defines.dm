@@ -74,6 +74,26 @@
 /// Sent when the core is destroyed outright rather than captured. Args: (obj/structure/colony_core/core)
 #define COMSIG_COLONY_CORE_DESTROYED "colony_core_destroyed"
 
+/// Sent on a /datum/colony_raid when it finishes, whatever the outcome. (outcome, reason)
+#define COMSIG_COLONY_RAID_RESOLVED "colony_raid_resolved"
+
+// What a raid came for. The core is the settlement itself; theft is somebody who would rather rob you than
+// live where you live, and leaves once their arms are full.
+#define COLONY_RAID_GOAL_CORE "core"
+#define COLONY_RAID_GOAL_THEFT "theft"
+
+/// How many things one attacker can carry away. Bounded so a single raider cannot empty a settlement.
+#define COLONY_RAID_LOOT_CAPACITY 3
+
+/**
+ * How often a raid that could rob the colony does that instead of coming for the core.
+ *
+ * Weighted towards theft on purpose. Losing the core ends the campaign, so a raid that can do it should be the
+ * exception rather than the usual roll - otherwise the storyteller is repeatedly deciding whether the whole
+ * thing continues. Being robbed costs something a colony can rebuild.
+ */
+#define COLONY_RAID_THEFT_CHANCE 65
+
 // Raid lifecycle. Strictly forward: the telegraph is the colony's preparation window and cannot be skipped.
 #define COLONY_RAID_QUEUED "queued"
 #define COLONY_RAID_WARNING "warning"
@@ -229,6 +249,8 @@
 #define COLONY_INCIDENT_CATEGORY_ENVIRONMENTAL "environmental"
 #define COLONY_INCIDENT_CATEGORY_SOCIAL "social"
 #define COLONY_INCIDENT_CATEGORY_RESOURCE "resource"
+/// Somebody comes to take what the colony has. The category raids are scheduled through.
+#define COLONY_INCIDENT_CATEGORY_THREAT "threat"
 
 #define COLONY_INCIDENT_CATEGORIES list( \
 	COLONY_INCIDENT_CATEGORY_POSITIVE, \
@@ -236,6 +258,7 @@
 	COLONY_INCIDENT_CATEGORY_ENVIRONMENTAL, \
 	COLONY_INCIDENT_CATEGORY_SOCIAL, \
 	COLONY_INCIDENT_CATEGORY_RESOURCE, \
+	COLONY_INCIDENT_CATEGORY_THREAT, \
 )
 
 /**
@@ -287,6 +310,16 @@
 #define INCIDENT_TAG_UNREST "unrest"
 #define INCIDENT_TAG_HARVEST "harvest"
 #define INCIDENT_TAG_MINING "mining"
+#define INCIDENT_TAG_RAIDERS "raiders"
+
+// How hard a scheduled raid hits. A full threat model belongs with the rest of the raid work; this is the
+// honest minimum - a raid that grows with the colony and backs off after it has been hurt.
+/// Threat points a first-chapter raid is worth.
+#define COLONY_RAID_BASE_BUDGET 60
+/// Extra threat points per chapter the campaign has survived.
+#define COLONY_RAID_BUDGET_PER_CHAPTER 12
+/// The most a raid can ever be worth, however old the colony gets.
+#define COLONY_RAID_MAX_BUDGET 260
 
 /// The colony came out ahead, or did what the incident asked.
 #define COLONY_INCIDENT_OUTCOME_SUCCEEDED "succeeded"
@@ -303,6 +336,8 @@
 #define LEDGER_CATEGORY_SALVAGE "salvage"
 #define LEDGER_CATEGORY_UPKEEP "upkeep"
 #define LEDGER_CATEGORY_ADMIN "admin"
+/// Goods carried off the map by a raid. A loss the colony can read back, rather than things quietly missing.
+#define LEDGER_CATEGORY_THEFT "theft"
 
 /**
  * How much more research costs during a campaign.

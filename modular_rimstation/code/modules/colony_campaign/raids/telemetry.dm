@@ -30,6 +30,8 @@
 	var/controlled_units = 0
 	/// Attackers left to their own AI.
 	var/ai_units = 0
+	/// How many things the attackers actually carried off the map. Picking loot up does not count.
+	var/items_stolen = 0
 	/// Final outcome, copied from the raid.
 	var/outcome
 
@@ -58,6 +60,10 @@
 /datum/colony_raid_telemetry/proc/record_composition(list/fielded, cost)
 	composition = fielded?.Copy() || list()
 	spent_budget = cost
+
+/// Counts goods that left the map. Only extraction reaches here; loot dropped on the way out was never lost.
+/datum/colony_raid_telemetry/proc/record_theft(count)
+	items_stolen += count
 
 /datum/colony_raid_telemetry/proc/record_casualty(is_attacker)
 	if(is_attacker)
@@ -128,6 +134,7 @@
 		"duration_seconds" = duration_seconds(),
 		"controlled_units" = controlled_units,
 		"ai_units" = ai_units,
+		"items_stolen" = items_stolen,
 		"settlement_damage" = settlement_damage_sample(),
 		"outcome" = outcome,
 	)

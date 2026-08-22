@@ -184,6 +184,19 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 	var/list/snapshots = SScampaign.list_recovery_snapshots()
 	report += "Recoverable checkpoints: [length(snapshots) ? snapshots.Join(", ") : "none"]"
 
+	// How this chapter is going, and what decided it if anything has. The raid id is the only place the
+	// attribution is visible - it goes to the round log otherwise, which is not somewhere you can look mid-round.
+	var/datum/colony_chapter_outcome/outcome = SScampaign.chapter_outcome
+	if(outcome?.is_resolved())
+		report += "This chapter: [outcome.result] - [outcome.reason || "no reason recorded"]"
+		report += "Decided by raid: [outcome.raid_id || "none - no raid was responsible"]"
+	else if(outcome)
+		report += "This chapter: still being played"
+
+	var/datum/colony_raid/attacker = get_attacking_colony_raid()
+	if(attacker)
+		report += "Raid in progress: [attacker.raid_id] ([attacker.state]), budget [attacker.threat_budget], [attacker.living_attacker_count()] attackers still standing"
+
 	// Who the colony thinks lives here. The register console is the player-facing version of this.
 	var/datum/colonist_roster/roster = SScampaign.get_roster()
 	if(roster)
