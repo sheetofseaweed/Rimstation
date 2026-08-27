@@ -116,6 +116,14 @@
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/arriving = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider, edge)
 	raid.roster += WEAKREF(arriving)
 
+	// The controller is switched off for the duration, and this is load-bearing rather than tidiness.
+	//
+	// work_the_theft() runs inside process() and routes attackers, and building a route map runs CHECK_TICK -
+	// which yields. A live controller takes that opening and walks the raider off the edge band before the
+	// extraction sweep further down the same call ever looks at where it is standing. That made this test fail
+	// roughly one run in three, on a rule that was working perfectly.
+	arriving.ai_controller?.set_ai_status(AI_STATUS_OFF)
+
 	raid.process(1)
 	TEST_ASSERT(!QDELETED(arriving), "An empty-handed attacker standing on its own landing tile was extracted, so a theft raid would delete itself on arrival.")
 	TEST_ASSERT(raid.state != COLONY_RAID_RESOLVED, "A theft raid resolved before its attackers had done anything.")
@@ -124,6 +132,10 @@
 	// Once it is carrying something, the same tile means gone.
 	var/obj/item/wrench/stolen = allocate(/obj/item/wrench)
 	stolen.forceMove(arriving)
+
+	// Put it back on the edge before asking again. Belt and braces alongside the switched-off controller: this
+	// test is about the rule that decides extraction, not about whether the mob happened to stay still.
+	arriving.forceMove(edge)
 	raid.process(1)
 	TEST_ASSERT(QDELETED(arriving), "A loaded attacker on the map edge did not get away.")
 	TEST_ASSERT_EQUAL(raid.extracted_loot, 1, "A loaded attacker that left was not recorded as stealing anything.")

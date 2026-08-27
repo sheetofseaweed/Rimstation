@@ -164,8 +164,9 @@
  * 3: the colony carries its research between chapters.
  * 4: the settlement carries its ledger between chapters.
  * 5: the colony remembers who lives in it.
+ * 6: the colony has a region around it.
  */
-#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 5
+#define CAMPAIGN_MANIFEST_SCHEMA_VERSION 6
 
 /// Research record layout version. Migrated alongside the manifest that carries it.
 #define COLONY_RESEARCH_SCHEMA_VERSION 1
@@ -176,8 +177,253 @@
 /// Colonist roster layout version. Migrated alongside the manifest that carries it.
 #define COLONY_ROSTER_SCHEMA_VERSION 1
 
+// ---------------------------------------------------------------------------------------------------------
+// Planetary overworld.
+//
+// The region is never stored. It is rebuilt from the planet's seeds plus the three campaign options, so only
+// the options, what play discovered, and what play changed are written down. Changing any generation rule
+// below means bumping OVERWORLD_GENERATION_VERSION, or two builds will disagree about the same planet while
+// both believing they are right.
+// ---------------------------------------------------------------------------------------------------------
+
+/// Overworld record layout version. Migrated alongside the manifest that carries it.
+#define COLONY_OVERWORLD_SCHEMA_VERSION 1
+
+/// Bump whenever any generation rule changes. Regions built by different versions are not comparable.
+#define OVERWORLD_GENERATION_VERSION 1
+
+/**
+ * How much of a derived hash is kept per cell.
+ *
+ * Six hex digits, because BYOND numbers are 32-bit floats and only represent integers exactly up to 2**24 -
+ * which is exactly six hex digits. A longer slice would be converted approximately, and a modulo taken from an
+ * approximate value is not reliably the same number twice.
+ */
+#define OVERWORLD_HASH_LENGTH 6
+
+// How much of the planet the region covers. Radius is in hexes from the colony.
+#define OVERWORLD_EXTENT_COMPACT "compact"
+#define OVERWORLD_EXTENT_STANDARD "standard"
+#define OVERWORLD_EXTENT_EXPANSIVE "expansive"
+
+#define OVERWORLD_EXTENTS list( \
+	OVERWORLD_EXTENT_COMPACT, \
+	OVERWORLD_EXTENT_STANDARD, \
+	OVERWORLD_EXTENT_EXPANSIVE, \
+)
+
+/// Radius in hexes for each extent. Cell count is 1 + 3r(r + 1).
+#define OVERWORLD_EXTENT_RADII list( \
+	OVERWORLD_EXTENT_COMPACT = 7, \
+	OVERWORLD_EXTENT_STANDARD = 9, \
+	OVERWORLD_EXTENT_EXPANSIVE = 11, \
+)
+
+// How hard the ground is to cross.
+#define OVERWORLD_ROUGHNESS_GENTLE "gentle"
+#define OVERWORLD_ROUGHNESS_VARIED "varied"
+#define OVERWORLD_ROUGHNESS_RUGGED "rugged"
+
+#define OVERWORLD_ROUGHNESS_OPTIONS list( \
+	OVERWORLD_ROUGHNESS_GENTLE, \
+	OVERWORLD_ROUGHNESS_VARIED, \
+	OVERWORLD_ROUGHNESS_RUGGED, \
+)
+
+// How much there is worth going out for.
+#define OVERWORLD_ABUNDANCE_SPARSE "sparse"
+#define OVERWORLD_ABUNDANCE_NORMAL "normal"
+#define OVERWORLD_ABUNDANCE_RICH "rich"
+
+#define OVERWORLD_ABUNDANCE_OPTIONS list( \
+	OVERWORLD_ABUNDANCE_SPARSE, \
+	OVERWORLD_ABUNDANCE_NORMAL, \
+	OVERWORLD_ABUNDANCE_RICH, \
+)
+
+// How hard one cell is to cross. Impassable cells are terrain, not a route the planner may take.
+#define OVERWORLD_TOPOLOGY_EASY "easy"
+#define OVERWORLD_TOPOLOGY_NORMAL "normal"
+#define OVERWORLD_TOPOLOGY_DIFFICULT "difficult"
+#define OVERWORLD_TOPOLOGY_IMPASSABLE "impassable"
+
+/// Seconds of campaign time to cross one cell before its topology multiplier.
+#define OVERWORLD_BASE_TRAVERSAL_SECONDS 45
+
+/// Traversal multiplier per topology. Impassable is absent on purpose: it has no crossing time.
+#define OVERWORLD_TOPOLOGY_COSTS list( \
+	OVERWORLD_TOPOLOGY_EASY = 1, \
+	OVERWORLD_TOPOLOGY_NORMAL = 1.5, \
+	OVERWORLD_TOPOLOGY_DIFFICULT = 2, \
+)
+
+/// Percentage split of easy/normal/difficult/impassable per roughness, in that order. Must total 100.
+#define OVERWORLD_TOPOLOGY_WEIGHTS list( \
+	OVERWORLD_ROUGHNESS_GENTLE = list(65, 28, 6, 1), \
+	OVERWORLD_ROUGHNESS_VARIED = list(45, 35, 16, 4), \
+	OVERWORLD_ROUGHNESS_RUGGED = list(30, 35, 25, 10), \
+)
+
+/// Danger bias added to the ecology percentile before it is banded, per roughness.
+#define OVERWORLD_ROUGHNESS_DANGER_BIAS list( \
+	OVERWORLD_ROUGHNESS_GENTLE = -10, \
+	OVERWORLD_ROUGHNESS_VARIED = 0, \
+	OVERWORLD_ROUGHNESS_RUGGED = 10, \
+)
+
+// What a site is. The kind decides its marker, its physical template and what resolving it pays.
+#define OVERWORLD_SITE_RESOURCE "resource"
+#define OVERWORLD_SITE_RUIN "ruin"
+
+/// Resource sites per extent and abundance.
+#define OVERWORLD_RESOURCE_SITE_COUNTS list( \
+	OVERWORLD_EXTENT_COMPACT = list(OVERWORLD_ABUNDANCE_SPARSE = 2, OVERWORLD_ABUNDANCE_NORMAL = 4, OVERWORLD_ABUNDANCE_RICH = 6), \
+	OVERWORLD_EXTENT_STANDARD = list(OVERWORLD_ABUNDANCE_SPARSE = 4, OVERWORLD_ABUNDANCE_NORMAL = 6, OVERWORLD_ABUNDANCE_RICH = 9), \
+	OVERWORLD_EXTENT_EXPANSIVE = list(OVERWORLD_ABUNDANCE_SPARSE = 6, OVERWORLD_ABUNDANCE_NORMAL = 9, OVERWORLD_ABUNDANCE_RICH = 13), \
+)
+
+/// Ruins per extent. Abundance buys resources, not history.
+#define OVERWORLD_RUIN_SITE_COUNTS list( \
+	OVERWORLD_EXTENT_COMPACT = 2, \
+	OVERWORLD_EXTENT_STANDARD = 3, \
+	OVERWORLD_EXTENT_EXPANSIVE = 4, \
+)
+
+/// Inclusive ledger-unit yield band per abundance, as list(low, high).
+#define OVERWORLD_RESOURCE_YIELDS list( \
+	OVERWORLD_ABUNDANCE_SPARSE = list(20, 35), \
+	OVERWORLD_ABUNDANCE_NORMAL = list(35, 55), \
+	OVERWORLD_ABUNDANCE_RICH = list(50, 75), \
+)
+
+/// How far the colony can see without going anywhere.
+#define OVERWORLD_INITIAL_REVEAL_RADIUS 2
+
+// What play has done to a site. Absent means untouched, which is the overwhelmingly common case and is why
+// only changed sites are ever written down.
+#define OVERWORLD_SITE_STATE_AVAILABLE "available"
+#define OVERWORLD_SITE_STATE_RESOLVED "resolved"
+#define OVERWORLD_SITE_STATE_DEPLETED "depleted"
+
+#define OVERWORLD_SITE_STATES list( \
+	OVERWORLD_SITE_STATE_AVAILABLE, \
+	OVERWORLD_SITE_STATE_RESOLVED, \
+	OVERWORLD_SITE_STATE_DEPLETED, \
+)
+
+// The starter ruin sits here: far enough that it has to be travelled to, close enough to be an early trip.
+#define OVERWORLD_STARTER_RUIN_MIN_DISTANCE 4
+#define OVERWORLD_STARTER_RUIN_MAX_DISTANCE 6
+
+// Strategic terrain labels. Palette and pattern ids for the map, never turf types.
+#define OVERWORLD_TERRAIN_FROZEN_STEPPE "frozen_steppe"
+#define OVERWORLD_TERRAIN_TUNDRA "tundra"
+#define OVERWORLD_TERRAIN_TAIGA "taiga"
+#define OVERWORLD_TERRAIN_SCRUBLAND "scrubland"
+#define OVERWORLD_TERRAIN_GRASSLAND "grassland"
+#define OVERWORLD_TERRAIN_FOREST "forest"
+#define OVERWORLD_TERRAIN_DESERT "desert"
+#define OVERWORLD_TERRAIN_SAVANNA "savanna"
+#define OVERWORLD_TERRAIN_MARSH "marsh"
+
+/// Heat band (cold/temperate/hot) by humidity band (dry/moderate/wet). Split at 33 and 67.
+#define OVERWORLD_TERRAIN_TABLE list( \
+	list(OVERWORLD_TERRAIN_FROZEN_STEPPE, OVERWORLD_TERRAIN_TUNDRA, OVERWORLD_TERRAIN_TAIGA), \
+	list(OVERWORLD_TERRAIN_SCRUBLAND, OVERWORLD_TERRAIN_GRASSLAND, OVERWORLD_TERRAIN_FOREST), \
+	list(OVERWORLD_TERRAIN_DESERT, OVERWORLD_TERRAIN_SAVANNA, OVERWORLD_TERRAIN_MARSH), \
+)
+
 /// The only job a colony offers. A settlement has no departments and no chain of command to staff.
 #define JOB_COLONIST "Colonist"
+
+// How a caravan moves through its journey. Forward only: a party that has finished, or been lost, is a closed
+// record. Reopening one would let a journey pay out twice.
+/// Being assembled at home. The only state membership and route can change in.
+#define OVERWORLD_PARTY_FORMING "forming"
+/// Committed and paid for, with the leaving scene being brought up.
+#define OVERWORLD_PARTY_DEPARTING "departing"
+/// On the road, between cells.
+#define OVERWORLD_PARTY_OUTBOUND "outbound"
+/// Halted at a boundary, waiting for somebody to answer for the party.
+#define OVERWORLD_PARTY_DECISION "decision"
+/// Arrived, and working the site.
+#define OVERWORLD_PARTY_AT_SITE "at_site"
+/// On the way back.
+#define OVERWORLD_PARTY_RETURNING "returning"
+/// Home, paid out. Terminal.
+#define OVERWORLD_PARTY_COMPLETE "complete"
+/// Gone. Terminal.
+#define OVERWORLD_PARTY_LOST "lost"
+
+/// Every state a party can be in, for validation on load.
+#define OVERWORLD_PARTY_STATES list( \
+	OVERWORLD_PARTY_FORMING, \
+	OVERWORLD_PARTY_DEPARTING, \
+	OVERWORLD_PARTY_OUTBOUND, \
+	OVERWORLD_PARTY_DECISION, \
+	OVERWORLD_PARTY_AT_SITE, \
+	OVERWORLD_PARTY_RETURNING, \
+	OVERWORLD_PARTY_COMPLETE, \
+	OVERWORLD_PARTY_LOST, \
+)
+
+/// States a party can no longer leave. Checked before any transition rather than listed at each call site.
+#define OVERWORLD_PARTY_TERMINAL_STATES list( \
+	OVERWORLD_PARTY_COMPLETE, \
+	OVERWORLD_PARTY_LOST, \
+)
+
+/// A party still at home, where its membership and plan can still be edited.
+#define OVERWORLD_PARTY_IS_PLANNING(state) ((state) == OVERWORLD_PARTY_FORMING)
+
+// The two routes the planner offers. Both are real paths through the region; they differ in what they treat
+// as expensive, so a player picks between hours and hazard rather than between a good route and a bad one.
+/// Least travel time, ignoring what lives out there.
+#define OVERWORLD_ROUTE_FASTEST "fastest"
+/// Least travel time once danger is priced in.
+#define OVERWORLD_ROUTE_SAFER "safer"
+
+/// Route kinds a party may be carrying.
+#define OVERWORLD_ROUTE_KINDS list( \
+	OVERWORLD_ROUTE_FASTEST, \
+	OVERWORLD_ROUTE_SAFER, \
+)
+
+/**
+ * What one danger pip is worth to the safer route, in seconds of detour it would accept to avoid it.
+ *
+ * This is the whole difference between the two routes. Too low and the safer route is the fast one with extra
+ * steps; too high and it walks the region's rim to dodge a single pip.
+ */
+#define OVERWORLD_DANGER_TIME_PENALTY 30
+
+/// Nobody may sign on to a party alone-and-endless. A cap keeps the colony from being emptied into one caravan.
+#define OVERWORLD_PARTY_MAX_MEMBERS 6
+
+/// Food eaten per member per crossed boundary, plus a reserve for the way back.
+#define OVERWORLD_SUPPLY_PER_EDGE 2
+/// Extra rations per member, held against waits and detours on the road.
+#define OVERWORLD_SUPPLY_RESERVE 2
+
+/// The ledger resource a caravan eats. The same pile the refugee incident feeds from - there is one larder.
+#define OVERWORLD_SUPPLY_RESOURCE "food"
+
+/// The one food figure in the campaign. The larder is what makes it non-zero; see economy/larder.dm.
+#define COLONY_FOOD_RESOURCE "food"
+
+/**
+ * How much nutriment makes one unit of stored food.
+ *
+ * Calibrated against real items rather than picked: a loaf of bread is ten nutriment and a slice of it is two,
+ * so a loaf stocks five units and a slice stocks one. Feeding a refugee costs fifteen, which is three loaves.
+ */
+#define COLONY_FOOD_UNIT_NUTRIMENT 2
+
+/// What one unit of food costs bought in. The rate the refugee incident already charges: 15 food for 300cr.
+#define COLONY_FOOD_CREDIT_PRICE 20
+
+/// Journeys, as the settlement's books see them.
+#define LEDGER_CATEGORY_EXPEDITION "expedition"
 
 // What a colonist is to the campaign right now. A record is never deleted, only moved between these.
 /// Played this chapter.

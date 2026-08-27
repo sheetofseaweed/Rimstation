@@ -27,6 +27,10 @@
 	var/saved_checkpoint_type
 	var/saved_recovery_selection
 	var/datum/colony_chapter_outcome/saved_outcome
+	/// The live campaign clock's origins. Runtime-only subsystem state, so it is borrowed and returned like
+	/// the rest - a test that began a chapter has rebased them onto its own campaign.
+	var/saved_clock_origin
+	var/saved_world_time_origin
 	/// Raw pointer file contents. It names which campaign the *server* runs, so it lives outside any campaign
 	/// directory and would survive this test's cleanup, redirecting a real boot at a deleted test campaign.
 	var/saved_pointer
@@ -38,6 +42,8 @@
 	saved_checkpoint_type = SScampaign.checkpoint_type
 	saved_recovery_selection = SScampaign.recovery_selection
 	saved_outcome = SScampaign.chapter_outcome
+	saved_clock_origin = SScampaign.chapter_clock_origin
+	saved_world_time_origin = SScampaign.chapter_world_time_origin
 	saved_pointer = fexists(active_campaign_pointer_path()) ? rustg_file_read(active_campaign_pointer_path()) : null
 
 	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
@@ -45,6 +51,8 @@
 	SScampaign.chapter_outcome = null
 	SScampaign.recovery_selection = null
 	SScampaign.recovery_selected_by = null
+	SScampaign.chapter_clock_origin = null
+	SScampaign.chapter_world_time_origin = null
 	SScampaign.checkpoint_type = /datum/campaign_checkpoint/unit_test_stub
 
 /// Plays one chapter to a successful commit, leaving a committed checkpoint for the test to work against.
@@ -65,6 +73,8 @@
 	SScampaign.recovery_selection = saved_recovery_selection
 	SScampaign.recovery_selected_by = null
 	SScampaign.chapter_outcome = saved_outcome
+	SScampaign.chapter_clock_origin = saved_clock_origin
+	SScampaign.chapter_world_time_origin = saved_world_time_origin
 	saved_manifest = null
 	saved_outcome = null
 

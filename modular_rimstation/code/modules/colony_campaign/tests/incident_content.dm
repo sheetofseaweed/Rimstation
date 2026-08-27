@@ -174,20 +174,35 @@
 	TEST_ASSERT_EQUAL(starving.result?.outcome, COLONY_INCIDENT_OUTCOME_FAILED, "A settlement with nothing to give still took in a refugee.")
 	TEST_ASSERT(!starving.admitted, "Someone was admitted with nothing to feed them.")
 
-	// Stored food is the price when the settlement tracks any.
-	SScampaign.adjust_resource("food", 100, LEDGER_CATEGORY_SALVAGE, "stores", null, null)
+	// Stored food is the price when the settlement has any. Stocked as real loaves in a real larder, because
+	// the larder is what the colony counts - a figure written straight into the ledger is thrown away by the
+	// next recount.
+	var/obj/structure/closet/crate/freezer/colony_larder/larder = allocate(/obj/structure/closet/crate/freezer/colony_larder, run_loc_floor_bottom_left)
+	for(var/index in 1 to 20)
+		var/obj/item/food/bread/plain/loaf = allocate(/obj/item/food/bread/plain)
+		loaf.forceMove(larder)
+	sync_colony_food_to_ledger()
+
 	var/datum/settlement_ledger/settlement = SScampaign.get_ledger()
-	var/food_before = settlement.get_resource("food")
+	var/food_before = count_colony_food()
+	TEST_ASSERT(food_before >= 15, "The test could not stock enough food to feed a refugee.")
+
 	var/datum/colony_incident/refugee/fed = new
 	allocated += fed
 	fed.set_state(COLONY_INCIDENT_WARNING)
 	fed.set_state(COLONY_INCIDENT_ACTIVE)
 	fed.on_answered(1)
-	TEST_ASSERT_EQUAL(settlement.get_resource("food"), food_before - fed.food_price, "Taking in a refugee did not cost the settlement any food.")
+	// Loaves do not divide, so the colony may have spent a little more than the bill. What matters is that it
+	// came out of the larder rather than out of the budget.
+	TEST_ASSERT(count_colony_food() <= food_before - fed.food_price, "Taking in a refugee did not cost the settlement any food.")
+	TEST_ASSERT_EQUAL(settlement.get_resource("food"), count_colony_food(), "The ledger disagrees with the larder after a refugee was fed.")
 
-	// With no tracked stores it is paid for in credits instead - nothing produces stores yet, so without this
-	// the incident could never succeed at all.
-	SScampaign.adjust_resource("food", -settlement.get_resource("food"), LEDGER_CATEGORY_UPKEEP, "emptied", null, null)
+	// With the larder empty it is paid for in credits instead, so a colony that has not stocked up can still
+	// take somebody in - it just pays merchant prices.
+	for(var/obj/item/stored in larder.contents)
+		qdel(stored)
+	sync_colony_food_to_ledger()
+	TEST_ASSERT_EQUAL(count_colony_food(), 0, "The test could not empty the larder.")
 	account.account_balance = 5000
 	settlement.capture_from(account)
 	var/datum/colony_incident/refugee/bought_in = new

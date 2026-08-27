@@ -34,6 +34,9 @@ SUBSYSTEM_DEF(campaign)
 	/// Everyone this generation has known. Rebuilt from the manifest at the start of every chapter.
 	var/datum/colonist_roster/roster
 
+	/// What play has done to the region. The region itself is derived, so only this is carried.
+	var/datum/overworld_state/overworld
+
 	/// Colonist ids seen at any point this chapter. Append-only until the chapter ends.
 	var/list/colonists_seen_this_chapter = list()
 
@@ -54,6 +57,18 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/colony_story_state/story_state
 	/// TRUE once this chapter has thrown something serious at the colony, so a win is not mistaken for a rest.
 	var/faced_major_threat_this_chapter = FALSE
+
+	/**
+	 * What the campaign clock read when this chapter became active, and the world time that reading was taken at.
+	 *
+	 * Runtime only, and never rebased. The clock is derived from these two rather than counted up, because this
+	 * subsystem does not fire - and giving it a tick merely to add deciseconds would make campaign time depend on
+	 * the MC keeping up, which is precisely the thing that stops being true when the colony is busy.
+	 *
+	 * Null between chapters, which is what makes the stored clock authoritative while nothing is being played.
+	 */
+	var/chapter_clock_origin = null
+	var/chapter_world_time_origin = null
 
 /datum/controller/subsystem/campaign/Initialize()
 	RegisterSignal(SSticker, COMSIG_TICKER_ROUND_STARTING, PROC_REF(on_round_starting))
@@ -81,7 +96,7 @@ SUBSYSTEM_DEF(campaign)
  * Refuses to start on top of anything already on disk. A campaign is the only copy of its colony, so "start a
  * campaign" must never be a command that can quietly replace one.
  */
-/datum/controller/subsystem/campaign/proc/create_campaign(campaign_id, started_by)
+/datum/controller/subsystem/campaign/proc/create_campaign(campaign_id, started_by, list/region_options)
 	if(!is_safe_campaign_id(campaign_id))
 		return FALSE
 	if(is_campaign_active())
@@ -96,6 +111,12 @@ SUBSYSTEM_DEF(campaign)
 
 	var/datum/campaign_manifest/fresh = new(campaign_id, "generation-1")
 	fresh.planet_record = build_generation_planet_record(campaign_id, 1)
+
+	// Written at creation because the region is derived from these: a campaign without them would generate a
+	// different world on its next boot than the one whoever started it was shown.
+	var/datum/overworld_state/region_state = new(region_options)
+	fresh.overworld_record = region_state.serialize()
+	qdel(region_state)
 	if(isnull(write_campaign_manifest(fresh)))
 		log_admin("Campaign creation failed: [campaign_id] could not be written to disk.")
 		return FALSE
@@ -190,6 +211,11 @@ SUBSYSTEM_DEF(campaign)
 		return FALSE
 	if(!set_campaign_state(CAMPAIGN_STATE_LOADING, "loading campaign"))
 		return FALSE
+	// Cleared before the manifest changes hands. Between a load and the chapter starting, nothing is being
+	// played, so campaign time is whatever the record says rather than a running total from the last chapter.
+	chapter_clock_origin = null
+	chapter_world_time_origin = null
+
 	if(loading_manifest)
 		manifest = loading_manifest
 		// Belongs to the manifest, not to the subsystem: carrying either across would give a new generation the
@@ -211,16 +237,66 @@ SUBSYSTEM_DEF(campaign)
 	QDEL_NULL(chapter_outcome)
 	chapter_outcome = new
 	faced_major_threat_this_chapter = FALSE
+	// Before the restores below, because restoring the ledger can write an entry and an entry without a clock
+	// reading is a hole in the campaign's history.
+	start_campaign_time()
 	// Asynchronous because this is reached from a signal handler and it is the one step here that sleeps:
 	// rebuilding the techweb runs recalculate_nodes(), which yields through stoplag(). Everything after it
 	// stays synchronous, so the chapter's state, ledger, roster and open marker are all in place before this
 	// proc returns - only the techweb finishes catching up a tick later, which nothing is waiting on.
 	INVOKE_ASYNC(src, PROC_REF(restore_research))
 	restore_ledger()
+	// The larder came back with the map, so the ledger's figure is whatever was true when the chapter was
+	// committed. The food in the box is the truth; this makes the number agree with it again.
+	sync_colony_food_to_ledger()
 	restore_roster()
+	restore_overworld()
 	warn_if_map_is_not_a_colony()
 	mark_chapter_opened(manifest.chapter)
 	message_admins("Colony campaign [manifest.campaign_id]: [manifest.generation_id], chapter [manifest.chapter] begins [manifest.active_checkpoint_id ? "from committed checkpoint [manifest.active_checkpoint_id]" : "on a newly generated world"].")
+	return TRUE
+
+/**
+ * How far into the campaign we are, right now, in deciseconds.
+ *
+ * The one authority on campaign time. Everything that stamps a moment - ledger entries, incident starts and
+ * ends, journey legs - asks this rather than reading the stored clock, because the stored clock is only ever
+ * as fresh as the last time something was written, and most of what wants a timestamp happens between writes.
+ *
+ * Derived from two immutable origins instead of accumulated, so it cannot drift, cannot be double-counted by
+ * being synced twice, and does not need this subsystem to fire. While no chapter is active the stored clock is
+ * the answer, which is what makes a reload resume from the checkpoint rather than from wherever the world
+ * happened to be.
+ */
+/datum/controller/subsystem/campaign/proc/get_campaign_time()
+	if(isnull(chapter_clock_origin) || isnull(chapter_world_time_origin))
+		return manifest?.campaign_clock || 0
+
+	// Clamped because world.time is not guaranteed to only move forwards across a load, and a negative delta
+	// would run the campaign's history backwards - entries would stamp before ones already written.
+	var/elapsed = max(0, world.time - chapter_world_time_origin)
+	return chapter_clock_origin + elapsed
+
+/**
+ * Starts this chapter's contribution to campaign time.
+ *
+ * Takes the stored clock as its floor, so a chapter always begins where the last committed one left off.
+ */
+/datum/controller/subsystem/campaign/proc/start_campaign_time()
+	chapter_clock_origin = manifest?.campaign_clock || 0
+	chapter_world_time_origin = world.time
+
+/**
+ * Copies the live clock into the manifest, so a write picks it up.
+ *
+ * Deliberately does not rebase the origins. Rebasing would make the answer depend on how many times this was
+ * called, which is how a clock that is synced before a snapshot and again before a commit ends up counting the
+ * time between them twice.
+ */
+/datum/controller/subsystem/campaign/proc/sync_campaign_time()
+	if(!manifest)
+		return FALSE
+	manifest.campaign_clock = get_campaign_time()
 	return TRUE
 
 /**
@@ -314,6 +390,10 @@ SUBSYSTEM_DEF(campaign)
 		var/lost_checkpoint_id = manifest.active_checkpoint_id
 		var/lost_chapter = manifest.chapter
 
+		// The moment the generation ended is part of what is being recorded, so it is taken before the record
+		// is built rather than left at whatever the last commit happened to store.
+		sync_campaign_time()
+
 		manifest.generation_closed = TRUE
 		manifest.closure_reason = reason
 		manifest.active_checkpoint_id = null
@@ -376,12 +456,22 @@ SUBSYSTEM_DEF(campaign)
 	var/datum/campaign_manifest/fresh = new(manifest.campaign_id, "generation-[next_number]")
 	fresh.generation_number = next_number
 	fresh.planet_record = build_generation_planet_record(manifest.campaign_id, next_number)
+	// The colony is new; the campaign is not. Time is the one thing that survives a generation being lost,
+	// because how long this has been going on is true regardless of how many towns it took.
+	fresh.campaign_clock = get_campaign_time()
 
 	// The campaign remembers how old it is; the new colony inherits none of the previous one's scars.
 	var/datum/colony_story_state/story = get_story_state()
 	if(story)
 		story.reset_for_new_generation()
 		fresh.storyteller_state = story.serialize()
+
+	// The region's options are a preference about how this campaign is played, so they survive. Everything the
+	// last generation discovered described ground that no longer exists, so none of it does.
+	var/datum/overworld_state/region_state = get_overworld_state()
+	if(region_state)
+		region_state.reset_for_new_generation()
+		fresh.overworld_record = region_state.serialize()
 
 	if(isnull(write_campaign_manifest(fresh)))
 		enter_recovery("a new generation could not be written to disk")
@@ -556,7 +646,7 @@ SUBSYSTEM_DEF(campaign)
  */
 /datum/controller/subsystem/campaign/proc/try_debit(amount, category, reason_code, actor_id, related_id)
 	var/datum/settlement_ledger/settlement = get_ledger()
-	if(!settlement || !settlement.try_debit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+	if(!settlement || !settlement.try_debit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, get_campaign_time()))
 		return FALSE
 	sync_ledger()
 	return TRUE
@@ -564,7 +654,7 @@ SUBSYSTEM_DEF(campaign)
 /// Adds to the settlement's money and records why.
 /datum/controller/subsystem/campaign/proc/credit(amount, category, reason_code, actor_id, related_id)
 	var/datum/settlement_ledger/settlement = get_ledger()
-	if(!settlement || !settlement.credit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+	if(!settlement || !settlement.credit(get_settlement_account(), amount, category, reason_code, actor_id, related_id, get_campaign_time()))
 		return FALSE
 	sync_ledger()
 	return TRUE
@@ -572,7 +662,7 @@ SUBSYSTEM_DEF(campaign)
 /// Moves a resource quantity and records why. Refuses to take more than the settlement holds.
 /datum/controller/subsystem/campaign/proc/adjust_resource(resource_id, amount, category, reason_code, actor_id, related_id)
 	var/datum/settlement_ledger/settlement = get_ledger()
-	if(!settlement || !settlement.adjust_resource(resource_id, amount, category, reason_code, actor_id, related_id, manifest.campaign_clock))
+	if(!settlement || !settlement.adjust_resource(resource_id, amount, category, reason_code, actor_id, related_id, get_campaign_time()))
 		return FALSE
 	sync_ledger()
 	return TRUE
@@ -580,7 +670,7 @@ SUBSYSTEM_DEF(campaign)
 /// Records something worth remembering that moved neither money nor materials.
 /datum/controller/subsystem/campaign/proc/record_nonfinancial(category, reason_code, actor_id, related_id)
 	var/datum/settlement_ledger/settlement = get_ledger()
-	if(!settlement || !settlement.record_nonfinancial(category, reason_code, actor_id, related_id, manifest.campaign_clock))
+	if(!settlement || !settlement.record_nonfinancial(category, reason_code, actor_id, related_id, get_campaign_time()))
 		return FALSE
 	sync_ledger()
 	return TRUE
@@ -808,6 +898,152 @@ SUBSYSTEM_DEF(campaign)
 		return FALSE
 
 	return capture_colonist_skills(record, mind)
+
+/**
+ * What play has done to the region, built from the manifest the first time it is asked for.
+ *
+ * Materialised on demand for the same reason the ledger and roster are: nothing has to be ordered correctly
+ * between the manifest arriving and somebody opening the map.
+ */
+/datum/controller/subsystem/campaign/proc/get_overworld_state()
+	RETURN_TYPE(/datum/overworld_state)
+	if(!manifest)
+		return null
+
+	if(!overworld)
+		overworld = new
+		if(length(manifest.overworld_record) && !overworld.deserialize(manifest.overworld_record))
+			log_game("Campaign [manifest.campaign_id] has an unreadable overworld record; the region starts unexplored.")
+			message_admins("The colony's regional map could not be read. Its discoveries have been reset - do not commit if that record mattered.")
+	return overworld
+
+/// Writes the live overworld state back into the manifest, which is what a commit will store.
+/datum/controller/subsystem/campaign/proc/sync_overworld()
+	if(manifest && overworld)
+		manifest.overworld_record = overworld.serialize()
+
+/**
+ * Opens the region for the chapter, revealing the colony's own surroundings the first time.
+ *
+ * The fingerprint is compared rather than trusted: if the region rebuilt differently from the one the stored
+ * discoveries were recorded against, every cell id in that record now describes somewhere else. That is a
+ * generator drift bug rather than something to repair silently, so it is said out loud and the discoveries are
+ * kept - throwing them away would destroy the evidence.
+ */
+/datum/controller/subsystem/campaign/proc/restore_overworld()
+	var/datum/overworld_state/region_state = get_overworld_state()
+	if(!region_state)
+		return FALSE
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region)
+		return FALSE
+
+	if(region_state.region_fingerprint && region_state.region_fingerprint != region.fingerprint)
+		log_game("Campaign [manifest.campaign_id]: the region rebuilt with a different fingerprint than its stored discoveries were recorded against.")
+		message_admins(span_boldwarning("The colony's regional map no longer matches what was explored. This is a generator drift bug; report it rather than continuing to rely on the map."))
+
+	if(!length(region_state.discovered_cells))
+		region_state.reveal_initial(region)
+
+	region_state.region_fingerprint = region.fingerprint
+	sync_overworld()
+	return TRUE
+
+/**
+ * Marks a cell and its neighbours as seen, and tells any open map about it.
+ *
+ * The single funnel every discovery goes through, so there is exactly one place that serializes and exactly
+ * one place that refreshes the interface - the map is on manual updates, and a discovery nobody pushed would
+ * simply not appear.
+ */
+/datum/controller/subsystem/campaign/proc/discover_overworld_cell(cell_id)
+	var/datum/overworld_state/region_state = get_overworld_state()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region_state || !region)
+		return 0
+
+	var/revealed = region_state.discover_around(region, cell_id)
+	if(!revealed)
+		return 0
+
+	sync_overworld()
+	refresh_overworld_consoles()
+	return revealed
+
+/// The expedition being assembled or under way, if there is one.
+/datum/controller/subsystem/campaign/proc/get_active_party()
+	RETURN_TYPE(/datum/overworld_party)
+	var/datum/overworld_state/region_state = get_overworld_state()
+	return region_state?.active_party
+
+/**
+ * Records that the party changed, and shows it.
+ *
+ * The same funnel discovery uses. Every party edit goes through here rather than serializing at its own call
+ * site, because the map is on manual updates and a change nobody pushed simply does not appear - which looks
+ * exactly like the button being broken.
+ */
+/datum/controller/subsystem/campaign/proc/commit_party_change()
+	sync_overworld()
+	refresh_overworld_consoles()
+	return TRUE
+
+/// Starts assembling an expedition. Returns it, or null if one already exists.
+/datum/controller/subsystem/campaign/proc/form_party()
+	RETURN_TYPE(/datum/overworld_party)
+	var/datum/overworld_state/region_state = get_overworld_state()
+	var/datum/overworld_party/party = region_state?.create_party()
+	if(!party)
+		return null
+
+	log_game("Colony campaign [manifest?.campaign_id]: expedition [party.party_id] is being assembled.")
+	commit_party_change()
+	return party
+
+/**
+ * Sends the party out, exactly once, paying for it as it goes.
+ *
+ * The whole point of this proc is that the check and the charge are not separable. Everything is revalidated
+ * here - not at the moment somebody clicked ready - and the food is debited before the state moves, so a
+ * caravan can never be on the road unpaid for, and a refused departure can never have eaten anything.
+ */
+/datum/controller/subsystem/campaign/proc/depart_party()
+	var/datum/overworld_party/party = get_active_party()
+	if(!party)
+		return "There is no expedition to send."
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region)
+		return "This colony has no regional map."
+
+	var/blocked = party.departure_problem(region, get_discovered_cell_ids(region))
+	if(blocked)
+		return blocked
+
+	var/cost = party.supply_cost()
+	// Paid before the state moves, and paid all at once: out of the larder if the colony has stocked it, and
+	// out of the budget for whatever is missing. Nothing is taken unless the whole bill can be met, so a
+	// refused departure leaves the colony exactly as it was.
+	if(!pay_for_colony_food(cost, "expedition_supplies", party.party_id))
+		return "The colony could not put together the food this journey needs."
+
+	if(!party.set_state(OVERWORLD_PARTY_DEPARTING, "the expedition set out"))
+		// departure_problem() already proved the party was still forming, so reaching here means the state
+		// machine and the departure checks disagree. Say so loudly: the food is gone and nobody left with it.
+		stack_trace("expedition [party.party_id] paid for its supplies and was then refused departure")
+		return "The expedition could not be sent."
+
+	party.supplies = cost
+	log_game("Colony campaign [manifest?.campaign_id]: expedition [party.party_id] left for [party.destination_site_id] with [length(party.member_ids)] colonists and [cost] food.")
+	message_admins("Colony expedition [party.party_id] left for [party.destination_site_id] with [length(party.member_ids)] colonists.")
+	commit_party_change()
+	return null
+
+/// Pushes new map data to anyone looking at one. Autoupdate is off, so this is how the map ever changes.
+/datum/controller/subsystem/campaign/proc/refresh_overworld_consoles()
+	for(var/obj/machinery/computer/colony_overworld/table as anything in GLOB.colony_overworld_consoles)
+		SStgui.update_uis(table)
 
 /**
  * How many threat points a raid scheduled right now is worth.
@@ -1085,6 +1321,10 @@ SUBSYSTEM_DEF(campaign)
 		log_admin("Campaign snapshot refused: '[snapshot_id]' cannot be a checkpoint id.")
 		return FALSE
 
+	// A snapshot is a picture of now, so the clock in it reads now. This promotes nothing: the committed
+	// pointer is untouched, and syncing does not rebase, so a later commit is unaffected by having done this.
+	sync_campaign_time()
+
 	world_quiesced = TRUE
 	var/staged = snapshot.stage(manifest)
 	world_quiesced = FALSE
@@ -1117,6 +1357,7 @@ SUBSYSTEM_DEF(campaign)
 	capture_research()
 	capture_ledger()
 	capture_roster()
+	sync_campaign_time()
 
 	// Aged before the checkpoint is staged, so the campaign record preserved alongside the world describes the
 	// chapter that just ended rather than the one before it.

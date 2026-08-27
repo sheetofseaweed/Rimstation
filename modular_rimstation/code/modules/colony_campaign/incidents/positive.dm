@@ -62,12 +62,11 @@
 /**
  * Takes the cost of feeding them, in stores if the settlement has any and in credits otherwise.
  *
- * Tracked stores are the better price and nothing produces them yet - harvests do not reach the ledger - so
- * without the fallback this incident could never succeed. When a producer exists the food path simply starts
- * being the one that gets used.
+ * Stores are the better price, so the larder is tried first and the budget is the fallback. Both paths are
+ * the same rate; buying rations in simply wastes the difference the colony could have grown.
  */
 /datum/colony_incident/refugee/proc/pay_for_keep()
-	if(SScampaign.adjust_resource("food", -food_price, LEDGER_CATEGORY_INCIDENT, "fed a refugee", null, id))
+	if(consume_colony_food(food_price, "fed a refugee", id))
 		paid_in = "[food_price] stored food"
 		return TRUE
 

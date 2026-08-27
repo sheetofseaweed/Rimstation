@@ -13,6 +13,10 @@
 	var/list/saved_seen
 	var/list/saved_bodies
 	var/saved_seen_chapter
+	/// The region and the accounts. Borrowed like the rest, because a test that forms an expedition or spends
+	/// the colony's food would otherwise leave both behind for whatever test runs next.
+	var/datum/overworld_state/saved_overworld
+	var/datum/settlement_ledger/saved_ledger
 
 /// Puts SScampaign on a throwaway campaign with an empty roster, and returns its manifest.
 /datum/unit_test/rimstation_colonist_chapter/proc/begin_test_campaign()
@@ -23,6 +27,8 @@
 	saved_seen = SScampaign.colonists_seen_this_chapter
 	saved_bodies = SScampaign.active_colonist_bodies
 	saved_seen_chapter = SScampaign.seen_chapter
+	saved_overworld = SScampaign.overworld
+	saved_ledger = SScampaign.ledger
 
 	var/datum/campaign_manifest/manifest = new("unit-test-colonists", "generation-1")
 	allocated += manifest
@@ -31,6 +37,8 @@
 	SScampaign.roster = new
 	SScampaign.colonists_seen_this_chapter = list()
 	SScampaign.active_colonist_bodies = list()
+	SScampaign.overworld = null
+	SScampaign.ledger = null
 	// Null rather than the test's chapter, so the first binding opens a window belonging to this test.
 	SScampaign.seen_chapter = null
 	return manifest
@@ -39,16 +47,24 @@
 	// The roster the test built is the subsystem's now, so it is destroyed here rather than left to leak.
 	if(SScampaign.roster != saved_roster)
 		QDEL_NULL(SScampaign.roster)
+	if(SScampaign.overworld != saved_overworld)
+		QDEL_NULL(SScampaign.overworld)
+	if(SScampaign.ledger != saved_ledger)
+		QDEL_NULL(SScampaign.ledger)
 	SScampaign.campaign_state = saved_state
 	SScampaign.manifest = saved_manifest
 	SScampaign.roster = saved_roster
 	SScampaign.colonists_seen_this_chapter = saved_seen
 	SScampaign.active_colonist_bodies = saved_bodies
 	SScampaign.seen_chapter = saved_seen_chapter
+	SScampaign.overworld = saved_overworld
+	SScampaign.ledger = saved_ledger
 	saved_manifest = null
 	saved_roster = null
 	saved_seen = null
 	saved_bodies = null
+	saved_overworld = null
+	saved_ledger = null
 	return ..()
 
 

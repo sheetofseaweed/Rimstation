@@ -143,7 +143,7 @@ GLOBAL_LIST_INIT(colony_incident_tags, build_colony_incident_tag_index())
 	if(!set_state(COLONY_INCIDENT_ACTIVE))
 		return FALSE
 
-	started_at_clock = SScampaign.manifest?.campaign_clock || 0
+	started_at_clock = SScampaign.get_campaign_time()
 	execute()
 	return TRUE
 
@@ -175,7 +175,7 @@ GLOBAL_LIST_INIT(colony_incident_tags, build_colony_incident_tag_index())
 	if(!set_state(COLONY_INCIDENT_RESOLVED))
 		return FALSE
 
-	ended_at_clock = SScampaign.manifest?.campaign_clock || 0
+	ended_at_clock = SScampaign.get_campaign_time()
 	result = new(id)
 	result.incident_type = "[type]"
 	result.tags = tags?.Copy() || list()

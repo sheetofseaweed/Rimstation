@@ -26,6 +26,8 @@
 	var/list/ledger_record
 	/// Serialized /datum/colonist_roster. Everyone this generation has known.
 	var/list/roster_record
+	/// Serialized /datum/overworld_state. The region's options, and what play changed about it.
+	var/list/overworld_record
 	/// Which chapter is next.
 	var/chapter = 1
 	/// Accumulated campaign time in deciseconds.
@@ -49,6 +51,7 @@
 	research_record = list()
 	ledger_record = list()
 	roster_record = list()
+	overworld_record = list()
 	storyteller_state = list()
 	record_references = list()
 
@@ -120,6 +123,7 @@
 		"research_record" = research_record?.Copy() || list(),
 		"ledger_record" = ledger_record?.Copy() || list(),
 		"roster_record" = roster_record?.Copy() || list(),
+		"overworld_record" = overworld_record?.Copy() || list(),
 		"chapter" = chapter,
 		"campaign_clock" = campaign_clock,
 		"storyteller_state" = storyteller_state?.Copy() || list(),
@@ -170,6 +174,8 @@
 				record = migrate_campaign_manifest_v3_to_v4(record)
 			if(4)
 				record = migrate_campaign_manifest_v4_to_v5(record)
+			if(5)
+				record = migrate_campaign_manifest_v5_to_v6(record)
 			else
 				log_game("Campaign manifest rejected: no migration exists from schema version [from_version].")
 				return null
@@ -240,6 +246,20 @@
 	return record
 
 /**
+ * Schema 5 to 6: the colony has a region around it.
+ *
+ * A campaign from before the overworld gets the standard region options and no discoveries, so its first boot
+ * generates a region and reveals only what a colony can see from its own doorstep. Nothing about the colony
+ * itself changes - the region is new ground beside it, not a replacement for the map it is standing on.
+ */
+/proc/migrate_campaign_manifest_v5_to_v6(list/record)
+	RETURN_TYPE(/list)
+	if(!islist(record["overworld_record"]))
+		record["overworld_record"] = list()
+	record["schema_version"] = 6
+	return record
+
+/**
  * Loads a record produced by serialize(). Returns TRUE on success.
  *
  * Everything is validated before anything is assigned. A half-applied manifest is worse than no manifest,
@@ -264,6 +284,7 @@
 	candidate.research_record = islist(migrated["research_record"]) ? migrated["research_record"] : list()
 	candidate.ledger_record = islist(migrated["ledger_record"]) ? migrated["ledger_record"] : list()
 	candidate.roster_record = islist(migrated["roster_record"]) ? migrated["roster_record"] : list()
+	candidate.overworld_record = islist(migrated["overworld_record"]) ? migrated["overworld_record"] : list()
 	candidate.chapter = migrated["chapter"]
 	candidate.campaign_clock = migrated["campaign_clock"]
 	candidate.storyteller_state = islist(migrated["storyteller_state"]) ? migrated["storyteller_state"] : list()
@@ -285,6 +306,7 @@
 	research_record = candidate.research_record
 	ledger_record = candidate.ledger_record
 	roster_record = candidate.roster_record
+	overworld_record = candidate.overworld_record
 	chapter = candidate.chapter
 	campaign_clock = candidate.campaign_clock
 	storyteller_state = candidate.storyteller_state

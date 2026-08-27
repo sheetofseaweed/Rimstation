@@ -9,36 +9,10 @@
  * committed - so it is meant to be run on a fresh colony round, not halfway through a ruined one.
  */
 ADMIN_VERB(rimstation_start_colony_campaign, R_ADMIN, "Start Colony Campaign", "Begins a persistent campaign on this colony, committing it at round end.", ADMIN_CATEGORY_EVENTS)
-	if(SScampaign.is_campaign_active())
-		to_chat(user, span_warning("A campaign is already running: [SScampaign.manifest.campaign_id], generation [SScampaign.manifest.generation_id], chapter [SScampaign.manifest.chapter]."))
-		return
-
-	var/obj/structure/colony_core/core = get_colony_core()
-	if(!core)
-		to_chat(user, span_warning("There is no colony core on this map. A campaign here could never be lost, only saved, which is not a campaign."))
-		return
-
-	if(!CONFIG_GET(flag/persistent_save_enabled))
-		to_chat(user, span_warning("Persistent saving is disabled in config, so a campaign would have nothing to commit."))
-		return
-
-	var/campaign_id = tgui_input_text(user, "Identifier for this campaign", "Colony Campaign", default = CAMPAIGN_DEFAULT_ID, max_length = 32)
-	if(isnull(campaign_id))
-		return
-
-	if(!is_safe_campaign_id(campaign_id))
-		to_chat(user, span_warning("'[campaign_id]' cannot be used as a directory name. Use letters, digits, dots, dashes and underscores."))
-		return
-
-	if(tgui_alert(user, "Start campaign '[campaign_id]'? This round becomes its first chapter, and the colony as it stands at round end will be committed.", "Colony Campaign", list("Start", "Cancel")) != "Start")
-		return
-
-	if(!SScampaign.create_campaign(campaign_id, key_name(user)))
-		to_chat(user, span_warning("The campaign could not be started. It may already exist on disk - check the game log."))
-		return
-
-	message_admins("[key_name_admin(user)] started colony campaign [campaign_id]. This round is chapter 1.")
-	log_admin("[key_name(user)] started colony campaign [campaign_id].")
+	// The screen itself reports why a campaign cannot start, so the checks are not duplicated here - the reason
+	// is more useful shown beside the button it disables than as a line of chat before anything opens.
+	var/datum/campaign_setup/setup = new(key_name(user))
+	setup.ui_interact(user.mob)
 
 
 /**
@@ -227,3 +201,31 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 		report += "Incidents remembered: [length(story.recent_incidents)]"
 
 	to_chat(user, boxed_message(span_notice(report.Join("\n"))))
+
+
+/**
+ * Puts food in the colony's larder without anybody having had to grow it.
+ *
+ * For testing and for repairing a colony that lost its stores to a bug. Food is the one resource with a single
+ * producer - the larder - so this stocks that rather than writing the ledger directly, which the next recount
+ * would simply undo.
+ */
+ADMIN_VERB(rimstation_stock_colony_larder, R_ADMIN, "Stock Colony Larder", "Adds food units to the colony's larder.", ADMIN_CATEGORY_DEBUG)
+	var/obj/structure/closet/crate/freezer/colony_larder/larder = get_colony_larder()
+	if(!larder)
+		to_chat(user, span_warning("This colony has no larder. Build or spawn an /obj/structure/closet/crate/freezer/colony_larder first."))
+		return
+
+	var/units = tgui_input_number(user, "How many units of food? The larder currently holds [count_colony_food()].", "Colony Larder", default = 50, max_value = 1000, min_value = 1)
+	if(!units)
+		return
+
+	// Stocked as real items rather than as a number, so what an admin adds behaves exactly like what a colony
+	// grew: it can be counted, taken back out, stolen by a raid, and saved with the map.
+	var/loaves = CEILING(units / (10 / COLONY_FOOD_UNIT_NUTRIMENT), 1)
+	for(var/index in 1 to loaves)
+		new /obj/item/food/bread/plain(larder)
+
+	sync_colony_food_to_ledger()
+	log_admin("[key_name(user)] stocked the colony larder with [loaves] loaves ([count_colony_food()] units total).")
+	to_chat(user, span_notice("Added [loaves] loaves. The larder now holds [count_colony_food()] units of food."))
