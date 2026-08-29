@@ -25,6 +25,8 @@
 	var/datum/overworld_party/active_party
 	/// Issues party ids. Monotonic and never rewound, so a finished journey's id is never reused by a later one.
 	var/next_party_number = 1
+	/// Issues decision ids, on the same terms. An answer names the question it answers, so the ids must be unique.
+	var/next_decision_number = 1
 
 /datum/overworld_state/New(list/starting_options)
 	. = ..()
@@ -173,6 +175,7 @@
 		"site_states" = changed,
 		"region_fingerprint" = region_fingerprint,
 		"next_party_number" = next_party_number,
+		"next_decision_number" = next_decision_number,
 		"active_party" = active_party?.serialize(),
 	)
 
@@ -240,6 +243,10 @@
 	if(!isnum(incoming_party_number) || incoming_party_number < 1 || incoming_party_number != round(incoming_party_number))
 		incoming_party_number = 1
 
+	var/incoming_decision_number = data["next_decision_number"]
+	if(!isnum(incoming_decision_number) || incoming_decision_number < 1 || incoming_decision_number != round(incoming_decision_number))
+		incoming_decision_number = 1
+
 	schema_version = incoming_schema
 	generation_version = incoming_generation
 	options = incoming_options.Copy()
@@ -248,6 +255,7 @@
 	region_fingerprint = istext(data["region_fingerprint"]) ? data["region_fingerprint"] : null
 	QDEL_NULL(active_party)
 	active_party = incoming_party
+	next_decision_number = incoming_decision_number
 	// Never allowed to go backwards past a party that already exists, or the next journey would take its id.
 	next_party_number = incoming_party_number
 	if(active_party)

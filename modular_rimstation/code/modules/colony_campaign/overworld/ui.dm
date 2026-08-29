@@ -190,6 +190,10 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 
 	data["campaign"] = SScampaign.manifest?.campaign_id
 	data["chapter"] = SScampaign.manifest?.chapter
+	// The colony's books. Every expedition spends and earns against these, so the table that plans journeys is
+	// the obvious place to be able to read them.
+	data["ledger"] = SScampaign.get_ledger()?.build_readout()
+	data["campaign_clock"] = SScampaign.get_campaign_time()
 	data["colony_under_attack"] = is_colony_raid_running()
 
 	// Who is standing at the table decides what they are allowed to do with it. Everything below is about this
@@ -250,6 +254,16 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 		"supplies_held" = count_colony_food(),
 		"supplies_shortfall_price" = colony_food_shortfall_price(party.supply_cost()),
 		"has_larder" = !isnull(get_colony_larder()),
+		"current_cell" = party.current_cell,
+		"next_cell" = party.leg_target_cell(),
+		"leg_started_at" = party.leg_started_at,
+		"leg_arrives_at" = party.leg_arrives_at,
+		"clock_now" = SScampaign.get_campaign_time(),
+		"supplies_carried" = party.supplies,
+		"pending_decision" = party.pending_decision?.Copy(),
+		"gathered_ids" = party_members_at_post(party),
+		"has_hitching_post" = !isnull(get_caravan_hitching_post()),
+		"gather_radius" = OVERWORLD_GATHER_RADIUS,
 		"you_are_a_member" = viewer ? (viewer.colonist_id in party.member_ids) : FALSE,
 		"you_are_ready" = viewer ? (viewer.colonist_id in party.ready_member_ids) : FALSE,
 		"join_problem" = viewer ? party.joining_problem(viewer.colonist_id) : "You are not one of this colony's colonists.",
@@ -374,14 +388,58 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 				SScampaign.commit_party_change()
 			return TRUE
 
-		if("depart")
-			if(!party)
+		if("disband")
+			// Anybody on it may call it off while it is still gathering. Nothing has been spent yet - the food is
+			// debited at departure - so this costs the colony nothing but the walk back to the table.
+			if(!party || !viewer)
 				return TRUE
-			var/refused = SScampaign.depart_party()
+			if(!party.is_planning())
+				to_chat(actor, span_warning("The expedition has already left."))
+				return TRUE
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+
+			party.set_state(OVERWORLD_PARTY_LOST, "[viewer.display_name] called the muster off")
+			SScampaign.overworld?.clear_party("the muster was called off")
+			SScampaign.commit_party_change()
+			to_chat(actor, span_notice("You call the muster off. Everyone signed on is stood down."))
+			return TRUE
+
+		if("answer_decision")
+			// Any member may answer, and the first answer wins. Waiting on one nominated leader is how a party
+			// gets stranded at a boundary by somebody's connection dropping.
+			if(!party || !viewer)
+				return TRUE
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+
+			var/refused = SSoverworld.answer_decision(party, params["decision_id"], params["choice"], actor)
 			if(refused)
 				to_chat(actor, span_warning(refused))
-			else
-				party.announce_departure()
+			return TRUE
+
+		if("head_home")
+			// Any member may call the trip. Waiting on one nominated leader is how a party gets stranded by a
+			// disconnect, so the first person to say so decides for everybody.
+			if(!party || !viewer)
+				return TRUE
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+			if(party.state != OVERWORLD_PARTY_AT_SITE)
+				to_chat(actor, span_warning("The expedition is not standing anywhere it can leave from."))
+				return TRUE
+			if(!party.begin_return("[viewer.display_name] called the expedition home"))
+				return TRUE
+
+			// Onto the road properly, rather than standing around the site they have finished with.
+			INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
+
+			var/datum/overworld_region/home_region = get_active_overworld_region()
+			SSoverworld.schedule_leg(party, home_region)
+			SScampaign.commit_party_change()
 			return TRUE
 
 	return FALSE

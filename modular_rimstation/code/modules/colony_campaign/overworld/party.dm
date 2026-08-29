@@ -34,6 +34,8 @@
 	var/supplies = 0
 	/// A question the road has put to the party, or null. One answer from any member clears it.
 	var/list/pending_decision
+	/// How many interruptions this journey has answered. One is the whole of it for now; Task 6 adds more.
+	var/decisions_taken = 0
 
 /datum/overworld_party/New(party_id)
 	. = ..()
@@ -67,7 +69,10 @@
 
 	var/list/allowed = list(
 		OVERWORLD_PARTY_FORMING = list(OVERWORLD_PARTY_DEPARTING, OVERWORLD_PARTY_LOST),
-		OVERWORLD_PARTY_DEPARTING = list(OVERWORLD_PARTY_OUTBOUND, OVERWORLD_PARTY_LOST),
+		// Departing is the one state that can go backwards, and only to forming. Bringing up the travelling
+		// camp sleeps, so departure has a gap in the middle of it; if anything has changed by the time that load
+		// returns, the honest answer is that the expedition never left, not that it left into a broken world.
+		OVERWORLD_PARTY_DEPARTING = list(OVERWORLD_PARTY_OUTBOUND, OVERWORLD_PARTY_FORMING, OVERWORLD_PARTY_LOST),
 		OVERWORLD_PARTY_OUTBOUND = list(OVERWORLD_PARTY_DECISION, OVERWORLD_PARTY_AT_SITE, OVERWORLD_PARTY_RETURNING, OVERWORLD_PARTY_LOST),
 		OVERWORLD_PARTY_DECISION = list(OVERWORLD_PARTY_OUTBOUND, OVERWORLD_PARTY_RETURNING, OVERWORLD_PARTY_LOST),
 		OVERWORLD_PARTY_AT_SITE = list(OVERWORLD_PARTY_RETURNING, OVERWORLD_PARTY_LOST),
@@ -265,7 +270,35 @@
 	if(short)
 		return short
 
+	// And everybody has to actually be here. A caravan that left from wherever people happened to be standing
+	// read as teleporting away rather than setting out.
+	var/not_here = gathering_problem()
+	if(not_here)
+		return not_here
+
 	return null
+
+/**
+ * Why the party is not gathered and ready to walk out, or null if it is.
+ *
+ * Named individually rather than counted, because "two people are missing" sends everybody looking at each
+ * other, and "Vera Holt is not at the post" sends one person to the post.
+ */
+/datum/overworld_party/proc/gathering_problem()
+	if(!get_caravan_hitching_post())
+		return "This colony has no hitching post to muster at."
+
+	var/list/absent = member_ids - party_members_at_post(src)
+	if(!length(absent))
+		return null
+
+	var/datum/colonist_roster/roster = SScampaign.get_roster()
+	var/list/names = list()
+	for(var/colonist_id in absent)
+		var/datum/colonist_record/record = roster?.get_record(colonist_id)
+		names += record?.display_name || colonist_id
+
+	return "Not everybody has gathered at the hitching post: [english_list(names)]."
 
 /// Flat list form for the manifest. Keep in step with deserialize().
 /datum/overworld_party/proc/serialize()
@@ -284,6 +317,7 @@
 		"leg_arrives_at" = leg_arrives_at,
 		"supplies" = supplies,
 		"pending_decision" = pending_decision?.Copy(),
+		"decisions_taken" = decisions_taken,
 	)
 
 /**
@@ -355,6 +389,7 @@
 	leg_arrives_at = isnum(data["leg_arrives_at"]) ? data["leg_arrives_at"] : 0
 	supplies = round(incoming_supplies)
 	pending_decision = incoming_decision?.Copy()
+	decisions_taken = (isnum(data["decisions_taken"]) && data["decisions_taken"] >= 0) ? round(data["decisions_taken"]) : 0
 	return TRUE
 
 /// Notes a membership change in the round log, so who went out is answerable afterwards.
@@ -374,3 +409,124 @@
 		"Expedition Departed",
 		sound = null,
 	)
+
+
+/**
+ * The cell this party is currently walking into, or null if it is not between cells.
+ *
+ * `next_leg_index` is an index into the outbound route in both directions - the way home is the same road
+ * walked backwards, so returning counts the index down rather than keeping a second route.
+ */
+/datum/overworld_party/proc/leg_target_cell()
+	if(next_leg_index < 1 || next_leg_index > length(route))
+		return null
+	return route[next_leg_index]
+
+/// How many of the people who signed on are still alive to eat and to carry things.
+/datum/overworld_party/proc/living_member_count()
+	var/alive = 0
+	for(var/colonist_id in member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(body && body.stat != DEAD)
+			alive++
+	return alive
+
+/// TRUE when the party is standing back at the colony.
+/datum/overworld_party/proc/at_home()
+	return current_cell == (length(route) ? route[1] : "0,0")
+
+/// TRUE when the party is standing on the cell holding the site it set out for.
+/datum/overworld_party/proc/at_destination(datum/overworld_region/region)
+	var/datum/overworld_site/site = region?.sites[destination_site_id]
+	if(!site)
+		return FALSE
+	return current_cell == "[site.q],[site.r]"
+
+/**
+ * Turns the party around and points it back down the road it came.
+ *
+ * The route is not recomputed. A party walks home the way it knows, which is also the way its remaining
+ * rations were priced for - finding a shorter path back would be a different journey than the one paid for.
+ */
+/datum/overworld_party/proc/begin_return(reason)
+	if(!set_state(OVERWORLD_PARTY_RETURNING, reason || "the expedition turned for home"))
+		return FALSE
+
+	// The index of where it is standing now, so the first step home is the cell before it.
+	var/standing_at = route.Find(current_cell)
+	next_leg_index = standing_at ? max(1, standing_at - 1) : 1
+	return TRUE
+
+
+/**
+ * Which boundary of the outbound walk the road interrupts. Zero when there is nothing long enough to interrupt.
+ *
+ * Derived from the party id and the route rather than rolled, so it survives a reload: a party that reconnects
+ * mid-journey finds the same interruption waiting at the same place rather than a freshly rolled one somewhere
+ * else. Deriving it also means it cannot be rerolled by asking twice.
+ */
+/datum/overworld_party/proc/decision_boundary_index()
+	var/boundaries = length(route) - 1
+	if(boundaries < 1)
+		return 0
+
+	var/hash = rustg_hash_string(RUSTG_HASH_SHA256, "decision:[party_id]:[route.Join(">")]")
+	var/roll = hex2num(copytext(hash, 1, OVERWORLD_HASH_LENGTH + 1))
+	if(!isnum(roll))
+		return 1
+	// Indexes the cell being walked into, so the first boundary a party can be stopped at is the second cell.
+	return 2 + (round(roll) % boundaries)
+
+/// TRUE when this boundary is the one the road has something to say about, and it has not said it yet.
+/datum/overworld_party/proc/decision_is_due()
+	if(decisions_taken > 0 || pending_decision)
+		return FALSE
+	if(state != OVERWORLD_PARTY_OUTBOUND)
+		return FALSE
+	return next_leg_index == decision_boundary_index()
+
+/**
+ * What the party may do about the ground in front of them.
+ *
+ * Options are filtered by whether the colony could still get them home afterwards. Forcing through is always
+ * offered and always costs no rations, which is what makes it the answer that cannot strand anybody.
+ */
+/datum/overworld_party/proc/available_decision_choices(datum/overworld_region/region)
+	RETURN_TYPE(/list)
+	var/list/offered = list(OVERWORLD_DECISION_FORCE)
+	var/mouths = max(1, living_member_count())
+
+	// Going round has to actually exist, and has to leave enough in the packs to finish the journey.
+	var/list/detour = detour_route(region)
+	if(length(detour) >= 2)
+		var/added_edges = (length(detour) - 1) - (length(route) - 1)
+		if(supplies >= (added_edges + 1) * mouths)
+			offered += OVERWORLD_DECISION_DETOUR
+
+	// Sitting it out costs a meal each, and is not offered if that meal is the one that gets them home.
+	if(supplies >= (2 * mouths))
+		offered += OVERWORLD_DECISION_WAIT
+
+	return offered
+
+/**
+ * A way to the destination that does not cross the cell in front of them.
+ *
+ * Recomputed by the server from the cell the party is standing on, so a detour is a real walk with real costs
+ * rather than a discount for having been interrupted.
+ */
+/datum/overworld_party/proc/detour_route(datum/overworld_region/region)
+	RETURN_TYPE(/list)
+	var/blocked = leg_target_cell()
+	var/list/discovered = SScampaign.get_overworld_state()?.discovered_cells
+	if(!region || !blocked || !length(route))
+		return list()
+
+	// The blocked cell is taken out of what the planner may walk through. Everything else the colony has seen
+	// is still fair ground.
+	var/list/without_blocked = list()
+	for(var/cell_id in discovered)
+		if(cell_id != blocked)
+			without_blocked[cell_id] = TRUE
+
+	return region.plan_route(current_cell, route[length(route)], route_kind || OVERWORLD_ROUTE_FASTEST, without_blocked)

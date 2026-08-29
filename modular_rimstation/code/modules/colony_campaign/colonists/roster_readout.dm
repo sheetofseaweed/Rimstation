@@ -82,6 +82,10 @@
 		))
 
 	data["colonists"] = colonists
+	// The register already answers "who lives here". The books answer "what have they got", which is the other
+	// half of the same question and had nowhere to be read at all.
+	data["ledger"] = SScampaign.get_ledger()?.build_readout()
+	data["campaign_clock"] = SScampaign.get_campaign_time()
 	return data
 
 /**

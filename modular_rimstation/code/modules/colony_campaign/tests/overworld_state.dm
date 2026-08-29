@@ -28,6 +28,7 @@
 		// An expedition is people the colony sent out. Nothing about it is derivable from the region, and
 		// forgetting it across a reboot would strand whoever was on it.
 		"next_party_number",
+		"next_decision_number",
 		"active_party",
 	)
 

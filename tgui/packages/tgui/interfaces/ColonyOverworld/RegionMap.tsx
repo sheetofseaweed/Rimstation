@@ -8,6 +8,7 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   panForZoomAt,
+  hexCenter,
   parseCellId,
   regionBounds,
   routePolyline,
@@ -77,6 +78,11 @@ type Props = {
   revealAll?: boolean;
   /** A planned walk, as cell ids. Drawn over the field so the route is read off the map, not off a list. */
   route?: string[];
+  /** The cell a travelling party is leaving, and the one it is walking into. */
+  partyFrom?: string;
+  partyTo?: string;
+  /** How far between those two the party is, 0 to 1. Interpolated by the caller, not the server. */
+  partyProgress?: number;
 };
 
 /**
@@ -86,8 +92,19 @@ type Props = {
  * creation is drawn by exactly the same code that will draw it for the rest of the campaign.
  */
 export function RegionMap(props: Props) {
-  const { radius, cells, knownCells, knownSites, selected, onSelect, revealAll, route } =
-    props;
+  const {
+    radius,
+    cells,
+    knownCells,
+    knownSites,
+    selected,
+    onSelect,
+    revealAll,
+    route,
+    partyFrom,
+    partyTo,
+    partyProgress,
+  } = props;
 
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -306,6 +323,13 @@ export function RegionMap(props: Props) {
         })}
 
         {/*
+          The caravan itself, sitting between the two cells it is crossing. Drawn from an interpolated position
+          rather than snapped to a hex, so a long leg reads as movement instead of a marker that sits still and
+          then jumps.
+        */}
+        <PartyMarker from={partyFrom} to={partyTo} progress={partyProgress} />
+
+        {/*
           The planned walk, drawn last so it sits on top of the field rather than under it. Pointer events are
           off so the hexes underneath stay clickable - the route is something to read, not something to grab.
         */}
@@ -328,6 +352,35 @@ export function RegionMap(props: Props) {
         )}
       </svg>
     </Box>
+  );
+}
+
+/** The travelling party, placed between the cell it left and the cell it is entering. */
+function PartyMarker(props: {
+  from?: string;
+  to?: string;
+  progress?: number;
+}) {
+  const { from, to, progress = 0 } = props;
+  const fromAxial = from ? parseCellId(from) : null;
+  if (!fromAxial) {
+    return null;
+  }
+
+  const start = hexCenter(fromAxial, HEX_SIZE);
+  // Standing still is a legitimate state - at a site, or halted at a decision - and then the marker just sits
+  // on the cell it is on.
+  const toAxial = to ? parseCellId(to) : null;
+  const end = toAxial ? hexCenter(toAxial, HEX_SIZE) : start;
+
+  const x = start.x + (end.x - start.x) * progress;
+  const y = start.y + (end.y - start.y) * progress;
+
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={x} cy={y} r={3.2} fill="#f4f0e6" stroke="#2b2b2b" strokeWidth={0.8} />
+      <circle cx={x} cy={y} r={1.3} fill="#c8452b" />
+    </g>
   );
 }
 

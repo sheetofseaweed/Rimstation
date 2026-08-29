@@ -116,13 +116,18 @@
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/arriving = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider, edge)
 	raid.roster += WEAKREF(arriving)
 
-	// The controller is switched off for the duration, and this is load-bearing rather than tidiness.
+	// The controller is removed outright, and this is load-bearing rather than tidiness.
 	//
 	// work_the_theft() runs inside process() and routes attackers, and building a route map runs CHECK_TICK -
 	// which yields. A live controller takes that opening and walks the raider off the edge band before the
 	// extraction sweep further down the same call ever looks at where it is standing. That made this test fail
 	// roughly one run in three, on a rule that was working perfectly.
-	arriving.ai_controller?.set_ai_status(AI_STATUS_OFF)
+	//
+	// Switching the controller off was not enough: reset_ai_status() recalculates it from the mob's situation
+	// and turns it back on. Removing it stops the movement and, because work_the_theft() skips attackers that
+	// have no controller, removes the yield as well. Neither matters to what this tests - extraction is decided
+	// by where a raider stands and what it carries, not by how it got there.
+	QDEL_NULL(arriving.ai_controller)
 
 	raid.process(1)
 	TEST_ASSERT(!QDELETED(arriving), "An empty-handed attacker standing on its own landing tile was extracted, so a theft raid would delete itself on arrival.")

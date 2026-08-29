@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -6,6 +6,7 @@ import {
   NoticeBox,
   Section,
   Stack,
+  Tabs,
 } from 'tgui-core/components';
 
 import { useBackend } from '../backend';
@@ -17,6 +18,7 @@ import {
   parseCellId,
   RegionMap,
 } from './ColonyOverworld/RegionMap';
+import { type Ledger, LedgerReadout } from './ColonyOverworld/LedgerReadout';
 
 type Member = {
   id: string;
@@ -44,10 +46,26 @@ type Party = {
   supplies_held: number;
   supplies_shortfall_price: number;
   has_larder: boolean;
+  current_cell: string | null;
+  next_cell: string | null;
+  leg_started_at: number;
+  leg_arrives_at: number;
+  clock_now: number;
+  supplies_carried: number;
+  pending_decision: PendingDecision | null;
+  gathered_ids: string[];
+  has_hitching_post: boolean;
+  gather_radius: number;
   you_are_a_member: boolean;
   you_are_ready: boolean;
   join_problem: string | null;
   departure_problem: string | null;
+};
+
+type PendingDecision = {
+  id: string;
+  cell: string;
+  choices: string[];
 };
 
 type RouteOffer = {
@@ -77,6 +95,8 @@ type Data = {
   previewed_site_id: string | null;
   party: Party | null;
   route_offers: RouteOffer[];
+  ledger: Ledger | null;
+  campaign_clock: number;
 };
 
 /** Seconds into something a person can judge at a glance. Journeys are minutes, not thousands of seconds. */
@@ -97,6 +117,21 @@ const ROUTE_LABELS: Record<string, string> = {
   safer: 'Safer',
 };
 
+const CHOICE_LABELS: Record<string, { label: string; detail: string }> = {
+  force: {
+    label: 'Force through',
+    detail: 'Keep the road and the arrival time. Everybody takes a beating for it, and it costs no rations.',
+  },
+  detour: {
+    label: 'Go around',
+    detail: 'The server finds a way that avoids the blockage. Longer, and the extra ground eats extra rations.',
+  },
+  wait: {
+    label: 'Wait it out',
+    detail: 'Make camp for ninety seconds and set off again. Costs a meal each.',
+  },
+};
+
 const STATE_LABELS: Record<string, string> = {
   forming: 'being assembled',
   departing: 'setting out',
@@ -107,6 +142,48 @@ const STATE_LABELS: Record<string, string> = {
   complete: 'home',
   lost: 'lost',
 };
+
+/**
+ * How far along the current leg the party is, 0 to 1.
+ *
+ * Recomputed locally from the three server anchors on a timer, rather than being pushed every tick. The offset
+ * between the server's campaign clock and this client's own clock is measured once per push, so closing the
+ * window and reopening it produces the same marker position rather than restarting the animation.
+ */
+function useLegProgress(party: Party | null): number {
+  const [progress, setProgress] = useState(0);
+  // Captured on each push: what the local clock read when the server said `clock_now`.
+  const anchorRef = useRef({ serverNow: 0, localNow: 0 });
+
+  const serverNow = party?.clock_now ?? 0;
+  const startedAt = party?.leg_started_at ?? 0;
+  const arrivesAt = party?.leg_arrives_at ?? 0;
+
+  useEffect(() => {
+    anchorRef.current = { serverNow, localNow: Date.now() };
+  }, [serverNow]);
+
+  useEffect(() => {
+    if (!arrivesAt || arrivesAt <= startedAt) {
+      setProgress(0);
+      return;
+    }
+
+    const tick = () => {
+      // Deciseconds, to match the campaign clock.
+      const elapsedLocal = (Date.now() - anchorRef.current.localNow) / 100;
+      const estimated = anchorRef.current.serverNow + elapsedLocal;
+      const fraction = (estimated - startedAt) / (arrivesAt - startedAt);
+      setProgress(Math.max(0, Math.min(1, fraction)));
+    };
+
+    tick();
+    const handle = setInterval(tick, 250);
+    return () => clearInterval(handle);
+  }, [startedAt, arrivesAt]);
+
+  return progress;
+}
 
 export const ColonyOverworld = (props) => {
   const { act, data } = useBackend<Data>();
@@ -125,11 +202,15 @@ export const ColonyOverworld = (props) => {
     previewed_site_id,
     party,
     route_offers,
+    ledger,
   } = data;
 
   // Which hex the player is looking at. Local, except that picking one with a site on it asks the server to
   // price the journey there - the totals are its business, not ours.
   const [selected, setSelected] = useState<string | null>(null);
+  // Which of the two reference panes the bottom of the column is showing. Tabbed rather than stacked because
+  // the accounts are a table and the column is not wide enough to give both of them room at once.
+  const [pane, setPane] = useState<'region' | 'ledger'>('region');
 
   const knownById: Record<string, KnownCell> = {};
   for (const cell of known_cells) {
@@ -141,6 +222,7 @@ export const ColonyOverworld = (props) => {
     siteByCell[site.cell] = site;
   }
 
+  const legProgress = useLegProgress(party);
   const selectedCell = selected ? knownById[selected] : null;
   const selectedSite = selected ? siteByCell[selected] : null;
   const selectedAxial = selected ? parseCellId(selected) : null;
@@ -177,6 +259,9 @@ export const ColonyOverworld = (props) => {
                   selected={selected}
                   onSelect={selectCell}
                   route={party?.route}
+                  partyFrom={party?.current_cell ?? undefined}
+                  partyTo={party?.next_cell ?? undefined}
+                  partyProgress={legProgress}
                 />
               </Section>
             </Stack.Item>
@@ -190,6 +275,7 @@ export const ColonyOverworld = (props) => {
                       offers={route_offers}
                       previewedSiteId={previewed_site_id}
                       viewerIsColonist={viewer_is_colonist}
+                      legProgress={legProgress}
                       onAct={act}
                     />
                   </Section>
@@ -243,19 +329,37 @@ export const ColonyOverworld = (props) => {
                 </Stack.Item>
 
                 <Stack.Item>
-                  <Section title="Region">
-                    <LabeledList>
-                      <LabeledList.Item label="Extent">
-                        {options.extent}
-                      </LabeledList.Item>
-                      <LabeledList.Item label="Terrain">
-                        {options.roughness}
-                      </LabeledList.Item>
-                      <LabeledList.Item label="Surveyed">
-                        {`${known_cells.length} of ${cells.length} cells`}
-                      </LabeledList.Item>
-                    </LabeledList>
-                  </Section>
+                  <Tabs fluid>
+                    <Tabs.Tab
+                      selected={pane === 'region'}
+                      onClick={() => setPane('region')}
+                    >
+                      Region
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      selected={pane === 'ledger'}
+                      onClick={() => setPane('ledger')}
+                    >
+                      Accounts
+                    </Tabs.Tab>
+                  </Tabs>
+                  {pane === 'region' ? (
+                    <Section>
+                      <LabeledList>
+                        <LabeledList.Item label="Extent">
+                          {options.extent}
+                        </LabeledList.Item>
+                        <LabeledList.Item label="Terrain">
+                          {options.roughness}
+                        </LabeledList.Item>
+                        <LabeledList.Item label="Surveyed">
+                          {`${known_cells.length} of ${cells.length} cells`}
+                        </LabeledList.Item>
+                      </LabeledList>
+                    </Section>
+                  ) : (
+                    <LedgerReadout ledger={ledger} />
+                  )}
                 </Stack.Item>
               </Stack>
             </Stack.Item>
@@ -271,9 +375,11 @@ function ExpeditionPanel(props: {
   offers: RouteOffer[];
   previewedSiteId: string | null;
   viewerIsColonist: boolean;
+  legProgress: number;
   onAct: (action: string, payload?: object) => void;
 }) {
-  const { party, offers, previewedSiteId, viewerIsColonist, onAct } = props;
+  const { party, offers, previewedSiteId, viewerIsColonist, legProgress, onAct } =
+    props;
 
   if (!party) {
     return (
@@ -294,10 +400,47 @@ function ExpeditionPanel(props: {
 
   return (
     <>
+      {/* The road is asking something and the caravan is standing still until somebody answers. */}
+      {!!party.pending_decision && (
+        <Section title="The way is blocked" mb={1}>
+          <Box color="label" mb={1}>
+            The caravan has stopped short of {party.pending_decision.cell}. Any member
+            can decide for the party, and the first answer stands.
+          </Box>
+          {party.pending_decision.choices.map((choice) => (
+            <Button
+              key={choice}
+              fluid
+              mb={0.5}
+              tooltip={CHOICE_LABELS[choice]?.detail}
+              disabled={!party.you_are_a_member}
+              onClick={() =>
+                onAct('answer_decision', {
+                  decision_id: party.pending_decision?.id,
+                  choice: choice,
+                })
+              }
+            >
+              {CHOICE_LABELS[choice]?.label ?? choice}
+            </Button>
+          ))}
+        </Section>
+      )}
+
       <LabeledList>
         <LabeledList.Item label="Status">
           {STATE_LABELS[party.state] ?? party.state}
         </LabeledList.Item>
+        {!!party.next_cell && !party.pending_decision && (
+          <LabeledList.Item label="Crossing to">
+            {`${party.next_cell} — ${Math.round(legProgress * 100)}% of the way`}
+          </LabeledList.Item>
+        )}
+        {!party.is_planning && (
+          <LabeledList.Item label="Rations">
+            {`${party.supplies_carried} carried`}
+          </LabeledList.Item>
+        )}
         <LabeledList.Item label="Signed on">
           {`${party.members.length} of ${party.max_members}`}
         </LabeledList.Item>
@@ -337,22 +480,43 @@ function ExpeditionPanel(props: {
       {party.members.length === 0 ? (
         <Box color="label">Nobody has signed on yet.</Box>
       ) : (
-        party.members.map((member) => (
-          <Box key={member.id}>
-            <Box inline color={member.ready ? 'good' : 'label'} width="14px">
-              {member.ready ? '✓' : '·'}
-            </Box>
-            <Box inline bold={member.is_you}>
-              {member.name}
-              {member.is_you ? ' (you)' : ''}
-            </Box>
-            {!member.present && (
-              <Box inline color="bad" ml={1}>
-                not here
+        party.members.map((member) => {
+          // Two separate things a member can be short of: having said yes, and actually being at the post.
+          // Shown apart because they are fixed in different places - one at this table, one by walking.
+          const atPost = party.gathered_ids.includes(member.id);
+          return (
+            <Box key={member.id}>
+              <Box inline color={member.ready ? 'good' : 'label'} width="14px">
+                {member.ready ? '✓' : '·'}
               </Box>
-            )}
-          </Box>
-        ))
+              <Box inline bold={member.is_you}>
+                {member.name}
+                {member.is_you ? ' (you)' : ''}
+              </Box>
+              {!member.present ? (
+                <Box inline color="bad" ml={1}>
+                  not here
+                </Box>
+              ) : (
+                planning &&
+                !atPost && (
+                  <Box inline color="average" ml={1}>
+                    not at the post
+                  </Box>
+                )
+              )}
+            </Box>
+          );
+        })
+      )}
+
+      {/* Where the caravan actually leaves from. Without a post there is nowhere to muster at all. */}
+      {!!planning && !!party.members.length && (
+        <Box mt={1} color="label">
+          {!party.has_hitching_post
+            ? 'This colony has no hitching post to muster at.'
+            : `${party.gathered_ids.length} of ${party.members.length} gathered at the hitching post (within ${party.gather_radius} paces).`}
+        </Box>
       )}
 
       {/* Your own row of buttons. Nobody signs anybody else up, so there is only ever one person's worth. */}
@@ -385,6 +549,16 @@ function ExpeditionPanel(props: {
               >
                 Withdraw
               </Button>
+              {/* Calling the whole muster off. Nothing has been spent yet, so this costs the colony nothing. */}
+              <Button.Confirm
+                icon="ban"
+                color="bad"
+                disabled={!planning}
+                tooltip="Stand the whole expedition down. Everyone signed on is released."
+                onClick={() => onAct('disband')}
+              >
+                Call it off
+              </Button.Confirm>
             </>
           ) : (
             <Button
@@ -431,6 +605,14 @@ function ExpeditionPanel(props: {
         </>
       )}
 
+      {party.state === 'at_site' && !!party.you_are_a_member && (
+        <Box mt={1.5}>
+          <Button fluid icon="house" color="good" onClick={() => onAct('head_home')}>
+            Head home
+          </Button>
+        </Box>
+      )}
+
       {!!planning && !!party.destination_site_id && (
         <Box mt={1.5}>
           {!!party.departure_problem && (
@@ -438,15 +620,15 @@ function ExpeditionPanel(props: {
               {party.departure_problem}
             </NoticeBox>
           )}
-          <Button
-            fluid
-            icon="person-hiking"
-            color="good"
-            disabled={!!party.departure_problem}
-            onClick={() => onAct('depart')}
-          >
-            Set out
-          </Button>
+          {/*
+            The table plans; the post departs. There is no Set out button here because the whole party has to be
+            standing at the post to leave, and somebody pressing this would have to not be standing there.
+          */}
+          <NoticeBox mb={1} success={!party.departure_problem}>
+            {party.departure_problem
+              ? 'Not ready to leave yet.'
+              : 'Ready. Gather at the hitching post and give the word there.'}
+          </NoticeBox>
           <Button
             fluid
             mt={0.5}

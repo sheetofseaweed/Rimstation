@@ -205,3 +205,51 @@
 /proc/get_settlement_account()
 	RETURN_TYPE(/datum/bank_account)
 	return SSeconomy.get_dep_account(CAMPAIGN_LEDGER_ACCOUNT)
+
+
+/**
+ * The ledger as a console shows it.
+ *
+ * Entries newest first and capped, because the list is append-only for the life of a campaign and nobody wants
+ * to scroll through three chapters of upkeep to find out what the last expedition brought back. The total is
+ * sent alongside so the interface can say how much it is not showing rather than pretending that is all of it.
+ *
+ * The live balance comes from the account rather than the stored figure: between chapter start and commit the
+ * account is what people are actually spending, so the stored number is only correct at the moments either
+ * side of that.
+ */
+/datum/settlement_ledger/proc/build_readout(max_entries = 24)
+	RETURN_TYPE(/list)
+	var/datum/bank_account/account = get_settlement_account()
+
+	var/list/recent = list()
+	var/shown = 0
+	for(var/index = length(entries) to 1 step -1)
+		if(shown >= max_entries)
+			break
+		var/list/entry = entries[index]
+		UNTYPED_LIST_ADD(recent, list(
+			"id" = entry["id"],
+			"clock" = entry["campaign_clock"],
+			"category" = entry["category"],
+			"reason" = entry["reason_code"],
+			"amount" = entry["amount"],
+			"resource" = entry["resource_id"],
+			"actor" = entry["actor_id"],
+			"related" = entry["related_id"],
+		))
+		shown++
+
+	var/list/held = list()
+	for(var/resource_id in resources)
+		if(resources[resource_id])
+			held[resource_id] = resources[resource_id]
+
+	return list(
+		"credits" = account ? round(account.account_balance) : credits,
+		"debt" = account ? round(account.account_debt) : debt,
+		"stored_credits" = credits,
+		"resources" = held,
+		"entries" = recent,
+		"entry_count" = length(entries),
+	)

@@ -197,3 +197,41 @@ GLOBAL_LIST_EMPTY(colony_larders)
 	if(!account || account.account_balance < price)
 		return "The colony has [stored] of the [units] food this needs, and cannot afford the [price] credits to buy in the rest."
 	return null
+
+
+/**
+ * Gives food back to the colony. Returns TRUE if it went somewhere.
+ *
+ * The other half of `pay_for_colony_food()`, and it has to be the same shape or food leaks. Rations are taken
+ * out of the larder physically, so they have to come back physically - incrementing the ledger's figure would
+ * last exactly until the next recount, which sets that figure back to what is actually in the box.
+ *
+ * A colony with no larder gets the money instead, at the rate it would have bought the rations for. That is
+ * not a consolation prize: an unstocked colony funds its expeditions out of the budget in the first place, so
+ * refunding to the budget returns it to exactly where it came from.
+ */
+/proc/return_colony_food(units, reason_code, related_id)
+	if(!isnum(units) || units <= 0)
+		return TRUE
+
+	var/obj/structure/closet/crate/freezer/colony_larder/larder = get_colony_larder()
+	if(!larder)
+		var/worth = units * COLONY_FOOD_CREDIT_PRICE
+		SScampaign.credit(worth, LEDGER_CATEGORY_UPKEEP, reason_code || "rations sold back", null, related_id)
+		log_game("Colony larder: [units] units of food came back with no larder to hold them; refunded [worth] credits([reason_code || "no reason"]).")
+		return TRUE
+
+	// Loaves for the bulk and slices for the remainder, so the amount that comes back is the amount that went
+	// out rather than the amount that happened to divide evenly.
+	var/per_loaf = round(10 / COLONY_FOOD_UNIT_NUTRIMENT)
+	var/loaves = round(units / per_loaf)
+	var/slices = units % per_loaf
+
+	for(var/index in 1 to loaves)
+		new /obj/item/food/bread/plain(larder)
+	for(var/index in 1 to slices)
+		new /obj/item/food/breadslice/plain(larder)
+
+	sync_colony_food_to_ledger()
+	log_game("Colony larder: [units] units of food returned as [loaves] loaves and [slices] slices([reason_code || "no reason"]).")
+	return TRUE

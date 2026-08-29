@@ -28,6 +28,11 @@
 
 	SScampaign.ledger = new
 
+	// A caravan will not leave without somewhere to muster and everybody standing at it. Built on the same tile
+	// settle_test_colonist() puts bodies on, so a colonist who signs on is gathered by virtue of existing - what
+	// these tests are about is membership and money, not where people are standing.
+	allocate(/obj/structure/caravan_hitching_post, run_loc_floor_bottom_left)
+
 	// The budget is the fallback an unstocked colony travels on, so it has to be a known quantity too.
 	var/datum/bank_account/account = get_settlement_account()
 	if(account)
@@ -190,7 +195,10 @@
 	var/before = count_colony_food()
 	TEST_ASSERT(before >= expected, "The test did not stock enough food to prove anything.")
 	TEST_ASSERT_NULL(SScampaign.depart_party(), "A fully prepared expedition was refused.")
-	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DEPARTING, "A departing expedition did not leave the assembly state.")
+	// Departing hands off to an async step that brings the camp up, and that step can carry the party straight
+	// on to the road and even into an interruption at the first boundary. Any of those mean it left; only
+	// forming would mean it did not.
+	TEST_ASSERT(party.state != OVERWORLD_PARTY_FORMING, "A departing expedition did not leave the assembly state.")
 	TEST_ASSERT_EQUAL(party.supplies, expected, "A departing expedition did not carry the food it was charged for.")
 
 	// Taken out of the larder, not merely deducted from a figure. Loaves do not divide, so it may have taken
@@ -232,7 +240,7 @@
 	var/datum/bank_account/account = get_settlement_account()
 	var/balance_before = account.account_balance
 	TEST_ASSERT_NULL(SScampaign.depart_party(), "An expedition with no stores but plenty of money was refused.")
-	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DEPARTING, "An expedition that bought its rations in did not leave.")
+	TEST_ASSERT(party.state != OVERWORLD_PARTY_FORMING, "An expedition that bought its rations in did not leave.")
 	TEST_ASSERT(account.account_balance < balance_before, "Buying rations in cost the colony nothing.")
 
 	// Now the case that is genuinely stuck: no stores and no money. The campaign is reused rather than rebuilt,

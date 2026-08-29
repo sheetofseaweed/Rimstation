@@ -987,6 +987,11 @@ SUBSYSTEM_DEF(campaign)
 /datum/controller/subsystem/campaign/proc/commit_party_change()
 	sync_overworld()
 	refresh_overworld_consoles()
+	// The reminder people carry and the lantern on the post are both views of the membership, so they are
+	// rebuilt here rather than at each call site - there is no way to change a party without them following.
+	var/datum/overworld_party/party = get_active_party()
+	refresh_caravan_alerts(party)
+	refresh_hitching_post(party)
 	return TRUE
 
 /// Starts assembling an expedition. Returns it, or null if one already exists.
@@ -1035,6 +1040,9 @@ SUBSYSTEM_DEF(campaign)
 		return "The expedition could not be sent."
 
 	party.supplies = cost
+	// The camp has to be standing before anybody can be put in it, and bringing it up sleeps. The party is
+	// locked as departing for the duration, and SSoverworld either finishes the job or puts it back.
+	INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, complete_departure), party.party_id)
 	log_game("Colony campaign [manifest?.campaign_id]: expedition [party.party_id] left for [party.destination_site_id] with [length(party.member_ids)] colonists and [cost] food.")
 	message_admins("Colony expedition [party.party_id] left for [party.destination_site_id] with [length(party.member_ids)] colonists.")
 	commit_party_change()

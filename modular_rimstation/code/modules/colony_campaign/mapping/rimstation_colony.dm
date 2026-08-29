@@ -108,5 +108,37 @@
 	underlay_tile = /turf/open/misc/dirt/planet/rimstation
 	underlay_plane = FLOOR_PLANE
 
+/**
+ * Ground an expedition stands on, away from the colony.
+ *
+ * Deliberately not UNIQUE_AREA, unlike the colony above. These are loaded from lazy templates, once per site
+ * per chapter, so each load has to get its own area - a shared one would mean two deposits on opposite sides of
+ * the region reporting the same power, lighting and name.
+ */
+/area/rimstation_expedition
+	name = "Expedition"
+	icon = 'icons/area/areas_misc.dmi'
+	icon_state = "away"
+	default_gravity = STANDARD_GRAVITY
+	requires_power = FALSE
+	always_unpowered = TRUE
+	power_environ = FALSE
+	power_equip = FALSE
+	power_light = FALSE
+	flags_1 = NONE
+	area_flags = VALID_TERRITORY
+	outdoors = TRUE
+	static_lighting = FALSE
+	base_lighting_alpha = RIMSTATION_DAYLIGHT_ALPHA
+	base_lighting_color = RIMSTATION_DAYLIGHT_COLOR
+
+/// The camp a caravan travels in. It holds bodies and shows the map; it does not simulate the road.
+/area/rimstation_expedition/transit
+	name = "Caravan Camp"
+
+/// Somewhere worth walking to.
+/area/rimstation_expedition/site
+	name = "Expedition Site"
+
 #undef RIMSTATION_DAYLIGHT_ALPHA
 #undef RIMSTATION_DAYLIGHT_COLOR

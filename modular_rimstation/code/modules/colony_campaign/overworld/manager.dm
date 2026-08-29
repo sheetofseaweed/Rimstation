@@ -1,0 +1,487 @@
+/**
+ * The thing that actually moves a caravan.
+ *
+ * Owns no persistent state whatsoever. SScampaign holds the party record and writes it to disk; this only
+ * decides when the next boundary is due and asks for one transition. That split is what lets a chapter end,
+ * or the server reboot, in the middle of a journey without this subsystem having an opinion about it.
+ *
+ * Time comes from `SScampaign.get_campaign_time()` rather than from world.time or from counting fires. A leg
+ * that was scheduled to arrive at a given campaign-clock reading arrives at that reading whether the server
+ * was keeping up or not, and a client that closes the map and reopens it computes the same position from the
+ * same number.
+ */
+SUBSYSTEM_DEF(overworld)
+	name = "Overworld"
+	wait = 1 SECONDS
+	runlevels = RUNLEVEL_GAME
+	ss_flags = SS_BACKGROUND
+	/// Set while a scene is being brought up, so a second fire cannot start the same load again.
+	var/loading_destination = FALSE
+
+/datum/controller/subsystem/overworld/fire(resumed = FALSE)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party)
+		return
+	// Being assembled, finished, or lost: none of those are journeys in progress.
+	if(party.is_planning() || (party.state in OVERWORLD_PARTY_TERMINAL_STATES))
+		return
+	// A checkpoint is being written and the world has to hold still for it. The leg is not lost - it is due at
+	// a campaign-clock reading, and that reading will still have passed on the next fire.
+	if(!SScampaign.can_mutate_world())
+		return
+
+	advance_party(party)
+
+/**
+ * Moves the party on by at most one boundary. Returns TRUE if something happened.
+ *
+ * At most one, deliberately. Catching up through several missed legs in a single fire would fire several
+ * arrivals, several food charges and several discoveries in one tick, and would do it at the exact moment the
+ * server was already struggling enough to fall behind.
+ */
+/datum/controller/subsystem/overworld/proc/advance_party(datum/overworld_party/party)
+	if(party.state != OVERWORLD_PARTY_OUTBOUND && party.state != OVERWORLD_PARTY_RETURNING)
+		return FALSE
+	if(!party.leg_arrives_at)
+		return FALSE
+	if(SScampaign.get_campaign_time() < party.leg_arrives_at)
+		return FALSE
+
+	return complete_leg(party)
+
+/**
+ * The party crosses into the cell it was walking towards.
+ *
+ * Everything that happens on arrival happens here, in one order, once: the position moves, the rations are
+ * eaten, the ground is revealed, and only then is the next leg scheduled. Anything that wants to interrupt the
+ * journey does so by leaving the party in a state that is not outbound or returning.
+ */
+/datum/controller/subsystem/overworld/proc/complete_leg(datum/overworld_party/party)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region)
+		return FALSE
+
+	var/entered_cell_id = party.leg_target_cell()
+	if(!entered_cell_id || !region.cells[entered_cell_id])
+		// The route no longer describes this region. Stop rather than walking into nowhere.
+		halt_party(party, "the route no longer matches the region")
+		return FALSE
+
+	party.current_cell = entered_cell_id
+	party.leg_started_at = 0
+	party.leg_arrives_at = 0
+
+	// One ration per head per boundary, taken from what the party carried out rather than from the colony -
+	// the colony already paid at departure and this is the allocation being spent down.
+	var/mouths = party.living_member_count()
+	party.supplies = max(0, party.supplies - mouths)
+
+	// Walking into somewhere is how the region gets explored. This is the one funnel, so it serializes and
+	// pushes the map for us.
+	SScampaign.discover_overworld_cell(entered_cell_id)
+
+	if(party.state == OVERWORLD_PARTY_RETURNING)
+		if(party.at_home())
+			return finish_journey(party)
+		party.next_leg_index--
+		return schedule_leg(party, region)
+
+	if(party.at_destination(region))
+		return begin_site_visit(party)
+
+	party.next_leg_index++
+	return schedule_or_ask(party, region)
+
+/**
+ * Sets the clock for the next boundary. Returns TRUE if the party is now walking.
+ *
+ * Cost comes from the generated terrain of the cell being entered, so a route across hard ground genuinely
+ * takes longer than the same distance across open ground - which is the entire reason the two route offers
+ * differ.
+ */
+/datum/controller/subsystem/overworld/proc/schedule_leg(datum/overworld_party/party, datum/overworld_region/region)
+	var/next_cell_id = party.leg_target_cell()
+	var/datum/overworld_cell/next_cell = region?.cells[next_cell_id]
+	if(!next_cell)
+		halt_party(party, "the next step of the route is not on this region")
+		return FALSE
+
+	// Out of rations mid-journey is a bug in the supply arithmetic rather than a hardship to simulate: the
+	// departure debit is sized for the whole round trip. Say so and stop, rather than inventing starvation.
+	if(party.supplies <= 0 && party.living_member_count())
+		halt_party(party, "the expedition ran out of rations, which its departure debit should have prevented")
+		return FALSE
+
+	var/now = SScampaign.get_campaign_time()
+	party.leg_started_at = now
+	party.leg_arrives_at = now + (next_cell.traversal_seconds() SECONDS)
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Stops a journey where it stands and says why.
+ *
+ * Not a loss and not a completion - the party keeps its people and its supplies, and an admin is told. Every
+ * caller is a case that should not be reachable, so the useful thing is a legible halt rather than a guess at
+ * what the party meant to do.
+ */
+/datum/controller/subsystem/overworld/proc/halt_party(datum/overworld_party/party, reason)
+	party.leg_started_at = 0
+	party.leg_arrives_at = 0
+	log_game("Colony expedition [party.party_id] halted: [reason].")
+	message_admins(span_boldwarning("Colony expedition [party.party_id] has halted: [reason]. It is holding at [party.current_cell]."))
+	SScampaign.commit_party_change()
+	return FALSE
+
+/// The party reaches what it came for and starts working it.
+/datum/controller/subsystem/overworld/proc/begin_site_visit(datum/overworld_party/party)
+	if(!party.set_state(OVERWORLD_PARTY_AT_SITE, "the expedition reached its destination"))
+		return FALSE
+
+	// Loading a scene sleeps, and this is a subsystem fire. The party is already at the site as far as the
+	// record is concerned; the ground under their feet catches up a moment later.
+	INVOKE_ASYNC(src, PROC_REF(bring_up_site), party.party_id, party.destination_site_id)
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Brings the site's scene into being and puts the party in it.
+ *
+ * Everything is re-resolved by id after the load, because the load sleeps: the party may have been lost, the
+ * campaign may have ended, and a body held across that gap may be gone.
+ */
+/datum/controller/subsystem/overworld/proc/bring_up_site(party_id, site_id)
+	UNTIL(!loading_destination)
+	loading_destination = TRUE
+	var/datum/overworld_destination/site = load_overworld_destination(site_id, LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE)
+	loading_destination = FALSE
+
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id || party.state != OVERWORLD_PARTY_AT_SITE)
+		return FALSE
+
+	if(!site)
+		halt_party(party, "the site could not be brought up")
+		return FALSE
+
+	move_party_to(party, site)
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Puts every living member of a party into a loaded scene.
+ *
+ * Resolved by colonist id rather than from a held list of bodies, so somebody who died, disconnected or was
+ * replaced while a scene was loading is simply not moved.
+ */
+/datum/controller/subsystem/overworld/proc/move_party_to(datum/overworld_party/party, datum/overworld_destination/destination)
+	var/turf/arrival = destination?.pick_arrival_turf()
+	if(!arrival)
+		return 0
+
+	var/moved = 0
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(!body || body.stat == DEAD)
+			continue
+		body.forceMove(arrival)
+		moved++
+	return moved
+
+/**
+ * The journey is over and the party is home.
+ *
+ * The unspent rations go back, once. They were an allocation of the colony's food rather than a second pile,
+ * so returning them is the other half of the departure debit rather than a reward.
+ */
+/datum/controller/subsystem/overworld/proc/finish_journey(datum/overworld_party/party)
+	if(!party.set_state(OVERWORLD_PARTY_COMPLETE, "the expedition came home"))
+		return FALSE
+
+	var/returned = party.supplies
+	party.supplies = 0
+	if(returned > 0)
+		// Back into the larder as real food. Crediting the ledger's figure instead would survive only until the
+		// next recount, which sets that figure to whatever the box actually holds.
+		return_colony_food(returned, "expedition_rations_returned", party.party_id)
+
+	INVOKE_ASYNC(src, PROC_REF(bring_party_home), party.party_id)
+	log_game("Colony expedition [party.party_id] returned with [returned] rations left over.")
+	message_admins("Colony expedition [party.party_id] has returned to the settlement.")
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Moves a party that has just turned for home back into the travelling camp.
+ *
+ * Without this they stand around the site they have finished with while the map says they are on the road,
+ * which is the same mismatch the hitching post exists to fix at the other end of the journey.
+ */
+/datum/controller/subsystem/overworld/proc/board_for_return(party_id)
+	UNTIL(!loading_destination)
+	loading_destination = TRUE
+	var/datum/overworld_destination/camp = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	loading_destination = FALSE
+
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id || party.state != OVERWORLD_PARTY_RETURNING)
+		return FALSE
+	if(!camp)
+		return FALSE
+
+	move_party_to(party, camp)
+	return TRUE
+
+/// Puts the returning party back in the colony, then frees the slot for the next expedition.
+/datum/controller/subsystem/overworld/proc/bring_party_home(party_id)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id)
+		return FALSE
+
+	var/turf/landing = get_caravan_return_turf()
+	if(landing)
+		for(var/colonist_id in party.member_ids)
+			var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+			if(body && body.stat != DEAD)
+				body.forceMove(landing)
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	region_state?.clear_party("the expedition came home")
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Where a returning caravan is put down.
+ *
+ * The mapped landmark first, then the colony core, then whatever the ordinary colonist arrival would use.
+ * Three fallbacks because arriving nowhere means a body in nullspace, which is worse than arriving somewhere
+ * slightly wrong.
+ */
+/proc/get_caravan_return_turf()
+	RETURN_TYPE(/turf)
+	for(var/obj/effect/landmark/rimstation_caravan_return/marker in GLOB.landmarks_list)
+		var/turf/spot = get_turf(marker)
+		if(spot)
+			return spot
+
+	var/obj/structure/colony_core/core = get_colony_core()
+	var/turf/beside_core = core ? get_step(core, SOUTH) : null
+	if(beside_core && !isclosedturf(beside_core))
+		return beside_core
+
+	return get_colonist_arrival_turf()
+
+
+/**
+ * Finishes a departure once the travelling camp is standing.
+ *
+ * Split from `depart_party()` because bringing the camp up sleeps, and a great deal can change in that gap:
+ * somebody can die, a raid can start, the round can end, the campaign can be committed. So nothing here trusts
+ * what was true when the button was clicked - every fact is asked again, and the party is only actually sent
+ * once they all still hold.
+ *
+ * Everything is re-resolved by id. A body reference held across the load could be a mob that has since been
+ * deleted, which is exactly the reference the departure would then try to move.
+ */
+/datum/controller/subsystem/overworld/proc/complete_departure(party_id)
+	// Waited on rather than refused. Two scenes coming up at once is a timing accident, not a reason to stand
+	// an expedition down - and `lazy_load()` is called directly here, so it does not get the serialisation that
+	// SSmapping.lazy_load_template() would have provided.
+	UNTIL(!loading_destination)
+	loading_destination = TRUE
+	var/datum/overworld_destination/camp = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	loading_destination = FALSE
+
+	// From here on, everything is as it is now rather than as it was when somebody clicked.
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id)
+		return FALSE
+	if(party.state != OVERWORLD_PARTY_DEPARTING)
+		return FALSE
+
+	if(!camp)
+		return abort_departure(party_id, "the travelling camp could not be brought up")
+	if(!SScampaign.can_mutate_world())
+		return abort_departure(party_id, "the colony was being written to disk")
+	if(is_colony_raid_running())
+		return abort_departure(party_id, "the colony came under attack before the expedition left")
+	if(!party.living_member_count())
+		return abort_departure(party_id, "nobody who signed on was still able to travel")
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region || !region.is_valid_route(party.route, SScampaign.get_overworld_state()?.discovered_cells))
+		return abort_departure(party_id, "the route stopped being one the colony could walk")
+
+	if(!party.set_state(OVERWORLD_PARTY_OUTBOUND, "the expedition got on the road"))
+		return abort_departure(party_id, "the expedition could not be put on the road")
+
+	// Standing at home, walking towards the second cell of the route.
+	party.current_cell = party.route[1]
+	party.next_leg_index = 2
+	move_party_to(party, camp)
+	schedule_or_ask(party, region)
+	return TRUE
+
+/**
+ * Puts a half-departed expedition back the way it was.
+ *
+ * The rations go back to the colony, because they were an allocation for a journey that is not happening. The
+ * bodies were never moved - nothing touches them until every check has passed - so there is nothing to undo
+ * about where anybody is standing.
+ */
+/datum/controller/subsystem/overworld/proc/abort_departure(party_id, reason)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id)
+		return FALSE
+	if(party.state != OVERWORLD_PARTY_DEPARTING)
+		return FALSE
+
+	var/returned = party.supplies
+	party.supplies = 0
+	if(returned > 0)
+		return_colony_food(returned, "expedition_stood_down", party.party_id)
+
+	party.set_state(OVERWORLD_PARTY_FORMING, reason)
+	// Readiness is cleared with it: everybody agreed to a departure that did not happen, and should be asked
+	// again rather than sent the moment the problem clears.
+	party.clear_readiness("the departure was stood down")
+
+	log_game("Colony expedition [party.party_id] stood down before leaving: [reason].")
+	message_admins(span_warning("Colony expedition [party.party_id] was stood down before it left: [reason]. Its rations were returned."))
+	SScampaign.commit_party_change()
+	return FALSE
+
+
+/**
+ * Schedules the next leg, unless the road has something to ask first.
+ *
+ * Every outbound leg goes through here rather than straight to `schedule_leg()`, so there is exactly one place
+ * that decides whether a boundary is walked or argued about. Returning legs never ask - the way home is not
+ * where a party wants a new problem, and the rations were priced for the road they know.
+ */
+/datum/controller/subsystem/overworld/proc/schedule_or_ask(datum/overworld_party/party, datum/overworld_region/region)
+	if(party.decision_is_due())
+		return raise_decision(party, region)
+	return schedule_leg(party, region)
+
+/**
+ * Stops the party at a boundary and asks them what they want to do about it.
+ *
+ * Raised immediately before the leg would have been scheduled, and it names the cell in front of them. Naming
+ * it is what makes a detour meaningful - there is a concrete piece of ground to go around - and it is also why
+ * a site one hex from home can still be interrupted.
+ */
+/datum/controller/subsystem/overworld/proc/raise_decision(datum/overworld_party/party, datum/overworld_region/region)
+	var/blocked_cell = party.leg_target_cell()
+	if(!blocked_cell)
+		return FALSE
+	if(!party.set_state(OVERWORLD_PARTY_DECISION, "the road put a question to the expedition"))
+		return FALSE
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	party.pending_decision = list(
+		// A stable id so an answer can be matched to the question it was asked about, and so applying the same
+		// answer twice is recognisable rather than merely unlikely.
+		"id" = "decision-[party.party_id]-[region_state ? region_state.next_decision_number++ : 0]",
+		"cell" = blocked_cell,
+		"choices" = party.available_decision_choices(region),
+	)
+
+	party.leg_started_at = 0
+	party.leg_arrives_at = 0
+	log_game("Colony expedition [party.party_id] halted at [party.current_cell]: the way to [blocked_cell] is blocked.")
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Applies one answer to a pending decision. Returns null on success, or why it was refused.
+ *
+ * Idempotent by identity rather than by luck: the answer names the decision it is answering, and the decision
+ * is cleared before any effect lands. A second click, or a second player answering at the same moment, finds
+ * nothing left to answer rather than paying the cost twice.
+ */
+/datum/controller/subsystem/overworld/proc/answer_decision(datum/overworld_party/party, decision_id, choice, mob/living/answered_by)
+	if(!party?.pending_decision)
+		return "There is nothing to decide."
+	if(party.state != OVERWORLD_PARTY_DECISION)
+		return "The expedition is not waiting on a decision."
+	if(party.pending_decision["id"] != decision_id)
+		return "That answer is to a different question."
+
+	var/list/allowed = party.pending_decision["choices"]
+	if(!(choice in allowed))
+		return "That is not one of the choices."
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region)
+		return "This colony has no regional map."
+
+	// Cleared and counted before anything is spent, so nothing can re-enter and spend it again.
+	var/blocked_cell = party.pending_decision["cell"]
+	party.pending_decision = null
+	party.decisions_taken++
+
+	if(!party.set_state(OVERWORLD_PARTY_OUTBOUND, "the expedition chose [choice]"))
+		return "The expedition could not get moving again."
+
+	switch(choice)
+		if(OVERWORLD_DECISION_DETOUR)
+			apply_detour(party, region, blocked_cell)
+		if(OVERWORLD_DECISION_WAIT)
+			apply_wait(party, region)
+		else
+			apply_force(party, region)
+
+	log_game("Colony expedition [party.party_id] answered [decision_id] with '[choice]'[answered_by ? " ([key_name(answered_by)])" : ""].")
+	SScampaign.commit_party_change()
+	return null
+
+/**
+ * Push on through. Costs nothing but skin.
+ *
+ * The zero-ration answer, deliberately: it is what stops a party being stranded by a decision it could not
+ * afford any other response to. Bodies that are not here take no injury - inventing one for somebody who was
+ * disconnected would be punishing them for their connection - but the journey continues for everybody.
+ */
+/datum/controller/subsystem/overworld/proc/apply_force(datum/overworld_party/party, datum/overworld_region/region)
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(!body || body.stat == DEAD)
+			continue
+		body.adjust_stamina_loss(OVERWORLD_DECISION_FORCE_STAMINA)
+		body.adjust_brute_loss(OVERWORLD_DECISION_FORCE_BRUTE)
+		to_chat(body, span_warning("You push through the worst of it. It takes something out of you."))
+
+	return schedule_leg(party, region)
+
+/// Go the long way. The extra ground costs its own time, risk and rations, like any other ground.
+/datum/controller/subsystem/overworld/proc/apply_detour(datum/overworld_party/party, datum/overworld_region/region, blocked_cell)
+	var/list/detour = party.detour_route(region)
+	if(length(detour) < 2)
+		// Offered and then not available is a bug, but stranding the party over it would be worse.
+		return apply_force(party, region)
+
+	party.route = detour
+	party.next_leg_index = 2
+	party.route_kind = party.route_kind || OVERWORLD_ROUTE_FASTEST
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(body)
+			to_chat(body, span_notice("The caravan turns aside, working its way around."))
+	return schedule_leg(party, region)
+
+/// Sit it out. Ninety seconds and a meal each, then the original road.
+/datum/controller/subsystem/overworld/proc/apply_wait(datum/overworld_party/party, datum/overworld_region/region)
+	var/mouths = party.living_member_count()
+	party.supplies = max(0, party.supplies - mouths)
+
+	if(!schedule_leg(party, region))
+		return FALSE
+
+	// Added on top of the leg it was already going to take, rather than replacing it.
+	party.leg_arrives_at += (OVERWORLD_DECISION_WAIT_SECONDS SECONDS)
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(body)
+			to_chat(body, span_notice("The caravan makes camp and waits it out."))
+	return TRUE

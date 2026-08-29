@@ -2,6 +2,10 @@ import { Box, LabeledList, NoticeBox, Section, Stack } from 'tgui-core/component
 
 import { useBackend } from '../backend';
 import { Window } from '../layouts';
+import {
+  type Ledger,
+  LedgerReadout,
+} from './ColonyOverworld/LedgerReadout';
 
 type Skill = {
   name: string;
@@ -28,6 +32,8 @@ type Data = {
   chapter: number | null;
   viewer_id: string | null;
   colonists: Colonist[];
+  ledger: Ledger | null;
+  campaign_clock: number;
 };
 
 const STATUS_COLORS = {
@@ -99,10 +105,10 @@ function ColonistEntry(props: { colonist: Colonist }) {
 
 export const ColonyRegister = (props) => {
   const { data } = useBackend<Data>();
-  const { campaign, generation, chapter, colonists } = data;
+  const { campaign, generation, chapter, colonists, ledger } = data;
 
   return (
-    <Window title="Colony Register" width={480} height={600}>
+    <Window title="Colony Register" width={520} height={640}>
       <Window.Content scrollable>
         {!campaign ? (
           <NoticeBox>
@@ -111,6 +117,9 @@ export const ColonyRegister = (props) => {
           </NoticeBox>
         ) : (
           <Stack vertical>
+            <Stack.Item>
+              <LedgerReadout ledger={ledger} />
+            </Stack.Item>
             <Stack.Item>
               <Section title="Settlement">
                 <LabeledList>

@@ -425,6 +425,55 @@
 /// Journeys, as the settlement's books see them.
 #define LEDGER_CATEGORY_EXPEDITION "expedition"
 
+// Lazy-loaded scenes an expedition can be standing in. Keyed rather than pathed because that is what
+// GLOB.lazy_templates is indexed by; the datums themselves live in overworld/destinations.dm.
+/// The camp the party travels in.
+#define LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT "LT_RIMSTATION_TRANSIT"
+/// A mineral deposit worth walking to.
+#define LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE "LT_RIMSTATION_RESOURCE_SITE"
+
+/// What a resource site pays out in, until there is more than one kind of deposit.
+#define OVERWORLD_SITE_RESOURCE_ID "iron"
+
+/**
+ * How long a party stands at a site before the deposit is worked out.
+ *
+ * Short on purpose. The interesting part of an expedition is deciding to go and getting back, not standing
+ * still watching a bar - and a chapter is one round, which is not long to spend on one trip.
+ */
+#define OVERWORLD_SITE_WORK_SECONDS 60
+
+/// How long a funded wait at a boundary holds the party for before the original leg is scheduled anyway.
+#define OVERWORLD_DECISION_WAIT_SECONDS 90
+
+// What the road can ask a party at a boundary. Every one of these costs something different, which is the
+// point: a decision with a free answer is not a decision.
+/// Push on regardless. Costs nothing but skin.
+#define OVERWORLD_DECISION_FORCE "force"
+/// Go round. Costs the time, risk and rations of the extra ground.
+#define OVERWORLD_DECISION_DETOUR "detour"
+/// Sit it out. Costs ninety seconds and a meal each.
+#define OVERWORLD_DECISION_WAIT "wait"
+
+/// Every answer a party can give. Anything else arriving from a client is a forgery.
+#define OVERWORLD_DECISION_CHOICES list( \
+	OVERWORLD_DECISION_FORCE, \
+	OVERWORLD_DECISION_DETOUR, \
+	OVERWORLD_DECISION_WAIT, \
+)
+
+/// What forcing through costs a body that is present to feel it.
+#define OVERWORLD_DECISION_FORCE_STAMINA 20
+#define OVERWORLD_DECISION_FORCE_BRUTE 5
+
+/**
+ * How close to the hitching post everyone has to be before a caravan will leave.
+ *
+ * Three rather than one on purpose: a departure that fails because somebody is standing one tile off is a
+ * departure nobody can diagnose. Three is close enough to read as "gathered here" and loose enough to forgive.
+ */
+#define OVERWORLD_GATHER_RADIUS 3
+
 // What a colonist is to the campaign right now. A record is never deleted, only moved between these.
 /// Played this chapter.
 #define COLONIST_STATUS_ACTIVE "active"

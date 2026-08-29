@@ -112,3 +112,85 @@
 	QDEL_NULL(SScampaign.ledger)
 	SScampaign.manifest = saved_manifest
 	SScampaign.ledger = saved_ledger
+
+
+/**
+ * Food that comes back has to come back as food.
+ *
+ * This is the bug the larder's own contract creates and that the first version of the expedition refund walked
+ * straight into: the larder is authoritative, so anything that hands rations back by incrementing the ledger's
+ * figure is handing back something the next recount deletes.
+ */
+/datum/unit_test/rimstation_colony_larder/returns_food_as_food
+
+/datum/unit_test/rimstation_colony_larder/returns_food_as_food/Run()
+	var/datum/campaign_manifest/manifest = new("unit-test-larder-return", "generation-1")
+	allocated += manifest
+	var/saved_manifest = SScampaign.manifest
+	var/datum/settlement_ledger/saved_ledger = SScampaign.ledger
+	SScampaign.manifest = manifest
+	SScampaign.ledger = new
+
+	var/obj/structure/closet/crate/freezer/colony_larder/larder = build_larder()
+	stock_loaf(larder)
+	stock_loaf(larder)
+	sync_colony_food_to_ledger()
+	TEST_ASSERT_EQUAL(count_colony_food(), 10, "The test could not stock the larder.")
+
+	// Out for a journey, back at the end of it. A whole loaf is spent, because a party that needs five units
+	// takes the loaf rather than five units out of the middle of it.
+	TEST_ASSERT(consume_colony_food(5, "test expedition"), "The colony could not pack rations.")
+	var/after_packing = count_colony_food()
+	TEST_ASSERT_EQUAL(after_packing, 5, "Packing rations did not take them out of the larder.")
+
+	TEST_ASSERT(return_colony_food(5, "test expedition returned"), "Unspent rations could not be returned.")
+	TEST_ASSERT_EQUAL(count_colony_food(), 10, "Returned rations did not come back as food in the larder.")
+
+	// The whole point: a recount must not undo the refund. An amount handed back as a ledger figure would
+	// vanish exactly here.
+	sync_colony_food_to_ledger()
+	TEST_ASSERT_EQUAL(count_colony_food(), 10, "A recount deleted the rations that were handed back.")
+	TEST_ASSERT_EQUAL(SScampaign.ledger.get_resource(COLONY_FOOD_RESOURCE), 10, "The ledger and the larder disagree after a refund.")
+
+	// Coming back is exact even when the amount is not a whole loaf: loaves for the bulk, slices for the rest.
+	// This is the half that has to be precise, because it is the half the colony is owed.
+	var/before_odd_refund = count_colony_food()
+	TEST_ASSERT(return_colony_food(3, "test"), "An awkward amount could not be returned.")
+	TEST_ASSERT_EQUAL(count_colony_food(), before_odd_refund + 3, "An amount that is not a whole loaf did not come back exactly.")
+
+	TEST_ASSERT(return_colony_food(7, "test"), "A mixed amount could not be returned.")
+	TEST_ASSERT_EQUAL(count_colony_food(), before_odd_refund + 10, "Loaves and slices together did not add up to what was returned.")
+
+	QDEL_NULL(SScampaign.ledger)
+	SScampaign.manifest = saved_manifest
+	SScampaign.ledger = saved_ledger
+
+
+/// With no larder to put it in, food comes back as the money it would have been bought for.
+/datum/unit_test/rimstation_colony_larder/returns_food_as_money_with_no_larder
+
+/datum/unit_test/rimstation_colony_larder/returns_food_as_money_with_no_larder/Run()
+	var/datum/campaign_manifest/manifest = new("unit-test-larder-nolarder", "generation-1")
+	allocated += manifest
+	var/saved_manifest = SScampaign.manifest
+	var/datum/settlement_ledger/saved_ledger = SScampaign.ledger
+	SScampaign.manifest = manifest
+	SScampaign.ledger = new
+
+	var/datum/bank_account/account = get_settlement_account()
+	var/saved_balance = account?.account_balance
+	if(account)
+		account.account_balance = 1000
+
+	TEST_ASSERT_NULL(get_colony_larder(), "This test needs a colony with no larder and found one.")
+	TEST_ASSERT(return_colony_food(5, "test"), "Food could not be returned to a colony with no larder.")
+
+	// Refunded at the rate it would have been bought in at, so the money ends up where it came from rather
+	// than the rations quietly evaporating.
+	TEST_ASSERT_EQUAL(account.account_balance, 1000 + (5 * COLONY_FOOD_CREDIT_PRICE), "Rations returned to a larderless colony were not refunded as credits.")
+
+	if(account && !isnull(saved_balance))
+		account.account_balance = saved_balance
+	QDEL_NULL(SScampaign.ledger)
+	SScampaign.manifest = saved_manifest
+	SScampaign.ledger = saved_ledger
