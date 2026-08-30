@@ -89,6 +89,8 @@ type Data = {
   campaign: string | null;
   chapter: number | null;
   colony_under_attack: boolean;
+  colonists_at_colony: number;
+  colonists_leaving: number;
   viewer_colonist_id: string | null;
   viewer_is_colonist: boolean;
   viewer_has_locker: boolean;
@@ -198,6 +200,8 @@ export const ColonyOverworld = (props) => {
     campaign,
     chapter,
     colony_under_attack,
+    colonists_at_colony,
+    colonists_leaving,
     viewer_is_colonist,
     previewed_site_id,
     party,
@@ -276,6 +280,8 @@ export const ColonyOverworld = (props) => {
                       previewedSiteId={previewed_site_id}
                       viewerIsColonist={viewer_is_colonist}
                       legProgress={legProgress}
+                      atColony={colonists_at_colony}
+                      leaving={colonists_leaving}
                       onAct={act}
                     />
                   </Section>
@@ -376,10 +382,20 @@ function ExpeditionPanel(props: {
   previewedSiteId: string | null;
   viewerIsColonist: boolean;
   legProgress: number;
+  atColony: number;
+  leaving: number;
   onAct: (action: string, payload?: object) => void;
 }) {
-  const { party, offers, previewedSiteId, viewerIsColonist, legProgress, onAct } =
-    props;
+  const {
+    party,
+    offers,
+    previewedSiteId,
+    viewerIsColonist,
+    legProgress,
+    atColony,
+    leaving,
+    onAct,
+  } = props;
 
   if (!party) {
     return (
@@ -473,6 +489,22 @@ function ExpeditionPanel(props: {
           </>
         )}
       </LabeledList>
+
+      {/*
+        What the colony is left with. Worth saying before departure rather than after: the people signed on are
+        still standing here, so the number only becomes true once they walk out.
+      */}
+      {!!planning &&
+        leaving > 0 &&
+        (atColony - leaving <= 0 ? (
+          <NoticeBox mt={1} danger>
+            This would leave nobody in the settlement.
+          </NoticeBox>
+        ) : (
+          <NoticeBox mt={1} info>
+            {`This would leave ${atColony - leaving} in the settlement.`}
+          </NoticeBox>
+        ))}
 
       <Box mt={1.5} mb={0.5} bold>
         Who is going

@@ -167,6 +167,14 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 	else if(outcome)
 		report += "This chapter: still being played"
 
+	// Who is out there, and what it leaves behind. The first question after "was there a raid" is always how
+	// many people were home for it.
+	var/datum/overworld_party/expedition = SScampaign.get_active_party()
+	if(expedition)
+		report += "Expedition [expedition.party_id]: [expedition.state], [length(expedition.member_ids)] signed on ([expedition.living_member_count()] alive), at [expedition.current_cell]"
+		report += "Carrying [expedition.supplies] rations, bound for [expedition.destination_site_id || "nowhere yet"]"
+	report += "Colonists in the settlement: [length(get_colonists_physically_at_colony())]"
+
 	var/datum/colony_raid/attacker = get_attacking_colony_raid()
 	if(attacker)
 		report += "Raid in progress: [attacker.raid_id] ([attacker.state]), budget [attacker.threat_budget], [attacker.living_attacker_count()] attackers still standing"

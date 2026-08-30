@@ -138,6 +138,14 @@ SUBSYSTEM_DEF(overworld)
 	if(!party.set_state(OVERWORLD_PARTY_AT_SITE, "the expedition reached its destination"))
 		return FALSE
 
+	// Nobody online means nobody to stand in it. Arriving is a fact about the record and happens on time either
+	// way; the ground is only worth reserving once somebody is there to walk on it, and a reservation made for
+	// an empty party is one that is never handed back. Whoever rejoins brings the site up themselves.
+	if(!party.living_member_count())
+		log_game("Colony expedition [party.party_id] reached [party.destination_site_id] with nobody online; the site waits until somebody joins.")
+		SScampaign.commit_party_change()
+		return TRUE
+
 	// Loading a scene sleeps, and this is a subsystem fire. The party is already at the site as far as the
 	// record is concerned; the ground under their feet catches up a moment later.
 	INVOKE_ASYNC(src, PROC_REF(bring_up_site), party.party_id, party.destination_site_id)
@@ -484,4 +492,182 @@ SUBSYSTEM_DEF(overworld)
 		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
 		if(body)
 			to_chat(body, span_notice("The caravan makes camp and waits it out."))
+	return TRUE
+
+
+/**
+ * What a death does to an expedition.
+ *
+ * Driven from the roster's own death record rather than from a second signal on the body. There is already one
+ * place that decides somebody has died, and a competing detector would eventually disagree with it about who
+ * is alive - which is the one thing a party must never be wrong about.
+ *
+ * A death does not end a journey. The survivors keep walking, keep eating and keep the ore; only running out
+ * of living people ends it. Nobody is resurrected and no rescue is dispatched: this phase has no answer to a
+ * party dying out there beyond recording that it did.
+ */
+/datum/controller/subsystem/overworld/proc/note_party_death(colonist_id)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || !(colonist_id in party.member_ids))
+		return FALSE
+
+	// Their agreement to go dies with them. The list is what the departure gate counts, and a dead member who
+	// still reads as ready would let a caravan leave one short without anybody noticing.
+	party.ready_member_ids -= colonist_id
+
+	if(party.living_member_count())
+		SScampaign.commit_party_change()
+		return TRUE
+
+	return lose_party(party, "every colonist on it died")
+
+/**
+ * The expedition is gone, and so is what it was carrying.
+ *
+ * The rations are forfeit rather than refunded - they went out of the colony with people who are not bringing
+ * them back - and that is written down rather than merely subtracted, so a chapter that ends poorer has a line
+ * saying why. What the party discovered stays discovered: the ground it walked is still walked, and deleting
+ * that would punish the colony twice for the same loss.
+ */
+/datum/controller/subsystem/overworld/proc/lose_party(datum/overworld_party/party, reason)
+	if(!party.set_state(OVERWORLD_PARTY_LOST, reason))
+		return FALSE
+
+	var/forfeited = party.supplies
+	party.supplies = 0
+	if(forfeited > 0)
+		SScampaign.record_nonfinancial(
+			LEDGER_CATEGORY_EXPEDITION,
+			"expedition_lost_with_supplies",
+			actor_id = null,
+			related_id = party.party_id,
+		)
+
+	party.leg_started_at = 0
+	party.leg_arrives_at = 0
+	party.pending_decision = null
+
+	log_game("Colony expedition [party.party_id] was lost: [reason]. [forfeited] rations went with it.")
+	message_admins(span_boldwarning("Colony expedition [party.party_id] has been lost at [party.current_cell]: [reason]."))
+	priority_announce(
+		"The colony has lost contact with its expedition. They are not coming back.",
+		"Expedition Lost",
+		sound = null,
+	)
+	SScampaign.commit_party_change()
+	return TRUE
+
+/**
+ * Who is actually standing in the colony right now.
+ *
+ * Membership rather than coordinates, because a party is away the moment it departs regardless of which
+ * reservation its bodies happen to be sitting in. Anything that wants to know how thin the colony is - the
+ * undefended warning, admin telemetry - asks this rather than counting living mobs, which would count the
+ * travellers as defenders right up until something attacked.
+ */
+/proc/get_colonists_physically_at_colony()
+	RETURN_TYPE(/list)
+	var/list/present = list()
+	var/datum/colonist_roster/roster = SScampaign.get_roster()
+	if(!roster)
+		return present
+
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	// A party still gathering has not gone anywhere; its members are as present as anybody.
+	var/list/away = (party && !party.is_planning() && !(party.state in OVERWORLD_PARTY_TERMINAL_STATES)) ? party.member_ids : list()
+
+	for(var/colonist_id in roster.records)
+		if(colonist_id in away)
+			continue
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(body && body.stat != DEAD)
+			present += colonist_id
+	return present
+
+
+/// TRUE when this colonist is on an expedition that has actually left the colony.
+/proc/is_travelling_member(colonist_id)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || !(colonist_id in party.member_ids))
+		return FALSE
+	// Still gathering, finished, or lost: all of those belong in the colony like anybody else.
+	return !party.is_planning() && !(party.state in OVERWORLD_PARTY_TERMINAL_STATES)
+
+/**
+ * Hands a resuming traveller their own belongings back.
+ *
+ * A colonist who ends a chapter on the road cannot walk to their locker to collect their things, because their
+ * locker is in a colony they are nowhere near. So the locker comes to them.
+ *
+ * Only ever their own locker. The shared stash cannot say which coat belonged to whom, so drawing from it
+ * would hand somebody else's kit to whoever happened to rejoin first.
+ */
+/proc/restore_traveller_belongings(mob/living/body, datum/colonist_record/record)
+	var/obj/structure/closet/colonist_storage/locker/personal = get_personal_colonist_locker(record?.colonist_id)
+	if(!personal)
+		// Keeping the issued outfit is the right answer here: they are about to be put somewhere with no shops.
+		log_game("Colony campaign: [record?.display_name] resumed an expedition with no personal locker; they keep the issued outfit.")
+		return FALSE
+
+	if(!length(personal.contents))
+		log_game("Colony campaign: [record?.display_name] resumed an expedition with an empty locker; they keep the issued outfit.")
+		return FALSE
+
+	return return_colonist_belongings(personal, body)
+
+/**
+ * Sends a rejoining colonist back to wherever their expedition actually is.
+ *
+ * Called after the ordinary arrival has already put them somewhere safe in the colony, which matters: bringing
+ * the scene up sleeps, and a body that was waiting in nullspace for it would be a body nobody could find if the
+ * load failed. They stand in the colony for a moment and are then moved out.
+ *
+ * Everything is re-resolved by id afterwards for the usual reason - the party can end, and the body can stop
+ * existing, in the time a map takes to load.
+ */
+/datum/controller/subsystem/overworld/proc/resume_traveller(colonist_id)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || !is_travelling_member(colonist_id))
+		return FALSE
+
+	// At a site they are at the site; anywhere else on the journey they are in the camp.
+	var/at_site = party.state == OVERWORLD_PARTY_AT_SITE
+	var/site_id = at_site ? party.destination_site_id : null
+	var/template_key = at_site ? LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE : LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT
+
+	// Preflighted before anything is promised. A content problem should leave somebody standing in the colony
+	// with an admin warning, not halfway into a scene that does not exist.
+	var/problem = overworld_template_problem(template_key)
+	if(problem)
+		log_game("Colony campaign: [colonist_id] could not be returned to their expedition: [problem].")
+		message_admins(span_boldwarning("[colonist_id] rejoined an expedition but its scene could not be loaded: [problem]. They have been left in the colony."))
+		return FALSE
+
+	INVOKE_ASYNC(src, PROC_REF(transfer_to_expedition), colonist_id, party.party_id, site_id, template_key)
+	return TRUE
+
+/// Brings the scene up and puts one rejoining body in it.
+/datum/controller/subsystem/overworld/proc/transfer_to_expedition(colonist_id, party_id, site_id, template_key)
+	UNTIL(!loading_destination)
+	loading_destination = TRUE
+	var/datum/overworld_destination/destination = load_overworld_destination(site_id, template_key)
+	loading_destination = FALSE
+
+	// Everything asked again, because a map load is long enough for all of it to have changed.
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || party.party_id != party_id || !is_travelling_member(colonist_id))
+		return FALSE
+
+	var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+	if(!body || body.stat == DEAD)
+		return FALSE
+
+	var/turf/arrival = destination?.pick_arrival_turf()
+	if(!arrival)
+		message_admins(span_boldwarning("[colonist_id] rejoined an expedition but its scene offered nowhere to stand. They have been left in the colony."))
+		return FALSE
+
+	body.forceMove(arrival)
+	to_chat(body, span_notice("You are back with the expedition, out in the country beyond the colony."))
+	log_game("Colony campaign: [colonist_id] rejoined expedition [party_id] at [AREACOORD(arrival)].")
 	return TRUE

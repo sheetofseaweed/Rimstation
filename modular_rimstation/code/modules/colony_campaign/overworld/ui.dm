@@ -196,6 +196,13 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	data["campaign_clock"] = SScampaign.get_campaign_time()
 	data["colony_under_attack"] = is_colony_raid_running()
 
+	// How thin the colony would be left. Counted from membership rather than from bodies in the room, because a
+	// party is away the moment it departs and would otherwise read as defending the place it just walked out of.
+	var/list/at_home = get_colonists_physically_at_colony()
+	data["colonists_at_colony"] = length(at_home)
+	var/datum/overworld_party/mustering = SScampaign.get_active_party()
+	data["colonists_leaving"] = mustering?.is_planning() ? length(mustering.member_ids) : 0
+
 	// Who is standing at the table decides what they are allowed to do with it. Everything below is about this
 	// one colonist, so a second person reading over their shoulder sees their own buttons rather than theirs.
 	var/datum/colonist_record/viewer = SScampaign.get_colonist_record_for_body(user)

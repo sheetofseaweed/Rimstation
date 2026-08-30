@@ -854,6 +854,9 @@ SUBSYSTEM_DEF(campaign)
 
 	record.status = COLONIST_STATUS_DEAD
 	log_game("Colony campaign [manifest?.campaign_id]: colonist [record.display_name] ([colonist_id]) died in chapter [manifest?.chapter].")
+	// Told from here rather than from a second listener on the body: there is already one place that decides
+	// somebody has died, and two detectors would eventually disagree about who is alive.
+	SSoverworld.note_party_death(colonist_id)
 	return TRUE
 
 /**
@@ -1332,6 +1335,7 @@ SUBSYSTEM_DEF(campaign)
 	// A snapshot is a picture of now, so the clock in it reads now. This promotes nothing: the committed
 	// pointer is untouched, and syncing does not rebase, so a later commit is unaffected by having done this.
 	sync_campaign_time()
+	sync_overworld()
 
 	world_quiesced = TRUE
 	var/staged = snapshot.stage(manifest)
@@ -1366,6 +1370,9 @@ SUBSYSTEM_DEF(campaign)
 	capture_ledger()
 	capture_roster()
 	sync_campaign_time()
+	// Every party edit already writes through, so this should change nothing. It is here because "should" is
+	// not good enough for the one write that decides what the colony comes back as.
+	sync_overworld()
 
 	// Aged before the checkpoint is staged, so the campaign record preserved alongside the world describes the
 	// chapter that just ended rather than the one before it.

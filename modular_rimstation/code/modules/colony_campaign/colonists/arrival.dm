@@ -38,12 +38,24 @@
 	// correctly - see restore_colonist_skills().
 	restore_colonist_skills(record, body.mind)
 
+	// Somebody who was out on the road when the last chapter ended is still out there. Their belongings come
+	// back here rather than at their locker, because they are about to be put somewhere they cannot walk to a
+	// locker from.
+	var/on_expedition = is_travelling_member(record.colonist_id)
+	if(on_expedition)
+		restore_traveller_belongings(body, record)
+
 	var/turf/arrival = get_colonist_arrival_turf(record, returning)
 	if(arrival)
 		body.forceMove(arrival)
 		log_game("Colony campaign [manifest.campaign_id]: [record.display_name] ([record.colonist_id]) arrived as a [returning ? "returning colonist" : "newcomer"] at [AREACOORD(arrival)].")
 	else
 		log_game("Colony campaign [manifest.campaign_id]: [record.display_name] ([record.colonist_id]) had nowhere to arrive; they are wherever the job put them.")
+
+	// Only now, with a body standing somewhere real. Bringing an expedition's scene up sleeps, and doing this
+	// before the arrival above would race it - the load can finish first and be undone by the arrival move.
+	if(on_expedition)
+		SSoverworld.resume_traveller(record.colonist_id)
 
 	return record
 

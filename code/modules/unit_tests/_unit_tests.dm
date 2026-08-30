@@ -393,6 +393,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_destinations.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_muster.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_party.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_recovery.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_region.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_route.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_state.dm"
