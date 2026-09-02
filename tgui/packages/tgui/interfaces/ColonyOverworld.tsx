@@ -37,6 +37,8 @@ type Party = {
   max_members: number;
   everyone_ready: boolean;
   destination_site_id: string | null;
+  /** Set instead of a site when this journey went out to look at country rather than collect from it. */
+  survey_cell: string | null;
   destination_cell: string | null;
   route: string[];
   route_kind: string | null;
@@ -103,6 +105,10 @@ type Data = {
   previewed_site_id: string | null;
   party: Party | null;
   route_offers: RouteOffer[];
+  /** Unknown hexes touching known ground - the only ones a survey can be aimed at. */
+  frontier_cells: string[];
+  survey_offers: RouteOffer[];
+  previewed_survey_cell: string | null;
   ledger: Ledger | null;
   campaign_clock: number;
 };
@@ -197,6 +203,9 @@ export const ColonyOverworld = (props) => {
     previewed_site_id,
     party,
     route_offers,
+    frontier_cells,
+    survey_offers,
+    previewed_survey_cell,
     ledger,
   } = data;
 
@@ -222,11 +231,28 @@ export const ColonyOverworld = (props) => {
   const selectedSite = selected ? siteByCell[selected] : null;
   const selectedAxial = selected ? parseCellId(selected) : null;
 
+  const frontierSet: Record<string, boolean> = {};
+  for (const cellId of frontier_cells) {
+    frontierSet[cellId] = true;
+  }
+
   const selectCell = (cellId: string) => {
     setSelected(cellId);
     const site = siteByCell[cellId];
-    // Null clears the preview server-side, so walking your eye over empty ground stops offering a stale route.
-    act('preview_site', { site_id: site ? site.id : null });
+
+    // One hex means one intention. Picking known ground with something on it prices a trip to that thing;
+    // picking unknown ground on the frontier prices a trip to go and look at it. Nulls clear the other, so
+    // running your eye across the map never leaves a stale offer behind.
+    if (site) {
+      act('preview_site', { site_id: site.id });
+      return;
+    }
+    if (frontierSet[cellId]) {
+      act('preview_survey', { cell_id: cellId });
+      return;
+    }
+    act('preview_site', { site_id: null });
+    act('preview_survey', { cell_id: null });
   };
 
   return (
@@ -255,6 +281,7 @@ export const ColonyOverworld = (props) => {
                   knownSites={known_sites}
                   selected={selected}
                   onSelect={selectCell}
+                  frontier={frontier_cells}
                   route={party?.route}
                   partyFrom={party?.current_cell ?? undefined}
                   partyTo={party?.next_cell ?? undefined}
@@ -270,6 +297,8 @@ export const ColonyOverworld = (props) => {
                     <ExpeditionPanel
                       party={party}
                       offers={route_offers}
+                      surveyOffers={survey_offers}
+                      surveyCell={previewed_survey_cell}
                       previewedSiteId={previewed_site_id}
                       viewerIsColonist={viewer_is_colonist}
                       legProgress={legProgress}
@@ -387,6 +416,8 @@ function ExpeditionPanel(props: {
   party: Party | null;
   offers: RouteOffer[];
   previewedSiteId: string | null;
+  surveyOffers: RouteOffer[];
+  surveyCell: string | null;
   viewerIsColonist: boolean;
   legProgress: number;
   atColony: number;
@@ -397,6 +428,8 @@ function ExpeditionPanel(props: {
     party,
     offers,
     previewedSiteId,
+    surveyOffers,
+    surveyCell,
     viewerIsColonist,
     legProgress,
     atColony,
@@ -619,6 +652,42 @@ function ExpeditionPanel(props: {
             </Button>
           )}
         </Box>
+      )}
+
+      {/*
+        Going to look at unknown ground. Same two offers and the same pricing as a trip to a site, because it is
+        the same journey - what differs is that it comes back with map instead of goods.
+      */}
+      {!!planning && !!surveyCell && (
+        <>
+          <Box mt={1.5} mb={0.5} bold>
+            Survey {surveyCell}
+          </Box>
+          <Box color="label" mb={0.5}>
+            Nobody has walked there. Going to look would put it and the country around it on the map.
+          </Box>
+          {surveyOffers.length === 0 ? (
+            <Box color="label">
+              There is no way to get near enough to see it yet.
+            </Box>
+          ) : (
+            surveyOffers.map((offer) => (
+              <Button
+                key={offer.kind}
+                fluid
+                mb={0.5}
+                selected={
+                  party.route_kind === offer.kind && party.survey_cell === surveyCell
+                }
+                onClick={() => onAct('choose_survey', { kind: offer.kind })}
+              >
+                {`${ROUTE_LABELS[offer.kind] ?? offer.kind} — ${describeDuration(
+                  offer.travel_seconds,
+                )}, ${offer.supply_cost} food`}
+              </Button>
+            ))
+          )}
+        </>
       )}
 
       {/* The two offers, priced by the server for whoever is signed on right now. */}

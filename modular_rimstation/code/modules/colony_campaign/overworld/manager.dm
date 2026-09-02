@@ -135,6 +135,11 @@ SUBSYSTEM_DEF(overworld)
 
 /// The party reaches what it came for and starts working it.
 /datum/controller/subsystem/overworld/proc/begin_site_visit(datum/overworld_party/party)
+	// A survey has nothing to walk into. The country is the point, so it is taken in from where they stand and
+	// they turn straight round - loading a scene for it would reserve turfs nobody would ever enter.
+	if(party.is_surveying())
+		return complete_survey(party)
+
 	if(!party.set_state(OVERWORLD_PARTY_AT_SITE, "the expedition reached its destination"))
 		return FALSE
 
@@ -679,4 +684,49 @@ SUBSYSTEM_DEF(overworld)
 	body.forceMove(arrival)
 	to_chat(body, span_notice("You are back with the expedition, out in the country beyond the colony."))
 	log_game("Colony campaign: [colonist_id] rejoined expedition [party_id] at [AREACOORD(arrival)].")
+	return TRUE
+
+
+/**
+ * The party arrives at the country it came to look at, takes it in, and turns for home.
+ *
+ * The whole payout of a survey happens here, in one place, and it is map rather than goods. That difference is
+ * the point of the mission type: ore has to be carried back and can be lost with the people carrying it, where
+ * ground that has been seen stays seen even if nobody makes it home.
+ */
+/datum/controller/subsystem/overworld/proc/complete_survey(datum/overworld_party/party)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(!region || !region_state)
+		return FALSE
+
+	var/revealed = region_state.discover_radius(region, party.current_cell, OVERWORLD_SURVEY_REVEAL_RADIUS)
+
+	SScampaign.record_nonfinancial(
+		LEDGER_CATEGORY_EXPEDITION,
+		"survey_completed",
+		actor_id = null,
+		related_id = party.current_cell,
+	)
+
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(body)
+			to_chat(body, span_notice("You take a long look at the country from here. [revealed] new [revealed == 1 ? "stretch" : "stretches"] of ground go onto the colony's map."))
+
+	log_game("Colony expedition [party.party_id] surveyed [party.current_cell] and revealed [revealed] cells.")
+
+	// Home the way they came. `begin_return()` clears the survey target, so nothing can re-reveal on the way.
+	if(!party.begin_return("the survey was finished"))
+		return halt_party(party, "the expedition could not turn for home after its survey")
+
+	if(!schedule_leg(party, region))
+		return FALSE
+
+	// A moment spent looking, on top of the crossing. Enough to read as an act rather than a bounce off the far
+	// edge of the map.
+	party.leg_arrives_at += (OVERWORLD_SURVEY_SECONDS SECONDS)
+
+	INVOKE_ASYNC(src, PROC_REF(board_for_return), party.party_id)
+	SScampaign.commit_party_change()
 	return TRUE

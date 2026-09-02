@@ -312,3 +312,96 @@
 	var/list/weather_choices = weather.available_choices(party, region, blocked)
 	TEST_ASSERT(OVERWORLD_CHOICE_PRESS_ON in weather_choices, "A destitute party was not offered the one free way on.")
 	TEST_ASSERT(!(OVERWORLD_CHOICE_SHELTER in weather_choices), "A party with one ration left was offered a shelter it could not pay for.")
+
+
+/**
+ * Going out to look at country, rather than to fetch anything from it.
+ *
+ * A survey is the other half of what an expedition is for. It has no site at the end, so nothing loads and
+ * nothing is carried home - the payout is map, and map cannot be dropped on the road or lost with the people
+ * who went to get it.
+ */
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/survey_buys_map
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/survey_buys_map/Run()
+	var/datum/overworld_party/party = begin_travel_campaign()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+
+	// The frontier is what a survey can be aimed at: unknown ground touching ground somebody has walked.
+	var/list/frontier = get_overworld_frontier_cells(region)
+	TEST_ASSERT(length(frontier), "A freshly revealed colony has no frontier to survey, so nothing could ever be explored.")
+
+	var/target = null
+	for(var/cell_id in frontier)
+		target = cell_id
+		break
+
+	TEST_ASSERT(!region_state.is_discovered(target), "The frontier offered a cell that is already on the map.")
+
+	// Every frontier cell touches somewhere known, which is what makes it reachable at all.
+	var/list/reachable = region_state.discovered_cells.Copy()
+	reachable[target] = TRUE
+	TEST_ASSERT(length(region.plan_route("0,0", target, OVERWORLD_ROUTE_FASTEST, reachable)) >= 2, "A frontier cell could not be routed to, so the frontier is not the frontier.")
+
+	// Somewhere already known is not worth surveying, and is refused rather than sold as a trip.
+	TEST_ASSERT(!party.set_survey_destination(region, "0,0", OVERWORLD_ROUTE_FASTEST, region_state.discovered_cells), "A survey was sold to somewhere the colony had already walked.")
+
+	TEST_ASSERT(party.set_survey_destination(region, target, OVERWORLD_ROUTE_FASTEST, region_state.discovered_cells), "A survey to the frontier was refused.")
+	TEST_ASSERT(party.is_surveying(), "A party sent to look at country does not think it is surveying.")
+	TEST_ASSERT_NULL(party.destination_site_id, "A survey also claimed to be going to a site.")
+	TEST_ASSERT(party.has_destination(), "A survey did not count as having somewhere to go, so it could never depart.")
+
+	// Walk it there. The route ends on the unknown cell, which is the one thing a route is otherwise never
+	// allowed to include.
+	party.current_cell = party.route[1]
+	party.next_leg_index = 2
+	party.supplies = 40
+	party.decisions_taken = 1
+	party.set_state(OVERWORLD_PARTY_DEPARTING, "test")
+	party.set_state(OVERWORLD_PARTY_OUTBOUND, "test")
+	SSoverworld.schedule_leg(party, region)
+
+	var/known_before = length(region_state.discovered_cells)
+	var/guard = 0
+	while(party.state == OVERWORLD_PARTY_OUTBOUND && guard < 20)
+		guard++
+		skip_to_arrival(party)
+		SSoverworld.fire()
+
+	// Arriving at a survey turns the party straight round: there is nothing to stand in and nothing to work.
+	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_RETURNING, "A finished survey did not turn for home.")
+	TEST_ASSERT(!party.is_surveying(), "A finished survey still had a target, so it could reveal the same ground twice.")
+
+	// And the payout: more of the region on the map than before, including the cell they went to see.
+	TEST_ASSERT(region_state.is_discovered(target), "The cell the party walked to was not put on the map.")
+	TEST_ASSERT(length(region_state.discovered_cells) > known_before + 1, "A survey revealed no more than simply passing through would have.")
+
+	// Nothing was reserved for it. A survey has no scene, and loading one would hold turfs nobody enters.
+	TEST_ASSERT_NULL(get_loaded_destination(target), "A survey reserved a map for country nobody stands in.")
+
+
+/// A survey survives being written out, like any other journey.
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/survey_survives_storage
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/survey_survives_storage/Run()
+	var/datum/overworld_party/party = begin_travel_campaign()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+
+	var/target = null
+	for(var/cell_id in get_overworld_frontier_cells(region))
+		target = cell_id
+		break
+	TEST_ASSERT_NOTNULL(target, "There was no frontier cell to survey.")
+	TEST_ASSERT(party.set_survey_destination(region, target, OVERWORLD_ROUTE_SAFER, region_state.discovered_cells), "A survey could not be planned.")
+
+	var/list/record = party.serialize()
+	var/datum/overworld_party/loaded = new()
+	allocated += loaded
+	TEST_ASSERT(loaded.deserialize(record), "A surveying party could not be read back.")
+
+	TEST_ASSERT_EQUAL(loaded.survey_cell, party.survey_cell, "A resumed survey forgot where it was going to look.")
+	TEST_ASSERT(loaded.is_surveying(), "A resumed survey came back as an ordinary expedition.")
+	TEST_ASSERT_NULL(loaded.destination_site_id, "A resumed survey acquired a site it never had.")
+	TEST_ASSERT_EQUAL(json_encode(loaded.route), json_encode(party.route), "A resumed survey lost its route.")

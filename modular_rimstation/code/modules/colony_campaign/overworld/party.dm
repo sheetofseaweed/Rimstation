@@ -19,6 +19,13 @@
 	var/list/ready_member_ids
 	/// The site this party is going to, or null while nobody has chosen.
 	var/destination_site_id
+	/**
+	 * A cell this party is going to look at, for a journey with no site at the end of it.
+	 *
+	 * Exactly one of this and `destination_site_id` is ever set. A survey is the other kind of expedition: it
+	 * buys map rather than goods, which on a region you have to walk to see is the scarcer of the two.
+	 */
+	var/survey_cell
 	/// The planned walk out, as cell ids from home. Empty until a destination is chosen.
 	var/list/route
 	/// Which of the two offers was taken. Explanation and audit only; the route itself is authoritative.
@@ -163,8 +170,8 @@
 	if(!ready)
 		ready_member_ids -= colonist_id
 		return TRUE
-	// Readiness is meaningless until there is a plan to be ready for.
-	if(!length(route) || !destination_site_id)
+	// Readiness is meaningless until there is a plan to be ready for - of either kind.
+	if(!length(route) || !has_destination())
 		return FALSE
 	if(colonist_id in ready_member_ids)
 		return TRUE
@@ -245,6 +252,7 @@
 	// Rations are not recharged by changing plans. A party that turns for somewhere further than it packed for
 	// will run short, and the supply check on the next leg is what says so.
 	destination_site_id = site_id
+	survey_cell = null
 	route = planned
 	next_leg_index = 2
 	set_state(OVERWORLD_PARTY_OUTBOUND, "the expedition changed its destination")
@@ -273,6 +281,7 @@
 
 	route = reversed
 	destination_site_id = null
+	survey_cell = null
 	current_cell = reversed[length(reversed)]
 	next_leg_index = length(reversed) - 1
 	set_state(OVERWORLD_PARTY_RETURNING, "the expedition turned for home")
@@ -283,6 +292,7 @@
 	if(!is_planning())
 		return FALSE
 	destination_site_id = null
+	survey_cell = null
 	route = list()
 	route_kind = null
 	clear_readiness(reason || "the destination was cleared")
@@ -315,9 +325,11 @@
 		return "This expedition has already left."
 	if(!length(member_ids))
 		return "Nobody has signed on."
-	if(!destination_site_id)
+	if(!has_destination())
 		return "No destination has been chosen."
-	if(!region?.sites[destination_site_id])
+	if(survey_cell && !region?.cells[survey_cell])
+		return "That stretch of country is not on this map."
+	if(destination_site_id && !region?.sites[destination_site_id])
 		return "That destination is not on this map."
 	if(!region.is_valid_route(route, only_within))
 		return "The planned route is no longer one the colony can walk."
@@ -376,6 +388,7 @@
 		"member_ids" = member_ids.Copy(),
 		"ready_member_ids" = ready_member_ids.Copy(),
 		"destination_site_id" = destination_site_id,
+		"survey_cell" = survey_cell,
 		"route" = route.Copy(),
 		"route_kind" = route_kind,
 		"current_cell" = current_cell,
@@ -463,6 +476,7 @@
 	member_ids = incoming_members
 	ready_member_ids = incoming_ready
 	destination_site_id = istext(data["destination_site_id"]) ? data["destination_site_id"] : null
+	survey_cell = istext(data["survey_cell"]) ? data["survey_cell"] : null
 	route = incoming_route
 	route_kind = incoming_kind
 	current_cell = incoming_cell
@@ -517,12 +531,19 @@
 /datum/overworld_party/proc/at_home()
 	return current_cell == (length(route) ? route[1] : "0,0")
 
-/// TRUE when the party is standing on the cell holding the site it set out for.
+/// TRUE when the party is standing on whatever it set out for - a site's cell, or a cell in its own right.
 /datum/overworld_party/proc/at_destination(datum/overworld_region/region)
+	if(survey_cell)
+		return current_cell == survey_cell
+
 	var/datum/overworld_site/site = region?.sites[destination_site_id]
 	if(!site)
 		return FALSE
 	return current_cell == "[site.q],[site.r]"
+
+/// TRUE once this expedition has somewhere to go, of either kind.
+/datum/overworld_party/proc/has_destination()
+	return !isnull(destination_site_id) || !isnull(survey_cell)
 
 /**
  * Turns the party around and points it back down the road it came.
@@ -533,6 +554,10 @@
 /datum/overworld_party/proc/begin_return(reason)
 	if(!set_state(OVERWORLD_PARTY_RETURNING, reason || "the expedition turned for home"))
 		return FALSE
+
+	// Whatever it went out for is behind it now. A survey target left standing would have the party still
+	// claiming to be on its way to look at ground it has already looked at.
+	survey_cell = null
 
 	// The index of where it is standing now, so the first step home is the cell before it.
 	var/standing_at = route.Find(current_cell)
@@ -588,3 +613,72 @@
 			without_blocked[cell_id] = TRUE
 
 	return region.plan_route(current_cell, route[length(route)], route_kind || OVERWORLD_ROUTE_FASTEST, without_blocked)
+
+
+/// TRUE when this expedition went out to look at country rather than to collect anything.
+/datum/overworld_party/proc/is_surveying()
+	return !isnull(survey_cell)
+
+/**
+ * Sends this party to look at one unknown cell.
+ *
+ * The target is unknown by definition, which is the whole difficulty: routes may only cross ground the colony
+ * has walked, so a survey can only be aimed at a cell touching known country. The planner is given the
+ * discovered set plus the target itself - one step into the dark, from somewhere real.
+ */
+/datum/overworld_party/proc/set_survey_destination(datum/overworld_region/region, cell_id, kind, list/only_within)
+	if(!is_planning())
+		return FALSE
+	if(!region?.cells[cell_id])
+		return FALSE
+	if(!(kind in OVERWORLD_ROUTE_KINDS))
+		return FALSE
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(region_state?.is_discovered(cell_id))
+		// Already on the map. Walking somewhere known to look at it would buy nothing.
+		return FALSE
+
+	var/list/reachable = (only_within || list()).Copy()
+	reachable[cell_id] = TRUE
+
+	var/list/planned = region.plan_route(current_cell, cell_id, kind, reachable)
+	if(length(planned) < 2)
+		return FALSE
+
+	survey_cell = cell_id
+	destination_site_id = null
+	route = planned
+	route_kind = kind
+	next_leg_index = 1
+	clear_readiness("the route changed")
+	return TRUE
+
+/**
+ * Every unknown cell the colony could send somebody to look at.
+ *
+ * The frontier: cells nobody has walked that touch somewhere they have. Anything further out cannot be routed
+ * to, because the ground in between is unknown as well - the map is opened one ring at a time, by walking.
+ */
+/proc/get_overworld_frontier_cells(datum/overworld_region/region)
+	RETURN_TYPE(/list)
+	var/list/frontier = list()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(!region || !region_state)
+		return frontier
+
+	var/list/directions = OVERWORLD_AXIAL_DIRECTIONS
+	for(var/known_id in region_state.discovered_cells)
+		var/datum/overworld_cell/known = region.cells[known_id]
+		if(!known)
+			continue
+		for(var/list/step as anything in directions)
+			var/datum/overworld_cell/neighbour = region.get_cell(known.q + step[1], known.r + step[2])
+			if(!neighbour || !neighbour.is_passable())
+				continue
+			var/neighbour_id = neighbour.cell_id()
+			if(region_state.is_discovered(neighbour_id) || frontier[neighbour_id])
+				continue
+			frontier[neighbour_id] = TRUE
+
+	return frontier

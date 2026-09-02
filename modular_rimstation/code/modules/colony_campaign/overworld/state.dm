@@ -124,6 +124,27 @@
 	return !isnull(discovered_cells[cell_id])
 
 /**
+ * Reveals everything within a given distance of a cell. Returns how many were newly seen.
+ *
+ * What a party standing somewhere and looking properly can take in, as opposed to the single ring that simply
+ * passing through reveals. Walks the whole field rather than the ring, because at radius two the neighbours of
+ * neighbours overlap and counting them by hand is where hex maths goes wrong.
+ */
+/datum/overworld_state/proc/discover_radius(datum/overworld_region/region, cell_id, radius)
+	var/datum/overworld_cell/centre = region?.cells[cell_id]
+	if(!centre)
+		return 0
+
+	var/revealed = 0
+	for(var/candidate_id in region.cells)
+		var/datum/overworld_cell/cell = region.cells[candidate_id]
+		if(overworld_axial_distance(centre.q, centre.r, cell.q, cell.r) > radius)
+			continue
+		if(discover_cell(region, candidate_id))
+			revealed++
+	return revealed
+
+/**
  * Records that play changed a site. Returns TRUE if the record now says so.
  *
  * Only changed sites are stored, so setting a site back to available removes its entry rather than writing

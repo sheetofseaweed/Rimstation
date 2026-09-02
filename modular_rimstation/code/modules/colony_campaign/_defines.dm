@@ -444,6 +444,17 @@
 // GLOB.lazy_templates is indexed by; the datums themselves live in overworld/destinations.dm.
 /// The camp the party travels in.
 #define LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT "LT_RIMSTATION_TRANSIT"
+/**
+ * How far around a surveyed cell the country becomes known.
+ *
+ * Two, so a survey is worth more than the walking. Arriving anywhere already reveals its immediate ring, and a
+ * trip that bought only that would be a worse deal than passing through on the way to something useful.
+ */
+#define OVERWORLD_SURVEY_REVEAL_RADIUS 2
+
+/// How long a party spends looking around before it turns for home.
+#define OVERWORLD_SURVEY_SECONDS 45
+
 /// A mineral deposit worth walking to.
 #define LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE "LT_RIMSTATION_RESOURCE_SITE"
 /// Somebody else's survey post, long abandoned.

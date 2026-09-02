@@ -86,6 +86,8 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	/// The site somebody is currently looking at, so both route offers can be priced for it. Per table, and
 	/// never persisted: it is where a player's attention is, not a fact about the colony.
 	var/previewed_site_id
+	/// The unknown hex somebody is considering surveying, on the same terms.
+	var/previewed_survey_cell
 
 /obj/item/circuitboard/computer/colony_overworld
 	name = "Expedition Table (Computer Board)"
@@ -218,6 +220,14 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	data["previewed_site_id"] = previewed_site_id
 	data["party"] = build_party_payload(region, discovered, viewer)
 	data["route_offers"] = build_route_offers(region, discovered)
+
+	// The edge of what is known. Only these can be surveyed: a route may only cross walked ground, so the map
+	// opens one ring at a time and anything further out cannot be reached yet.
+	var/list/frontier = list()
+	for(var/cell_id in get_overworld_frontier_cells(region))
+		frontier += cell_id
+	data["frontier_cells"] = frontier
+	data["survey_offers"] = build_survey_offers(region, discovered)
 	return data
 
 /**
@@ -255,6 +265,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 		"max_members" = OVERWORLD_PARTY_MAX_MEMBERS,
 		"everyone_ready" = party.everyone_ready(),
 		"destination_site_id" = party.destination_site_id,
+		"survey_cell" = party.survey_cell,
 		"destination_cell" = destination ? "[destination.q],[destination.r]" : null,
 		"route" = party.route.Copy(),
 		"route_kind" = party.route_kind,
@@ -317,6 +328,44 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	return offers
 
 /**
+ * What it would cost to go and look at the hex somebody has selected.
+ *
+ * Built exactly like the route offers for a site, and for the same reason: the totals are the server's business,
+ * and a client that could describe its own journey could describe a cheap one.
+ */
+/obj/machinery/computer/colony_overworld/proc/build_survey_offers(datum/overworld_region/region, list/discovered)
+	RETURN_TYPE(/list)
+	var/list/offers = list()
+	if(!region || !previewed_survey_cell)
+		return offers
+
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	var/from_cell = party?.current_cell || "0,0"
+	var/heads = max(1, length(party?.member_ids))
+
+	// The target is unknown, so it is added to what the planner may cross. One step into the dark, from ground
+	// somebody has actually walked.
+	var/list/reachable = discovered.Copy()
+	reachable[previewed_survey_cell] = TRUE
+
+	var/list/kinds = OVERWORLD_ROUTE_KINDS
+	for(var/kind in kinds)
+		var/list/route = region.plan_route(from_cell, previewed_survey_cell, kind, reachable)
+		if(length(route) < 2)
+			continue
+		var/edges = length(route) - 1
+		UNTYPED_LIST_ADD(offers, list(
+			"kind" = kind,
+			"steps" = edges,
+			"travel_seconds" = region.route_travel_seconds(route),
+			// Danger is only known for ground already seen, so the last step contributes nothing to this figure.
+			// That is honest rather than a bug: not knowing is what the trip is for.
+			"danger" = region.route_danger(route),
+			"supply_cost" = ((OVERWORLD_SUPPLY_PER_EDGE * edges) + OVERWORLD_SUPPLY_RESERVE) * heads,
+		))
+	return offers
+
+/**
  * Everything a person can do at the table.
  *
  * Nothing here takes a colonist id from the message. Who is acting is whoever is standing at the table, which
@@ -339,6 +388,8 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			// handed a site id that came from outside the region.
 			var/wanted = params["site_id"]
 			previewed_site_id = (istext(wanted) && region?.sites[wanted]) ? wanted : null
+			if(previewed_site_id)
+				previewed_survey_cell = null
 			return TRUE
 
 		if("form_party")
@@ -376,6 +427,30 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 				SScampaign.commit_party_change()
 			else if(wants_ready)
 				to_chat(actor, span_warning("There is no route to be ready for yet."))
+			return TRUE
+
+		if("preview_survey")
+			// Looking is free, and only unknown ground on the frontier can be looked at.
+			var/wanted = params["cell_id"]
+			var/list/frontier = get_overworld_frontier_cells(region)
+			previewed_survey_cell = (istext(wanted) && frontier[wanted]) ? wanted : null
+			if(previewed_survey_cell)
+				previewed_site_id = null
+			return TRUE
+
+		if("choose_survey")
+			if(!party || !previewed_survey_cell)
+				return TRUE
+			if(!party.is_planning())
+				to_chat(actor, span_warning("The expedition has already left."))
+				return TRUE
+			var/survey_kind = params["kind"]
+			if(!(survey_kind in OVERWORLD_ROUTE_KINDS))
+				return TRUE
+			if(!party.set_survey_destination(region, previewed_survey_cell, survey_kind, discovered))
+				to_chat(actor, span_warning("There is no way to get near enough to see that."))
+				return TRUE
+			SScampaign.commit_party_change()
 			return TRUE
 
 		if("choose_route")

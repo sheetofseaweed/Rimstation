@@ -80,6 +80,8 @@ type Props = {
   onSelect: (cellId: string) => void;
   /** Preview mode: nothing is hidden, because you are choosing a world rather than exploring one. */
   revealAll?: boolean;
+  /** Unknown hexes touching known ground. Drawn as reachable dark rather than plain dark. */
+  frontier?: string[];
   /** A planned walk, as cell ids. Drawn over the field so the route is read off the map, not off a list. */
   route?: string[];
   /** The cell a travelling party is leaving, and the one it is walking into. */
@@ -101,6 +103,7 @@ export function RegionMap(props: Props) {
     cells,
     knownCells,
     knownSites,
+    frontier,
     selected,
     onSelect,
     revealAll,
@@ -168,6 +171,11 @@ export function RegionMap(props: Props) {
   }
 
   const siteByCell: Record<string, KnownSite> = {};
+  const isFrontier: Record<string, boolean> = {};
+  for (const cellId of frontier ?? []) {
+    isFrontier[cellId] = true;
+  }
+
   for (const site of knownSites) {
     siteByCell[site.cell] = site;
   }
@@ -279,6 +287,10 @@ export function RegionMap(props: Props) {
                 onSelect(cell.id);
               }}
             >
+              {/*
+                Unknown ground on the frontier is outlined rather than filled: it is still unknown, but it is the
+                only unknown a caravan can be sent to, so it has to look different from the dark beyond it.
+              */}
               <polygon
                 points={hexPoints(cell, HEX_SIZE)}
                 fill={
@@ -286,8 +298,17 @@ export function RegionMap(props: Props) {
                     ? (TERRAIN_FILL[known.terrain] ?? UNKNOWN_FILL)
                     : UNKNOWN_FILL
                 }
-                stroke={isSelected ? '#ffd24a' : '#000000'}
-                strokeWidth={isSelected ? 1.4 : 0.4}
+                stroke={
+                  isSelected
+                    ? '#ffd24a'
+                    : !visible && isFrontier[cell.id]
+                      ? '#6f7d8c'
+                      : '#000000'
+                }
+                strokeWidth={isSelected ? 1.4 : !visible && isFrontier[cell.id] ? 0.9 : 0.4}
+                strokeDasharray={
+                  !isSelected && !visible && isFrontier[cell.id] ? '2 1.5' : undefined
+                }
               />
               {!!known && (known.topology === 'difficult' || known.topology === 'impassable') && (
                 <polygon
