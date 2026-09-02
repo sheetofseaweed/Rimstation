@@ -138,11 +138,15 @@
 	TEST_ASSERT_EQUAL(resumed.pending_decision["cell"], asked_cell, "A pending decision came back about different ground.")
 
 	// And once answered it is not asked again, however many times somebody clicks.
-	var/first = SSoverworld.answer_decision(party, asked_id, OVERWORLD_DECISION_FORCE, null)
+	var/list/offered = party.pending_decision["choices"]
+	TEST_ASSERT(length(offered), "A halted expedition was offered nothing to answer with.")
+	var/answer = offered[1]
+
+	var/first = SSoverworld.answer_decision(party, asked_id, answer, null)
 	TEST_ASSERT_NULL(first, "A valid answer to the road was refused.")
 	TEST_ASSERT_NULL(party.pending_decision, "Answering did not clear the question.")
 
-	var/second = SSoverworld.answer_decision(party, asked_id, OVERWORLD_DECISION_FORCE, null)
+	var/second = SSoverworld.answer_decision(party, asked_id, answer, null)
 	TEST_ASSERT_NOTNULL(second, "The same answer was accepted twice.")
 	TEST_ASSERT_EQUAL(party.decisions_taken, 1, "One question was recorded as having been answered more than once.")
 
@@ -357,3 +361,61 @@
 	// The record says they are there, which is what a rejoining player will be told.
 	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_AT_SITE, "A party that reached its destination is not at the site.")
 	TEST_ASSERT_NULL(get_loaded_destination(target.site_id()), "A site was reserved for an expedition with nobody on it.")
+
+
+/**
+ * A stored question this build cannot ask is dropped, and takes the halt with it.
+ *
+ * Decision archetypes are content, and content moves between versions. A record naming one that no longer
+ * exists describes a question nothing can present and nothing can accept an answer to - so a party left halted
+ * on it would stand at that boundary for the rest of the campaign, with an interface that cannot even draw the
+ * choices. Dropping both is the only outcome that leaves a working expedition.
+ */
+/datum/unit_test/rimstation_colonist_chapter/overworld_recovery/unreadable_decisions_are_dropped
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_recovery/unreadable_decisions_are_dropped/Run()
+	var/datum/overworld_party/party = begin_recovery_campaign()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
+	party.add_member(vera.colonist_id)
+
+	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	send_out(party, route, supplies = 40)
+
+	// A record from a build whose archetypes are not this build's: halted, with a question naming nothing.
+	var/list/record = party.serialize()
+	record["state"] = OVERWORLD_PARTY_DECISION
+	record["pending_decision"] = list(
+		"id" = "decision-from-another-version",
+		"kind" = "a_kind_that_no_longer_exists",
+		"cell" = "1,0",
+		"choices" = list("some_retired_choice"),
+	)
+
+	var/datum/overworld_party/loaded = new()
+	allocated += loaded
+	TEST_ASSERT(loaded.deserialize(record), "A party carrying an unreadable decision could not be read at all.")
+
+	TEST_ASSERT_NULL(loaded.pending_decision, "A question this build cannot ask was kept.")
+	TEST_ASSERT(loaded.state != OVERWORLD_PARTY_DECISION, "A party was left halted on a question nothing could present, so it would never move again.")
+	TEST_ASSERT_EQUAL(loaded.state, OVERWORLD_PARTY_OUTBOUND, "A party freed from an unreadable decision did not go back to travelling.")
+
+	// Everything else about the journey is untouched. Dropping the question is not dropping the expedition.
+	TEST_ASSERT_EQUAL(loaded.current_cell, party.current_cell, "Dropping a decision moved the party.")
+	TEST_ASSERT_EQUAL(loaded.supplies, party.supplies, "Dropping a decision cost the party rations.")
+	TEST_ASSERT_EQUAL(json_encode(loaded.member_ids), json_encode(party.member_ids), "Dropping a decision lost the party's members.")
+
+	// A decision naming a real archetype is kept exactly as it was.
+	record["state"] = OVERWORLD_PARTY_DECISION
+	record["pending_decision"] = list(
+		"id" = "decision-that-is-fine",
+		"kind" = OVERWORLD_DECISION_WEATHER,
+		"cell" = "1,0",
+		"choices" = list(OVERWORLD_CHOICE_PRESS_ON),
+	)
+
+	var/datum/overworld_party/kept = new()
+	allocated += kept
+	TEST_ASSERT(kept.deserialize(record), "A party carrying a readable decision could not be read.")
+	TEST_ASSERT_NOTNULL(kept.pending_decision, "A perfectly good question was thrown away.")
+	TEST_ASSERT_EQUAL(kept.state, OVERWORLD_PARTY_DECISION, "A party with a readable question was not left halted on it.")

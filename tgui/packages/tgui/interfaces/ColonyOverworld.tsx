@@ -11,6 +11,7 @@ import {
 
 import { useBackend } from '../backend';
 import { Window } from '../layouts';
+import { type Ledger, LedgerReadout } from './ColonyOverworld/LedgerReadout';
 import {
   type Cell,
   type KnownCell,
@@ -18,7 +19,6 @@ import {
   parseCellId,
   RegionMap,
 } from './ColonyOverworld/RegionMap';
-import { type Ledger, LedgerReadout } from './ColonyOverworld/LedgerReadout';
 
 type Member = {
   id: string;
@@ -64,8 +64,14 @@ type Party = {
 
 type PendingDecision = {
   id: string;
+  /** Which archetype this is. Audit and styling only; the choices below are what can be acted on. */
+  kind: string;
+  name: string;
+  reveal: string;
   cell: string;
   choices: string[];
+  /** choice id -> [label, detail], written in DM so a new archetype needs no change here. */
+  labels: Record<string, [string, string]>;
 };
 
 type RouteOffer = {
@@ -117,21 +123,6 @@ function describeDuration(seconds: number): string {
 const ROUTE_LABELS: Record<string, string> = {
   fastest: 'Fastest',
   safer: 'Safer',
-};
-
-const CHOICE_LABELS: Record<string, { label: string; detail: string }> = {
-  force: {
-    label: 'Force through',
-    detail: 'Keep the road and the arrival time. Everybody takes a beating for it, and it costs no rations.',
-  },
-  detour: {
-    label: 'Go around',
-    detail: 'The server finds a way that avoids the blockage. Longer, and the extra ground eats extra rations.',
-  },
-  wait: {
-    label: 'Wait it out',
-    detail: 'Make camp for ninety seconds and set off again. Costs a meal each.',
-  },
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -252,7 +243,9 @@ export const ColonyOverworld = (props) => {
                 fill
                 title={campaign ? `${campaign} — chapter ${chapter}` : 'Region'}
                 buttons={
-                  !!colony_under_attack && <Box color="bad">Colony under attack</Box>
+                  !!colony_under_attack && (
+                    <Box color="bad">Colony under attack</Box>
+                  )
                 }
               >
                 <RegionMap
@@ -306,7 +299,8 @@ export const ColonyOverworld = (props) => {
                     ) : (
                       <LabeledList>
                         <LabeledList.Item label="Terrain">
-                          {terrain_names[selectedCell.terrain] ?? selectedCell.terrain}
+                          {terrain_names[selectedCell.terrain] ??
+                            selectedCell.terrain}
                         </LabeledList.Item>
                         <LabeledList.Item label="Going">
                           {topology_names[selectedCell.topology] ??
@@ -324,9 +318,22 @@ export const ColonyOverworld = (props) => {
                         </LabeledList.Item>
                         {!!selectedSite && (
                           <LabeledList.Item label="Site">
-                            {selectedSite.kind === 'resource'
-                              ? `deposit, about ${selectedSite.yield} units`
-                              : 'ruin'}
+                            <Box inline color={selectedSite.available ? undefined : 'label'}>
+                              {selectedSite.kind === 'resource'
+                                ? `deposit, about ${selectedSite.yield} units`
+                                : 'ruin'}
+                            </Box>
+                            {/*
+                              A finished site stays drawn. Removing it would redraw explored ground as
+                              unknown and invite somebody to walk out to it a second time for nothing.
+                            */}
+                            {!selectedSite.available && (
+                              <Box color="label">
+                                {selectedSite.state === 'depleted'
+                                  ? 'Stripped. Nothing left to take.'
+                                  : 'Already recovered.'}
+                              </Box>
+                            )}
                           </LabeledList.Item>
                         )}
                       </LabeledList>
@@ -401,8 +408,8 @@ function ExpeditionPanel(props: {
     return (
       <>
         <Box color="label" mb={1}>
-          No expedition is being planned. Starting one opens the roll for anybody
-          who wants to go.
+          No expedition is being planned. Starting one opens the roll for
+          anybody who wants to go.
         </Box>
         <Button fluid icon="flag" onClick={() => onAct('form_party')}>
           Start an expedition
@@ -418,17 +425,23 @@ function ExpeditionPanel(props: {
     <>
       {/* The road is asking something and the caravan is standing still until somebody answers. */}
       {!!party.pending_decision && (
-        <Section title="The way is blocked" mb={1}>
+        <Section title={party.pending_decision.name} mb={1}>
+          <Box mb={1}>{party.pending_decision.reveal}</Box>
           <Box color="label" mb={1}>
-            The caravan has stopped short of {party.pending_decision.cell}. Any member
-            can decide for the party, and the first answer stands.
+            The caravan has stopped short of {party.pending_decision.cell}. Any
+            member can decide for the party, and the first answer stands.
           </Box>
+          {/*
+            Every lookup is guarded to the bottom. The copy is content sent by DM, so a payload can legitimately
+            arrive without it - an archetype that no longer exists, an older record - and a choice with no label
+            should read oddly rather than take the whole window down.
+          */}
           {party.pending_decision.choices.map((choice) => (
             <Button
               key={choice}
               fluid
               mb={0.5}
-              tooltip={CHOICE_LABELS[choice]?.detail}
+              tooltip={party.pending_decision?.labels?.[choice]?.[1]}
               disabled={!party.you_are_a_member}
               onClick={() =>
                 onAct('answer_decision', {
@@ -437,7 +450,7 @@ function ExpeditionPanel(props: {
                 })
               }
             >
-              {CHOICE_LABELS[choice]?.label ?? choice}
+              {party.pending_decision?.labels?.[choice]?.[0] ?? choice}
             </Button>
           ))}
         </Section>
@@ -565,7 +578,9 @@ function ExpeditionPanel(props: {
                 color={party.you_are_ready ? 'good' : undefined}
                 disabled={!planning || !party.route.length}
                 tooltip={
-                  party.route.length ? undefined : 'Choose a route to be ready for.'
+                  party.route.length
+                    ? undefined
+                    : 'Choose a route to be ready for.'
                 }
                 onClick={() =>
                   onAct('set_ready', { ready: party.you_are_ready ? 0 : 1 })
@@ -639,11 +654,52 @@ function ExpeditionPanel(props: {
 
       {party.state === 'at_site' && !!party.you_are_a_member && (
         <Box mt={1.5}>
-          <Button fluid icon="house" color="good" onClick={() => onAct('head_home')}>
+          <Button
+            fluid
+            icon="house"
+            color="good"
+            onClick={() => onAct('head_home')}
+          >
             Head home
           </Button>
         </Box>
       )}
+
+      {/*
+        Changing your mind on the road. Only between cells and only with no question outstanding - rerouting
+        while halted would be answering the road by walking away from it, which the server refuses anyway.
+      */}
+      {(party.state === 'outbound' || party.state === 'returning') &&
+        !party.pending_decision &&
+        !!party.you_are_a_member && (
+          <Box mt={1.5}>
+            <Box color="label" mb={0.5}>
+              The expedition can change its mind between cells. Rations are not
+              refilled by doing so.
+            </Box>
+            <Button
+              fluid
+              icon="map-location-dot"
+              disabled={!previewedSiteId}
+              tooltip={
+                previewedSiteId
+                  ? undefined
+                  : 'Choose somewhere on the map to head for instead.'
+              }
+              onClick={() => onAct('reroute')}
+            >
+              Head for the selected site instead
+            </Button>
+            <Button
+              fluid
+              mt={0.5}
+              icon="house"
+              onClick={() => onAct('turn_for_home')}
+            >
+              Turn back for the colony
+            </Button>
+          </Box>
+        )}
 
       {!!planning && !!party.destination_site_id && (
         <Box mt={1.5}>

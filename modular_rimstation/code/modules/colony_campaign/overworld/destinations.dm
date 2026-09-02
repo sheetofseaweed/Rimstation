@@ -32,6 +32,30 @@
 	key = LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE
 	map_name = "rimstation_resource_site"
 
+/datum/lazy_template/rimstation_ruin_site
+	key = LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE
+	map_name = "rimstation_ruin_site"
+
+/**
+ * Which scene a site is standing in, by what kind of site it is.
+ *
+ * Asked of the region rather than stored on the party, because the kind is a fact about the generated site and
+ * the party only ever knew its id. A site id that no longer describes anything returns null, and the loader
+ * refuses rather than guessing at a scene.
+ */
+/proc/overworld_site_template_key(site_id)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_site/site = region?.sites[site_id]
+	if(!site)
+		return null
+
+	switch(site.kind)
+		if(OVERWORLD_SITE_RUIN)
+			return LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE
+		if(OVERWORLD_SITE_RESOURCE)
+			return LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE
+	return null
+
 
 /**
  * One loaded scene, and what was found in it.
@@ -183,13 +207,22 @@ GLOBAL_LIST_EMPTY(rimstation_overworld_destinations)
 
 		if(istype(thing, /obj/structure/rimstation_resource_deposit))
 			var/obj/structure/rimstation_resource_deposit/deposit = thing
-			// One deposit per scene. A second would be a second payout for one journey, so the first wins and
+			// One objective per scene. A second would be a second payout for one journey, so the first wins and
 			// the rest are left inert rather than quietly doubling what the site is worth.
 			if(objective_ref)
-				deposit.set_inert("this site already has a deposit bound to it")
+				deposit.set_inert("this site already has an objective bound to it")
 				continue
 			objective_ref = WEAKREF(deposit)
 			deposit.bind_to_site(site_id)
+			continue
+
+		if(istype(thing, /obj/structure/rimstation_ruin_archive))
+			var/obj/structure/rimstation_ruin_archive/archive = thing
+			if(objective_ref)
+				archive.set_inert("this site already has an objective bound to it")
+				continue
+			objective_ref = WEAKREF(archive)
+			archive.bind_to_site(site_id)
 
 /**
  * A worked deposit at a resource site.
@@ -352,3 +385,147 @@ GLOBAL_LIST_EMPTY(rimstation_overworld_destinations)
 		index = (index % length(spots)) + 1
 
 	return dropped
+
+
+/// Fallen structure, so a ruin reads as abandoned rather than merely empty. Decoration; nothing reads it.
+/obj/structure/rimstation_ruin_rubble
+	name = "collapsed shelving"
+	desc = "Whatever this held went over a long time ago, and nobody came back to right it."
+	icon = 'icons/obj/structures.dmi'
+	icon_state = "rack"
+	anchored = TRUE
+	density = FALSE
+	max_integrity = 50
+
+/**
+ * The one thing in a ruin worth carrying home.
+ *
+ * Pays in the settlement's own credits rather than a second currency, and pays by transfer rather than by
+ * dropping something to carry: an archive either reached the colony's accounts or it did not. That is the
+ * deliberate difference from a mineral deposit, where the ore rides home in somebody's hands and can be lost
+ * with them - a ruin is the safer payday and a deposit is the larger one.
+ *
+ * Like the deposit, the site record rather than this object is what stops a second payout. The object lives in
+ * a reservation that outlives the chapter, so a party walking back into the same loaded ruin would find it
+ * standing here ready to be read again.
+ */
+/obj/structure/rimstation_ruin_archive
+	name = "survey archive"
+	desc = "A sealed data core on a dead pedestal. The survey that filled it never came back for it."
+	icon = 'icons/obj/machines/research.dmi'
+	icon_state = "tdoppler"
+	anchored = TRUE
+	density = TRUE
+	max_integrity = 300
+	resistance_flags = FIRE_PROOF | LAVA_PROOF | UNACIDABLE | ACID_PROOF
+	/// The generated site this stands for. Null until the loader binds it.
+	var/site_id
+	/// Set once this has paid out or been ruled out, so it stops offering.
+	var/recovered = FALSE
+	/// Why it is inert, shown on examine so a confused player gets an answer rather than a dead object.
+	var/inert_reason
+
+/obj/structure/rimstation_ruin_archive/examine(mob/user)
+	. = ..()
+	if(inert_reason)
+		. += span_warning("There is nothing left to read: [inert_reason]")
+		return
+	if(!site_id)
+		. += span_warning("This core is not part of any surveyed ruin. It cannot be read.")
+		return
+	. += span_notice("Still readable. Recovering it would be worth about [OVERWORLD_RUIN_ARCHIVE_CREDITS] credits to the colony.")
+
+/// Ties this core to a generated ruin, and refuses if the colony has already emptied that ruin.
+/obj/structure/rimstation_ruin_archive/proc/bind_to_site(bound_site_id)
+	if(!bound_site_id)
+		set_inert("it belongs to no surveyed site")
+		return FALSE
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region?.sites[bound_site_id])
+		set_inert("the survey that found it no longer describes this region")
+		return FALSE
+
+	site_id = bound_site_id
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(region_state && region_state.get_site_state(site_id) != OVERWORLD_SITE_STATE_AVAILABLE)
+		set_inert("the colony has already stripped this place")
+		return FALSE
+
+	return TRUE
+
+/// Stops this archive offering anything, for a reason a player can read.
+/obj/structure/rimstation_ruin_archive/proc/set_inert(reason)
+	recovered = TRUE
+	inert_reason = reason
+	update_appearance()
+
+/obj/structure/rimstation_ruin_archive/attack_hand(mob/living/user, list/modifiers)
+	. = ..()
+	if(.)
+		return
+	return recover_archive(user)
+
+/**
+ * Reads the archive out, once.
+ *
+ * Same shape as working a deposit, and for the same reason: the campaign is asked to change the site's state
+ * first, and only a state change that this call caused pays out. Two people reading together, or one clicking
+ * twice through the do_after, both arrive here and the record answering "already resolved" is what makes the
+ * second cost nothing.
+ */
+/obj/structure/rimstation_ruin_archive/proc/recover_archive(mob/living/user)
+	if(recovered)
+		to_chat(user, span_warning("[src] has already been read."))
+		return TRUE
+	if(!site_id)
+		to_chat(user, span_warning("[src] is not part of any surveyed ruin."))
+		return TRUE
+
+	to_chat(user, span_notice("You start working the core loose..."))
+	if(!do_after(user, OVERWORLD_SITE_WORK_SECONDS SECONDS, src))
+		return TRUE
+	if(recovered)
+		return TRUE
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(!region || !region_state)
+		to_chat(user, span_warning("There is no campaign here for this to be worth anything to."))
+		return TRUE
+
+	if(region_state.get_site_state(site_id) != OVERWORLD_SITE_STATE_AVAILABLE)
+		set_inert("the colony has already stripped this place")
+		to_chat(user, span_warning("[src] has already been read."))
+		return TRUE
+
+	if(!region_state.set_site_state(region, site_id, OVERWORLD_SITE_STATE_RESOLVED, "an expedition recovered its archive"))
+		to_chat(user, span_warning("[src] could not be recorded as recovered. Nothing was taken."))
+		return TRUE
+
+	// Inert before the payment, so nothing can re-enter between the record changing and the credit landing.
+	set_inert("an expedition recovered it")
+
+	// A refused credit would leave the site resolved and nothing paid, so the state is put back and the archive
+	// becomes readable again rather than the colony losing both.
+	if(!SScampaign.credit(
+		OVERWORLD_RUIN_ARCHIVE_CREDITS,
+		LEDGER_CATEGORY_EXPEDITION,
+		"ruin_archive_recovered",
+		actor_id = SScampaign.get_colonist_record_for_body(user)?.colonist_id,
+		related_id = site_id,
+	))
+		region_state.set_site_state(region, site_id, OVERWORLD_SITE_STATE_AVAILABLE, "the payment was refused")
+		recovered = FALSE
+		inert_reason = null
+		update_appearance()
+		to_chat(user, span_warning("The colony could not be paid for [src]. It is still here to try again."))
+		return TRUE
+
+	SScampaign.sync_overworld()
+	SScampaign.refresh_overworld_consoles()
+
+	visible_message(span_notice("[user] works the core out of [src]. The colony is credited for it."))
+	log_game("Colony expedition: [key_name(user)] recovered the archive at site [site_id] for [OVERWORLD_RUIN_ARCHIVE_CREDITS] credits.")
+	return TRUE

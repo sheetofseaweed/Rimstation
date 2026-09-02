@@ -41,11 +41,15 @@
  * Departure brings up a map template, which is a different thing to test and an expensive one to do here. This
  * hands the party the state that a finished departure would have left it in.
  */
-/datum/unit_test/rimstation_colonist_chapter/overworld_travel/proc/put_on_the_road(datum/overworld_party/party, list/route, supplies = 50)
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/proc/put_on_the_road(datum/overworld_party/party, list/route, supplies = 50, allow_decisions = FALSE)
 	party.route = route.Copy()
 	party.current_cell = route[1]
 	party.next_leg_index = 2
 	party.supplies = supplies
+	// Interruptions are opt-in. Which boundary the road picks is derived from the party and the route, so a test
+	// about legs or rations would otherwise pass or fail on where the hash happened to put a decision.
+	if(!allow_decisions)
+		party.decisions_taken = 1
 	party.set_state(OVERWORLD_PARTY_DEPARTING, "test")
 	party.set_state(OVERWORLD_PARTY_OUTBOUND, "test")
 	// schedule_or_ask rather than schedule_leg, because that is what a real departure calls. Going straight to
@@ -199,7 +203,7 @@
 	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
 	TEST_ASSERT(length(route) >= 4, "The test could not plan a route long enough to be interrupted.")
 
-	put_on_the_road(party, route, supplies = 80)
+	put_on_the_road(party, route, supplies = 80, allow_decisions = TRUE)
 
 	// Derived rather than rolled, so it is the same answer every time it is asked - which is what lets a party
 	// reload mid-journey and find the same interruption waiting.
@@ -216,27 +220,31 @@
 
 	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DECISION, "The expedition was never stopped by the road.")
 	TEST_ASSERT_NOTNULL(party.pending_decision, "A halted expedition was given nothing to decide.")
-	TEST_ASSERT(length(party.pending_decision["choices"]), "A decision offered no choices at all.")
-	TEST_ASSERT(OVERWORLD_DECISION_FORCE in party.pending_decision["choices"], "Forcing through was not offered, so a broke party could be stranded.")
+	// Which archetype the road produced is derived from where the party is, so this takes whatever was offered
+	// rather than naming one archetype's choices. What is under test is the machinery around an answer, not the
+	// content of any particular problem.
+	var/list/offered = party.pending_decision["choices"]
+	TEST_ASSERT(length(offered), "A decision offered no choices at all, so the caravan could never move again.")
+	var/free_choice = offered[1]
 	TEST_ASSERT_EQUAL(party.leg_arrives_at, 0, "A halted expedition was still walking.")
 
 	var/decision_id = party.pending_decision["id"]
 	var/supplies_before = party.supplies
 
 	// An answer to a question that was not asked, and a choice that was not offered, are both forgeries.
-	TEST_ASSERT_NOTNULL(SSoverworld.answer_decision(party, "decision-not-real", OVERWORLD_DECISION_FORCE), "An answer to a different question was accepted.")
+	TEST_ASSERT_NOTNULL(SSoverworld.answer_decision(party, "decision-not-real", free_choice), "An answer to a different question was accepted.")
 	TEST_ASSERT_NOTNULL(SSoverworld.answer_decision(party, decision_id, "eat-the-map"), "A choice that was never offered was accepted.")
 	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DECISION, "A refused answer moved the expedition on anyway.")
 
 	// Forcing through costs no rations, which is what makes it the answer nobody can be priced out of.
-	TEST_ASSERT_NULL(SSoverworld.answer_decision(party, decision_id, OVERWORLD_DECISION_FORCE), "A valid answer was refused.")
+	TEST_ASSERT_NULL(SSoverworld.answer_decision(party, decision_id, free_choice), "A valid answer was refused.")
 	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_OUTBOUND, "Answering did not put the expedition back on the road.")
 	TEST_ASSERT_EQUAL(party.supplies, supplies_before, "Forcing through ate the party's rations.")
 	TEST_ASSERT_NULL(party.pending_decision, "An answered question was still pending.")
 	TEST_ASSERT_EQUAL(party.decisions_taken, 1, "Answering was not recorded.")
 
 	// The same answer again finds nothing to answer. This is the one that would otherwise pay twice.
-	TEST_ASSERT_NOTNULL(SSoverworld.answer_decision(party, decision_id, OVERWORLD_DECISION_FORCE), "The same decision was answered twice.")
+	TEST_ASSERT_NOTNULL(SSoverworld.answer_decision(party, decision_id, free_choice), "The same decision was answered twice.")
 	TEST_ASSERT_EQUAL(party.decisions_taken, 1, "A repeated answer was counted again.")
 
 	// And the road does not ask again on this journey.
@@ -257,22 +265,21 @@
 	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
 	put_on_the_road(party, route, supplies = 80)
 
-	var/guard = 0
-	while(party.state == OVERWORLD_PARTY_OUTBOUND && guard < 20)
-		guard++
-		skip_to_arrival(party)
-		SSoverworld.fire()
-	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DECISION, "The expedition was never stopped by the road.")
+	// Driven at the weather archetype directly. Which problem a party meets is derived from where it is
+	// standing, and a test about what shelter costs should not also be a test of what the hash chose.
+	var/datum/overworld_decision/weather = get_overworld_decision(OVERWORLD_DECISION_WEATHER)
+	TEST_ASSERT_NOTNULL(weather, "The weather archetype is missing.")
 
-	// Well fed, so sitting it out is affordable and therefore offered.
-	TEST_ASSERT(OVERWORLD_DECISION_WAIT in party.pending_decision["choices"], "A well-provisioned party was not offered the chance to wait.")
+	var/blocked = party.leg_target_cell()
+	var/list/offered = weather.available_choices(party, region, blocked)
+	TEST_ASSERT(OVERWORLD_CHOICE_SHELTER in offered, "A well-provisioned party was not offered the chance to shelter.")
 
 	var/supplies_before = party.supplies
 	var/mouths = party.living_member_count()
-	TEST_ASSERT_NULL(SSoverworld.answer_decision(party, party.pending_decision["id"], OVERWORLD_DECISION_WAIT), "Waiting it out was refused.")
+	TEST_ASSERT(weather.apply_choice(party, region, OVERWORLD_CHOICE_SHELTER, blocked), "Sheltering did not put the party back on the road.")
 
-	TEST_ASSERT_EQUAL(party.supplies, supplies_before - mouths, "Waiting did not cost one meal per head.")
-	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_OUTBOUND, "A party that waited never set off again.")
+	TEST_ASSERT_EQUAL(party.supplies, supplies_before - mouths, "Sheltering did not cost one meal per head.")
+	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_OUTBOUND, "A party that sheltered never set off again.")
 
 	// The wait is added on top of the crossing rather than replacing it, so the leg is longer than the ground.
 	var/leg_length = party.leg_arrives_at - party.leg_started_at
@@ -288,16 +295,20 @@
 	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
 	put_on_the_road(party, route, supplies = 80)
 
-	var/guard = 0
-	while(party.state == OVERWORLD_PARTY_OUTBOUND && guard < 20)
-		guard++
-		skip_to_arrival(party)
-		SSoverworld.fire()
-	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_DECISION, "The expedition was never stopped by the road.")
-
+	// No need to be interrupted for this: what is under test is what each archetype offers a party in a given
+	// state, which is a question that can be asked of the archetype directly.
+	//
 	// Down to the last scrap. Anything that costs rations has to drop off the list, or the party is offered a
-	// choice that strands it.
+	// choice that strands it - and every archetype has to keep one that costs nothing but time.
 	party.supplies = 1
-	var/list/choices = party.available_decision_choices(region)
-	TEST_ASSERT(OVERWORLD_DECISION_FORCE in choices, "A destitute party was not offered the one free way on.")
-	TEST_ASSERT(!(OVERWORLD_DECISION_WAIT in choices), "A party with one ration left was offered a wait it could not pay for.")
+	var/blocked = party.leg_target_cell()
+	for(var/decision_id in GLOB.overworld_decisions)
+		var/datum/overworld_decision/archetype = GLOB.overworld_decisions[decision_id]
+		var/list/choices = archetype.available_choices(party, region, blocked)
+		TEST_ASSERT(length(choices), "'[decision_id]' offered a destitute party no way on at all.")
+
+	// Specifically: sheltering costs a meal each, so one ration between them does not buy it.
+	var/datum/overworld_decision/weather = get_overworld_decision(OVERWORLD_DECISION_WEATHER)
+	var/list/weather_choices = weather.available_choices(party, region, blocked)
+	TEST_ASSERT(OVERWORLD_CHOICE_PRESS_ON in weather_choices, "A destitute party was not offered the one free way on.")
+	TEST_ASSERT(!(OVERWORLD_CHOICE_SHELTER in weather_choices), "A party with one ration left was offered a shelter it could not pay for.")

@@ -200,6 +200,12 @@
 	if(!(kind in OVERWORLD_ROUTE_KINDS))
 		return FALSE
 
+	// A site the colony has already emptied stays on the map as history, but nobody is walking three days to
+	// stand in front of a hole somebody else finished. Refused here so the trip is never planned at all.
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(region_state && region_state.get_site_state(site_id) != OVERWORLD_SITE_STATE_AVAILABLE)
+		return FALSE
+
 	var/list/planned = region.plan_route(current_cell, "[site.q],[site.r]", kind, only_within)
 	if(length(planned) < 2)
 		return FALSE
@@ -209,6 +215,67 @@
 	route_kind = kind
 	next_leg_index = 1
 	clear_readiness("the route changed")
+	return TRUE
+
+/**
+ * Changes where a party already on the road is heading. Returns TRUE if it is now walking somewhere new.
+ *
+ * Only between cells, never mid-leg with a question outstanding: a party that could reroute while halted would
+ * be answering the road by walking away from it. The route is recomputed from where they are standing rather
+ * than from the colony, so the cost of changing your mind is only ever the ground still in front of you.
+ */
+/datum/overworld_party/proc/change_destination(datum/overworld_region/region, site_id, list/only_within)
+	if(state != OVERWORLD_PARTY_OUTBOUND && state != OVERWORLD_PARTY_RETURNING)
+		return FALSE
+	if(pending_decision)
+		return FALSE
+
+	var/datum/overworld_site/site = region?.sites[site_id]
+	if(!site)
+		return FALSE
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(region_state && region_state.get_site_state(site_id) != OVERWORLD_SITE_STATE_AVAILABLE)
+		return FALSE
+
+	var/list/planned = region.plan_route(current_cell, "[site.q],[site.r]", route_kind || OVERWORLD_ROUTE_FASTEST, only_within)
+	if(length(planned) < 2)
+		return FALSE
+
+	// Rations are not recharged by changing plans. A party that turns for somewhere further than it packed for
+	// will run short, and the supply check on the next leg is what says so.
+	destination_site_id = site_id
+	route = planned
+	next_leg_index = 2
+	set_state(OVERWORLD_PARTY_OUTBOUND, "the expedition changed its destination")
+	return TRUE
+
+/**
+ * Turns a party on the road straight round for home, wherever it is.
+ *
+ * The way back is planned fresh from where they stand rather than reusing the outbound road, because they may
+ * have rerouted since and the road they came by is not necessarily the one they are on.
+ */
+/datum/overworld_party/proc/turn_for_home(datum/overworld_region/region, list/only_within)
+	if(state != OVERWORLD_PARTY_OUTBOUND && state != OVERWORLD_PARTY_RETURNING)
+		return FALSE
+	if(pending_decision)
+		return FALSE
+
+	var/list/planned = region?.plan_route(current_cell, "0,0", route_kind || OVERWORLD_ROUTE_FASTEST, only_within)
+	if(length(planned) < 2)
+		return FALSE
+
+	// Stored forwards and walked backwards, like every other return: the travel code counts the index down.
+	var/list/reversed = list()
+	for(var/index = length(planned) to 1 step -1)
+		reversed += planned[index]
+
+	route = reversed
+	destination_site_id = null
+	current_cell = reversed[length(reversed)]
+	next_leg_index = length(reversed) - 1
+	set_state(OVERWORLD_PARTY_RETURNING, "the expedition turned for home")
 	return TRUE
 
 /// Forgets the plan, keeping the people. Used when a destination stops being reachable or available.
@@ -374,7 +441,22 @@
 	if(!isnum(incoming_supplies) || incoming_supplies < 0)
 		incoming_supplies = 0
 
+	/**
+	 * A stored question is only worth keeping while something can still ask it.
+	 *
+	 * The archetype it names is content, and content moves: a record can name one that no longer exists, or
+	 * predate the whole idea of naming one. Either way this build cannot present the choices or accept an
+	 * answer, and a party halted on a question nobody can ask never moves again.
+	 *
+	 * So it is dropped, and the halt is dropped with it - keeping the state without the question would trade a
+	 * broken interface for a frozen expedition, which is the worse of the two.
+	 */
 	var/list/incoming_decision = islist(data["pending_decision"]) ? data["pending_decision"] : null
+	if(incoming_decision && !get_overworld_decision(incoming_decision["kind"]))
+		log_game("Overworld party [incoming_id] carried a decision this build cannot ask ('[incoming_decision["kind"] || "none named"]'); it and the halt have been dropped.")
+		incoming_decision = null
+		if(incoming_state == OVERWORLD_PARTY_DECISION)
+			incoming_state = OVERWORLD_PARTY_OUTBOUND
 
 	party_id = incoming_id
 	state = incoming_state
@@ -484,30 +566,6 @@
 	if(state != OVERWORLD_PARTY_OUTBOUND)
 		return FALSE
 	return next_leg_index == decision_boundary_index()
-
-/**
- * What the party may do about the ground in front of them.
- *
- * Options are filtered by whether the colony could still get them home afterwards. Forcing through is always
- * offered and always costs no rations, which is what makes it the answer that cannot strand anybody.
- */
-/datum/overworld_party/proc/available_decision_choices(datum/overworld_region/region)
-	RETURN_TYPE(/list)
-	var/list/offered = list(OVERWORLD_DECISION_FORCE)
-	var/mouths = max(1, living_member_count())
-
-	// Going round has to actually exist, and has to leave enough in the packs to finish the journey.
-	var/list/detour = detour_route(region)
-	if(length(detour) >= 2)
-		var/added_edges = (length(detour) - 1) - (length(route) - 1)
-		if(supplies >= (added_edges + 1) * mouths)
-			offered += OVERWORLD_DECISION_DETOUR
-
-	// Sitting it out costs a meal each, and is not offered if that meal is the one that gets them home.
-	if(supplies >= (2 * mouths))
-		offered += OVERWORLD_DECISION_WAIT
-
-	return offered
 
 /**
  * A way to the destination that does not cross the cell in front of them.

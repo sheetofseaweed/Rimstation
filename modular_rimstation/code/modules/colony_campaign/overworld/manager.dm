@@ -161,7 +161,8 @@ SUBSYSTEM_DEF(overworld)
 /datum/controller/subsystem/overworld/proc/bring_up_site(party_id, site_id)
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
-	var/datum/overworld_destination/site = load_overworld_destination(site_id, LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE)
+	// Which scene depends on what kind of site it is: a deposit and a ruin are different places to stand.
+	var/datum/overworld_destination/site = load_overworld_destination(site_id, overworld_site_template_key(site_id))
 	loading_destination = FALSE
 
 	var/datum/overworld_party/party = SScampaign.get_active_party()
@@ -386,13 +387,23 @@ SUBSYSTEM_DEF(overworld)
 	if(!party.set_state(OVERWORLD_PARTY_DECISION, "the road put a question to the expedition"))
 		return FALSE
 
+	// Which kind of problem, derived from the party and the ground rather than rolled, so a reload finds the
+	// same one waiting.
+	var/datum/overworld_decision/archetype = pick_overworld_decision(party, region, blocked_cell)
+	if(!archetype)
+		return FALSE
+
 	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
 	party.pending_decision = list(
 		// A stable id so an answer can be matched to the question it was asked about, and so applying the same
 		// answer twice is recognisable rather than merely unlikely.
 		"id" = "decision-[party.party_id]-[region_state ? region_state.next_decision_number++ : 0]",
+		"kind" = archetype.id,
+		"name" = archetype.name,
+		"reveal" = archetype.reveal_text,
 		"cell" = blocked_cell,
-		"choices" = party.available_decision_choices(region),
+		"choices" = archetype.available_choices(party, region, blocked_cell),
+		"labels" = archetype.choice_copy.Copy(),
 	)
 
 	party.leg_started_at = 0
@@ -424,6 +435,10 @@ SUBSYSTEM_DEF(overworld)
 	if(!region)
 		return "This colony has no regional map."
 
+	var/datum/overworld_decision/archetype = get_overworld_decision(party.pending_decision["kind"])
+	if(!archetype)
+		return "Nobody can work out what the expedition was looking at."
+
 	// Cleared and counted before anything is spent, so nothing can re-enter and spend it again.
 	var/blocked_cell = party.pending_decision["cell"]
 	party.pending_decision = null
@@ -432,15 +447,9 @@ SUBSYSTEM_DEF(overworld)
 	if(!party.set_state(OVERWORLD_PARTY_OUTBOUND, "the expedition chose [choice]"))
 		return "The expedition could not get moving again."
 
-	switch(choice)
-		if(OVERWORLD_DECISION_DETOUR)
-			apply_detour(party, region, blocked_cell)
-		if(OVERWORLD_DECISION_WAIT)
-			apply_wait(party, region)
-		else
-			apply_force(party, region)
+	archetype.apply_choice(party, region, choice, blocked_cell)
 
-	log_game("Colony expedition [party.party_id] answered [decision_id] with '[choice]'[answered_by ? " ([key_name(answered_by)])" : ""].")
+	log_game("Colony expedition [party.party_id] answered [decision_id] ([archetype.id]) with '[choice]'[answered_by ? " ([key_name(answered_by)])" : ""].")
 	SScampaign.commit_party_change()
 	return null
 
@@ -633,7 +642,7 @@ SUBSYSTEM_DEF(overworld)
 	// At a site they are at the site; anywhere else on the journey they are in the camp.
 	var/at_site = party.state == OVERWORLD_PARTY_AT_SITE
 	var/site_id = at_site ? party.destination_site_id : null
-	var/template_key = at_site ? LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE : LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT
+	var/template_key = at_site ? overworld_site_template_key(site_id) : LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT
 
 	// Preflighted before anything is promised. A content problem should leave somebody standing in the colony
 	// with an admin warning, not halfway into a scene that does not exist.

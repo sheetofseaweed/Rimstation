@@ -13,16 +13,6 @@
  * which is what makes distance cheap to compute and is why it is never stored.
  */
 
-/// The six axial neighbours of any cell, as list(q offset, r offset).
-#define OVERWORLD_AXIAL_DIRECTIONS list( \
-	list(1, 0), \
-	list(1, -1), \
-	list(0, -1), \
-	list(-1, 0), \
-	list(-1, 1), \
-	list(0, 1), \
-)
-
 /**
  * Distance in hexes between two axial coordinates.
  *

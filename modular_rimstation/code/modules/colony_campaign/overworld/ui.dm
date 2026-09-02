@@ -179,12 +179,17 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 		var/datum/overworld_site/site = region.sites[site_id]
 		if(!discovered["[site.q],[site.r]"])
 			continue
+		// A site the colony has finished with stays on the map. Forgetting it would redraw the region as
+		// unexplored ground and invite somebody to walk out to it again.
+		var/site_state = SScampaign.get_overworld_state()?.get_site_state(site_id) || OVERWORLD_SITE_STATE_AVAILABLE
 		UNTYPED_LIST_ADD(known_sites, list(
 			"id" = site_id,
 			"kind" = site.kind,
 			"cell" = "[site.q],[site.r]",
 			"distance" = overworld_axial_distance(0, 0, site.q, site.r),
 			"yield" = site.yield,
+			"state" = site_state,
+			"available" = site_state == OVERWORLD_SITE_STATE_AVAILABLE,
 		))
 	data["known_sites"] = known_sites
 
@@ -411,6 +416,40 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			SScampaign.overworld?.clear_party("the muster was called off")
 			SScampaign.commit_party_change()
 			to_chat(actor, span_notice("You call the muster off. Everyone signed on is stood down."))
+			return TRUE
+
+		if("reroute")
+			// Changing your mind on the road. Any member may do it, on the same first-answer-wins terms as a
+			// decision - a party waiting on one nominated leader is a party stranded by somebody's connection.
+			if(!party || !viewer)
+				return TRUE
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+			if(!previewed_site_id)
+				to_chat(actor, span_warning("Choose somewhere on the map first."))
+				return TRUE
+			if(!party.change_destination(region, previewed_site_id, discovered))
+				to_chat(actor, span_warning("The expedition cannot get there from where it is standing."))
+				return TRUE
+
+			SSoverworld.schedule_leg(party, region)
+			SScampaign.commit_party_change()
+			return TRUE
+
+		if("turn_for_home")
+			if(!party || !viewer)
+				return TRUE
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+			if(!party.turn_for_home(region, discovered))
+				to_chat(actor, span_warning("The expedition cannot turn back from here."))
+				return TRUE
+
+			SSoverworld.schedule_leg(party, region)
+			INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
+			SScampaign.commit_party_change()
 			return TRUE
 
 		if("answer_decision")

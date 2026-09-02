@@ -193,6 +193,21 @@
 #define OVERWORLD_GENERATION_VERSION 1
 
 /**
+ * The six axial neighbours of any cell, as list(q offset, r offset).
+ *
+ * Lives here rather than beside the hex maths because every overworld file walks neighbours, and DM resolves
+ * defines in include order - a constant declared in region.dm is invisible to anything that sorts before it.
+ */
+#define OVERWORLD_AXIAL_DIRECTIONS list( \
+	list(1, 0), \
+	list(1, -1), \
+	list(0, -1), \
+	list(-1, 0), \
+	list(-1, 1), \
+	list(0, 1), \
+)
+
+/**
  * How much of a derived hash is kept per cell.
  *
  * Six hex digits, because BYOND numbers are 32-bit floats and only represent integers exactly up to 2**24 -
@@ -431,6 +446,17 @@
 #define LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT "LT_RIMSTATION_TRANSIT"
 /// A mineral deposit worth walking to.
 #define LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE "LT_RIMSTATION_RESOURCE_SITE"
+/// Somebody else's survey post, long abandoned.
+#define LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE "LT_RIMSTATION_RUIN_SITE"
+
+/**
+ * What recovering a ruin's archive is worth to the settlement, in credits.
+ *
+ * Paid in the money the colony already spends rather than a second currency. A ruin is worth roughly what a
+ * deposit is, bought differently: ore is carried home and can be lost on the road, where an archive is a
+ * transfer that either happened or did not.
+ */
+#define OVERWORLD_RUIN_ARCHIVE_CREDITS 500
 
 /// What a resource site pays out in, until there is more than one kind of deposit.
 #define OVERWORLD_SITE_RESOURCE_ID "iron"
@@ -446,25 +472,48 @@
 /// How long a funded wait at a boundary holds the party for before the original leg is scheduled anyway.
 #define OVERWORLD_DECISION_WAIT_SECONDS 90
 
-// What the road can ask a party at a boundary. Every one of these costs something different, which is the
-// point: a decision with a free answer is not a decision.
-/// Push on regardless. Costs nothing but skin.
-#define OVERWORLD_DECISION_FORCE "force"
-/// Go round. Costs the time, risk and rations of the extra ground.
-#define OVERWORLD_DECISION_DETOUR "detour"
-/// Sit it out. Costs ninety seconds and a meal each.
-#define OVERWORLD_DECISION_WAIT "wait"
-
-/// Every answer a party can give. Anything else arriving from a client is a forgery.
-#define OVERWORLD_DECISION_CHOICES list( \
-	OVERWORLD_DECISION_FORCE, \
-	OVERWORLD_DECISION_DETOUR, \
-	OVERWORLD_DECISION_WAIT, \
-)
-
 /// What forcing through costs a body that is present to feel it.
 #define OVERWORLD_DECISION_FORCE_STAMINA 20
 #define OVERWORLD_DECISION_FORCE_BRUTE 5
+
+/// What shouting an animal down takes out of everybody who does the shouting.
+#define OVERWORLD_DECISION_SCARE_STAMINA 10
+
+/// A short delay: looking at something without going to it.
+#define OVERWORLD_DECISION_LOOK_SECONDS 45
+
+// The three kinds of problem a road can present. Each is a datum in overworld/decisions.dm; these are the
+// ids those datums are filed and answered under.
+#define OVERWORLD_DECISION_WEATHER "weather_front"
+#define OVERWORLD_DECISION_SPOOR "predator_spoor"
+#define OVERWORLD_DECISION_SMOKE "distant_smoke"
+
+// Weather: take the damage, take the time, or take the long road.
+#define OVERWORLD_CHOICE_PRESS_ON "press_on"
+#define OVERWORLD_CHOICE_SHELTER "shelter"
+#define OVERWORLD_CHOICE_SKIRT "skirt"
+
+// Spoor: how much noise to make about it.
+#define OVERWORLD_CHOICE_KEEP_QUIET "keep_quiet"
+#define OVERWORLD_CHOICE_SCARE_OFF "scare_off"
+#define OVERWORLD_CHOICE_HUNT "hunt"
+
+// Smoke: how much of the map it is worth buying.
+#define OVERWORLD_CHOICE_IGNORE "ignore"
+#define OVERWORLD_CHOICE_OBSERVE "observe"
+#define OVERWORLD_CHOICE_INVESTIGATE "investigate"
+
+/**
+ * How often each kind of problem comes up, by how rough the country is.
+ *
+ * Frequency only. A rugged region meets more weather and more animals than a gentle one, but a weather
+ * front costs exactly the same on both - the world decides what you run into, never what it charges.
+ */
+#define OVERWORLD_DECISION_ECOLOGY_WEIGHTS list( \
+	OVERWORLD_ROUGHNESS_GENTLE = list(OVERWORLD_DECISION_WEATHER = 2, OVERWORLD_DECISION_SPOOR = 2, OVERWORLD_DECISION_SMOKE = 3), \
+	OVERWORLD_ROUGHNESS_VARIED = list(OVERWORLD_DECISION_WEATHER = 3, OVERWORLD_DECISION_SPOOR = 3, OVERWORLD_DECISION_SMOKE = 2), \
+	OVERWORLD_ROUGHNESS_RUGGED = list(OVERWORLD_DECISION_WEATHER = 4, OVERWORLD_DECISION_SPOOR = 4, OVERWORLD_DECISION_SMOKE = 1), \
+)
 
 /**
  * How close to the hitching post everyone has to be before a caravan will leave.

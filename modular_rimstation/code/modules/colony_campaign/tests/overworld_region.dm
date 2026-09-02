@@ -230,3 +230,85 @@
 	TEST_ASSERT_EQUAL(overworld_axial_distance(0, 0, 3, -3), 3, "Three cells along the third axis is not distance three.")
 	TEST_ASSERT_EQUAL(overworld_axial_distance(0, 0, 2, 2), 4, "A two-and-two step is not distance four.")
 	TEST_ASSERT_EQUAL(overworld_axial_distance(-2, 5, 1, -1), 6, "Distance between two arbitrary cells is wrong.")
+
+
+/**
+ * Every combination of the three creation options builds a region somebody can actually play.
+ *
+ * Twenty-seven worlds, and a player can pick any of them at creation. Each has to be bounded, connected enough
+ * to leave the colony, and stable - a combination that generated an unreachable starter deposit, or a different
+ * region on each rebuild, would be a campaign that could not be played and would not say so until somebody had
+ * already committed to it.
+ */
+/datum/unit_test/rimstation_overworld_region/every_option_combination_is_playable
+
+/datum/unit_test/rimstation_overworld_region/every_option_combination_is_playable/Run()
+	var/datum/planet_definition/planet = test_planet("every-combination-seed")
+
+	// Regions are destroyed as they are finished with rather than collected in `allocated`.
+	//
+	// Twenty-seven worlds built twice is fifty-four regions of up to four hundred cells each, and every cell is
+	// a datum. Holding them all and dropping eighteen thousand at once floods the garbage queue - which does not
+	// break this test, it breaks whatever unrelated types are queued behind it and get reported as hard deletes.
+	// Two regions alive at a time keeps the churn flat.
+
+	var/list/extents = OVERWORLD_EXTENTS
+	var/list/roughnesses = OVERWORLD_ROUGHNESS_OPTIONS
+	var/list/abundances = OVERWORLD_ABUNDANCE_OPTIONS
+	var/list/radii = OVERWORLD_EXTENT_RADII
+
+	var/combinations = 0
+	for(var/extent in extents)
+		for(var/roughness in roughnesses)
+			for(var/abundance in abundances)
+				combinations++
+				var/label = "[extent]/[roughness]/[abundance]"
+				var/datum/overworld_region/region = new(planet, list(
+					"extent" = extent,
+					"roughness" = roughness,
+					"abundance" = abundance,
+				))
+				// Read off before the region is destroyed, so the comparison below outlives it.
+				var/region_fingerprint = region.fingerprint
+
+				// The right shape, and no more cells than a hex field of that radius can hold.
+				var/expected_radius = radii[extent]
+				TEST_ASSERT_EQUAL(region.radius, expected_radius, "[label] built at the wrong radius.")
+				TEST_ASSERT_EQUAL(length(region.cells), 1 + (3 * expected_radius * (expected_radius + 1)), "[label] did not build a whole hex field.")
+
+				// Somewhere to go, and somewhere to go that can be reached on foot.
+				var/list/reachable = region.reachable_cell_ids()
+				TEST_ASSERT(length(reachable) > 1, "[label] walled the colony in; nobody could leave.")
+
+				var/list/deposits = region.sites_of_kind(OVERWORLD_SITE_RESOURCE)
+				TEST_ASSERT(length(deposits), "[label] generated no deposits at all.")
+
+				var/starter_found = FALSE
+				for(var/datum/overworld_site/site as anything in deposits)
+					if(reachable["[site.q],[site.r]"] && overworld_axial_distance(0, 0, site.q, site.r) <= OVERWORLD_INITIAL_REVEAL_RADIUS)
+						starter_found = TRUE
+						break
+				TEST_ASSERT(starter_found, "[label] left the colony with no deposit it could see or reach at the start.")
+
+				// Every site stands somewhere real and somewhere walkable.
+				for(var/site_id in region.sites)
+					var/datum/overworld_site/site = region.sites[site_id]
+					var/cell_id = "[site.q],[site.r]"
+					var/datum/overworld_cell/cell = region.cells[cell_id]
+					TEST_ASSERT_NOTNULL(cell, "[label] put site '[site_id]' outside the region.")
+					TEST_ASSERT(cell.is_passable(), "[label] put site '[site_id]' on ground nobody can cross.")
+					TEST_ASSERT(reachable[cell_id], "[label] put site '[site_id]' somewhere unreachable from the colony.")
+
+				// The same inputs build the same world. Discovery and site records are keyed on these ids, so
+				// drift here would slowly turn a saved campaign into a description of somewhere else.
+				var/datum/overworld_region/rebuilt = new(planet, list(
+					"extent" = extent,
+					"roughness" = roughness,
+					"abundance" = abundance,
+				))
+				var/rebuilt_fingerprint = rebuilt.fingerprint
+				qdel(rebuilt)
+				qdel(region)
+				TEST_ASSERT_EQUAL(rebuilt_fingerprint, region_fingerprint, "[label] rebuilt into a different region.")
+
+	TEST_ASSERT_EQUAL(combinations, 27, "The option table no longer offers twenty-seven worlds; this test is out of date.")

@@ -42,6 +42,10 @@ export type KnownSite = {
   cell: string;
   distance: number;
   yield: number;
+  /** One of the OVERWORLD_SITE_STATE_* ids: available, resolved, or depleted. */
+  state: string;
+  /** Whether it still has anything to give. A finished site stays on the map as history. */
+  available: boolean;
 };
 
 /** Terrain fills. Paired with a pattern overlay so the map never depends on colour alone. */

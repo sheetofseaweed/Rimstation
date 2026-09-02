@@ -390,6 +390,8 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/ledger.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/map_directory_security.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/objective.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_contracts.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_decisions.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_destinations.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_muster.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/overworld_party.dm"

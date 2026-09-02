@@ -3321,6 +3321,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\mapping\rimstation_colony.dm"
 #include "modular_rimstation\code\modules\colony_campaign\objectives\chapter_outcome.dm"
 #include "modular_rimstation\code\modules\colony_campaign\objectives\colony_core.dm"
+#include "modular_rimstation\code\modules\colony_campaign\overworld\decisions.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\destinations.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\hitching_post.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\manager.dm"

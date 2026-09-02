@@ -167,13 +167,48 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
 	else if(outcome)
 		report += "This chapter: still being played"
 
+	// The region, which is derived rather than stored - so the fingerprint is the only way to tell whether the
+	// world being drawn is the one the discoveries were recorded against.
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(region)
+		report += "---"
+		report += "Region: [region.options["extent"]] extent, [region.options["roughness"]] terrain, [region.options["abundance"]] resources"
+		report += "Generator [region.generation_version], fingerprint [region.fingerprint]"
+		report += "Explored: [length(region_state?.discovered_cells)] of [length(region.cells)] cells"
+
+		var/list/changed = list()
+		for(var/site_id in region_state?.site_states)
+			changed += "[site_id] ([region_state.get_site_state(site_id)])"
+		report += "Sites play has changed: [length(changed) ? changed.Join(", ") : "none"]"
+
+		if(region_state && region_state.region_fingerprint && region_state.region_fingerprint != region.fingerprint)
+			report += span_boldwarning("The stored discoveries were recorded against a DIFFERENT region. This is generator drift.")
+
 	// Who is out there, and what it leaves behind. The first question after "was there a raid" is always how
 	// many people were home for it.
 	var/datum/overworld_party/expedition = SScampaign.get_active_party()
 	if(expedition)
-		report += "Expedition [expedition.party_id]: [expedition.state], [length(expedition.member_ids)] signed on ([expedition.living_member_count()] alive), at [expedition.current_cell]"
-		report += "Carrying [expedition.supplies] rations, bound for [expedition.destination_site_id || "nowhere yet"]"
+		report += "---"
+		report += "Expedition [expedition.party_id]: [expedition.state], [length(expedition.member_ids)] signed on ([expedition.living_member_count()] alive)"
+		report += "At [expedition.current_cell], heading for [expedition.leg_target_cell() || "nowhere"], bound for [expedition.destination_site_id || "nowhere yet"]"
+		report += "Carrying [expedition.supplies] rations, [expedition.decisions_taken] interruption(s) answered"
+
+		if(expedition.leg_arrives_at)
+			var/remaining = max(0, expedition.leg_arrives_at - SScampaign.get_campaign_time())
+			report += "Next boundary in [round(remaining / 10)] seconds of campaign time"
+
+		if(expedition.pending_decision)
+			var/list/offered = expedition.pending_decision["choices"]
+			report += "HALTED on '[expedition.pending_decision["kind"]]' ([expedition.pending_decision["id"]]), offering: [length(offered) ? offered.Join(", ") : "nothing"]"
+
 	report += "Colonists in the settlement: [length(get_colonists_physically_at_colony())]"
+
+	// Reservations held this boot. These are never persisted, so this is the only place they can be seen.
+	var/list/loaded = list()
+	for(var/registry_key in GLOB.rimstation_overworld_destinations)
+		loaded += registry_key
+	report += "Scenes loaded this boot: [length(loaded) ? loaded.Join(", ") : "none"]"
 
 	var/datum/colony_raid/attacker = get_attacking_colony_raid()
 	if(attacker)
@@ -237,3 +272,133 @@ ADMIN_VERB(rimstation_stock_colony_larder, R_ADMIN, "Stock Colony Larder", "Adds
 	sync_colony_food_to_ledger()
 	log_admin("[key_name(user)] stocked the colony larder with [loaves] loaves ([count_colony_food()] units total).")
 	to_chat(user, span_notice("Added [loaves] loaves. The larder now holds [count_colony_food()] units of food."))
+
+
+/**
+ * Debug tools for driving an expedition without waiting for one.
+ *
+ * These exist because a caravan takes real minutes to cross real ground, and one person testing alone cannot
+ * sit through a full journey to check the third thing that happens on it. Every one of them logs, and none is
+ * reachable from anything a player touches - they are a way to reach a state, not a way to play.
+ */
+
+/// Puts one hex on the map without anybody walking to it.
+ADMIN_VERB(rimstation_reveal_overworld_cell, R_DEBUG, "Reveal Overworld Cell", "Marks one region cell as discovered.", ADMIN_CATEGORY_DEBUG)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!region)
+		to_chat(user, span_warning("There is no region to reveal anything on."))
+		return
+
+	var/typed = tgui_input_text(user, "Which cell? Coordinates as 'q,r', with the colony at 0,0.", "Overworld Debug", "1,0")
+	if(!typed)
+		return
+	if(!region.cells[typed])
+		to_chat(user, span_warning("'[typed]' is not a cell on this region."))
+		return
+
+	var/revealed = SScampaign.discover_overworld_cell(typed)
+	log_admin("[key_name(user)] revealed overworld cell [typed] ([revealed] cells newly seen).")
+	to_chat(user, span_notice("Revealed [typed] and its surroundings ([revealed] newly seen)."))
+
+/// Brings the current leg due immediately, so the next boundary happens on the next subsystem fire.
+ADMIN_VERB(rimstation_advance_expedition_leg, R_DEBUG, "Advance Expedition Leg", "Makes the travelling party's current leg arrive now.", ADMIN_CATEGORY_DEBUG)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party)
+		to_chat(user, span_warning("No expedition exists."))
+		return
+	if(!party.leg_arrives_at)
+		to_chat(user, span_warning("The expedition is not walking anywhere: it is [party.state]."))
+		return
+
+	// The clock is derived from an origin, so the leg is brought forward by moving the origin rather than by
+	// writing the arrival time - anything else would be undone the moment the clock was read again.
+	var/remaining = party.leg_arrives_at - SScampaign.get_campaign_time()
+	if(remaining > 0)
+		SScampaign.chapter_world_time_origin -= (remaining + 1)
+
+	log_admin("[key_name(user)] brought expedition [party.party_id]'s leg forward by [round(remaining / 10)] seconds.")
+	to_chat(user, span_notice("The leg is due now. It arrives on the next overworld tick."))
+
+/// Stops the party at the next boundary with a chosen kind of problem.
+ADMIN_VERB(rimstation_force_expedition_decision, R_DEBUG, "Force Expedition Decision", "Halts the travelling party with a chosen decision archetype.", ADMIN_CATEGORY_DEBUG)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!party || !region)
+		to_chat(user, span_warning("No expedition is travelling."))
+		return
+	if(party.state != OVERWORLD_PARTY_OUTBOUND)
+		to_chat(user, span_warning("The expedition is [party.state]; only a party on its way out can be stopped."))
+		return
+	if(party.pending_decision)
+		to_chat(user, span_warning("The expedition is already stopped by something."))
+		return
+
+	var/list/kinds = list()
+	for(var/decision_id in GLOB.overworld_decisions)
+		kinds += decision_id
+	var/chosen = tgui_input_list(user, "Which kind of problem?", "Overworld Debug", kinds)
+	if(!chosen)
+		return
+
+	var/datum/overworld_decision/archetype = get_overworld_decision(chosen)
+	var/blocked_cell = party.leg_target_cell()
+	if(!archetype || !blocked_cell)
+		to_chat(user, span_warning("That decision could not be put in front of them."))
+		return
+
+	if(!party.set_state(OVERWORLD_PARTY_DECISION, "an admin put a problem in the road"))
+		to_chat(user, span_warning("The expedition refused to stop."))
+		return
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	party.pending_decision = list(
+		"id" = "decision-[party.party_id]-[region_state ? region_state.next_decision_number++ : 0]",
+		"kind" = archetype.id,
+		"name" = archetype.name,
+		"reveal" = archetype.reveal_text,
+		"cell" = blocked_cell,
+		"choices" = archetype.available_choices(party, region, blocked_cell),
+		"labels" = archetype.choice_copy.Copy(),
+	)
+	party.leg_started_at = 0
+	party.leg_arrives_at = 0
+	SScampaign.commit_party_change()
+
+	log_admin("[key_name(user)] forced a '[chosen]' decision on expedition [party.party_id].")
+	to_chat(user, span_notice("The expedition has stopped for a [archetype.name]."))
+
+/**
+ * Brings an expedition home from wherever it is, intact.
+ *
+ * The recovery tool rather than a gameplay one: it exists for a party that has ended up somewhere the game
+ * cannot get it out of. It walks them home properly rather than teleporting, so the return, the refund and the
+ * arrival all happen the way they normally would.
+ */
+ADMIN_VERB(rimstation_recall_expedition, R_DEBUG, "Recall Expedition", "Turns the travelling party around and sends it home.", ADMIN_CATEGORY_DEBUG)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!party || !region)
+		to_chat(user, span_warning("No expedition exists."))
+		return
+
+	if(tgui_alert(user, "Turn expedition [party.party_id] around and send it home from [party.current_cell]?", "Overworld Debug", list("Recall", "Cancel")) != "Recall")
+		return
+
+	// Cleared first: a party holding a question cannot be turned around, and the question is meaningless once
+	// somebody has decided the journey is over.
+	party.pending_decision = null
+	if(party.state == OVERWORLD_PARTY_DECISION)
+		party.set_state(OVERWORLD_PARTY_OUTBOUND, "recalled by an admin")
+	if(party.state == OVERWORLD_PARTY_AT_SITE)
+		party.begin_return("recalled by an admin")
+	else if(!party.turn_for_home(region, SScampaign.get_overworld_state()?.discovered_cells))
+		to_chat(user, span_warning("They could not be routed home from [party.current_cell]. The region may have changed under them."))
+		return
+
+	SSoverworld.schedule_leg(party, region)
+	INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
+	SScampaign.commit_party_change()
+
+	log_admin("[key_name(user)] recalled expedition [party.party_id] from [party.current_cell].")
+	message_admins("[key_name_admin(user)] recalled colony expedition [party.party_id].")
+	to_chat(user, span_notice("They are walking home from [party.current_cell]."))
