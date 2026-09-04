@@ -1,8 +1,5 @@
 /// Map support for Rimstation's persistent, Earthlike colony world.
 
-#define RIMSTATION_DAYLIGHT_ALPHA 200
-#define RIMSTATION_DAYLIGHT_COLOR "#FFF4D6"
-
 /area/rimstation_colony
 	name = "Rimstation Colony"
 	icon = 'icons/area/areas_station.dmi'
@@ -27,10 +24,10 @@
 /area/rimstation_colony/surface
 	name = "Rimstation Surface"
 	icon_state = "explored"
+	// Sunlight now comes from the sky above each tile, not from the area. Static lighting has to be on so
+	// lamps work outdoors after dark, and outdoors is only read where there is no level above to check.
 	outdoors = TRUE
-	static_lighting = FALSE
-	base_lighting_alpha = RIMSTATION_DAYLIGHT_ALPHA
-	base_lighting_color = RIMSTATION_DAYLIGHT_COLOR
+	static_lighting = TRUE
 
 /**
  * The generated wilderness that makes up most of the surface.
@@ -60,9 +57,7 @@
 	name = "Rimstation Open Air"
 	icon_state = "space"
 	outdoors = TRUE
-	static_lighting = FALSE
-	base_lighting_alpha = RIMSTATION_DAYLIGHT_ALPHA
-	base_lighting_color = RIMSTATION_DAYLIGHT_COLOR
+	static_lighting = TRUE
 	skip_minimap_rendering = TRUE
 
 /// Breathable stone exposed by mining the underground layer.
@@ -127,10 +122,9 @@
 	power_light = FALSE
 	flags_1 = NONE
 	area_flags = VALID_TERRITORY
+	// Single-z lazy templates, so there is never a turf above. outdoors is what decides here.
 	outdoors = TRUE
-	static_lighting = FALSE
-	base_lighting_alpha = RIMSTATION_DAYLIGHT_ALPHA
-	base_lighting_color = RIMSTATION_DAYLIGHT_COLOR
+	static_lighting = TRUE
 
 /// The camp a caravan travels in. It holds bodies and shows the map; it does not simulate the road.
 /area/rimstation_expedition/transit
@@ -139,6 +133,3 @@
 /// Somewhere worth walking to.
 /area/rimstation_expedition/site
 	name = "Expedition Site"
-
-#undef RIMSTATION_DAYLIGHT_ALPHA
-#undef RIMSTATION_DAYLIGHT_COLOR

@@ -632,3 +632,6 @@ SPY_HARD_REWARD_TC_THRESHOLD 15
 # MINIMUM_ASCENSION_TIME 3
 
 DEFAULT_QUIRK_POINTS 0
+
+## How many minutes of real time make one full in-game day. Default 120, about one shift.
+#SUNLIGHT_DAY_LENGTH_MINUTES 1

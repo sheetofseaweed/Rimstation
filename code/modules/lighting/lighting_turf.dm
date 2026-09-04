@@ -23,19 +23,37 @@
 
 	var/totallums = 0
 	var/datum/lighting_corner/L
+	// RIMSTATION EDIT ADDITION START - Roof-based sunlight contributes to how lit a tile counts as.
+	var/total_sun = 0
+	// RIMSTATION EDIT ADDITION END
 	L = lighting_corner_NE
 	if (L)
 		totallums += L.lum_r + L.lum_b + L.lum_g
+		total_sun += L.sun_falloff // RIMSTATION EDIT ADDITION
 	L = lighting_corner_SE
 	if (L)
 		totallums += L.lum_r + L.lum_b + L.lum_g
+		total_sun += L.sun_falloff // RIMSTATION EDIT ADDITION
 	L = lighting_corner_SW
 	if (L)
 		totallums += L.lum_r + L.lum_b + L.lum_g
+		total_sun += L.sun_falloff // RIMSTATION EDIT ADDITION
 	L = lighting_corner_NW
 	if (L)
 		totallums += L.lum_r + L.lum_b + L.lum_g
+		total_sun += L.sun_falloff // RIMSTATION EDIT ADDITION
 
+	// RIMSTATION EDIT ADDITION START - An open tile is fully sunlit whatever its corners say, because it
+	// renders full white without ever writing a corner. Only roofed tiles read falloff.
+	//
+	// Scaled by 3, not divided by 4. The running total is on a 0..12 scale - four corners of three channels -
+	// and is divided by 12 below. total_sun is 0..4, so full daylight has to add 12 to read as fully lit.
+	// Adding total_sun/4 made an open field at noon report 0.083, and every consumer of this proc treated
+	// that as darkness: crops would not grow outdoors and nothing photophobic ever noticed the sun.
+	if(sunlight_effect && sunlight_effect.state != SKY_BLOCKED)
+		total_sun = 4
+	totallums += total_sun * 3
+	// RIMSTATION EDIT ADDITION END
 
 	totallums /= 12 // 4 corners, each with 3 channels, get the average.
 

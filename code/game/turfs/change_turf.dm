@@ -283,6 +283,10 @@ GLOBAL_LIST_INIT(blacklisted_automated_baseturfs, typecacheof(list(
 	else //In effect, I want closed turfs to make their tile active when sheered, but we need to queue it since they have no adjacent turfs
 		CALCULATE_ADJACENT_TURFS(src, (ispath(oldType, /turf/closed) && isopenturf(src) ? MAKE_ACTIVE : NORMAL_TURF))
 
+	// RIMSTATION EDIT ADDITION START - Roof-based sunlight. A wall becoming a floor unroofs what is beneath.
+	reassess_sky_column()
+	// RIMSTATION EDIT ADDITION END
+
 /turf/open/AfterChange(flags, oldType)
 	..()
 	RemoveLattice()

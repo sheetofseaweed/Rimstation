@@ -171,6 +171,10 @@ GLOBAL_LIST_EMPTY(station_turfs)
 	if(!our_area.area_has_base_lighting && space_lit) //Only provide your own lighting if the area doesn't for you
 		add_overlay(GLOB.starlight_overlays[GET_TURF_PLANE_OFFSET(src) + 1])
 
+	// RIMSTATION EDIT ADDITION START - Roof-based sunlight. A new turf changes what the column below can see.
+	reassess_sky_column()
+	// RIMSTATION EDIT ADDITION END
+
 	if(requires_activation)
 		CALCULATE_ADJACENT_TURFS(src, KILL_EXCITED)
 

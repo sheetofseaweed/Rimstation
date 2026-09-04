@@ -560,22 +560,30 @@ SUBSYSTEM_DEF(campaign)
  *
  * Called as the chapter begins, because a techweb is rebuilt from nothing every round - an ordinary shift has
  * no memory, and remembering is the whole difference between a campaign and a shift.
+ *
+ * Rebuilding the techweb sleeps, and this runs asynchronously, so the campaign it started on can be replaced
+ * out from under it. Everything after that sleep therefore works from what was read before it, and the restore
+ * is abandoned rather than applied to whatever campaign is loaded by then.
  */
 /datum/controller/subsystem/campaign/proc/restore_research()
 	if(!manifest)
 		return FALSE
 
-	research = new
-	if(length(manifest.research_record) && !research.deserialize(manifest.research_record))
+	// Held locally as well as published, because the subsystem's copy of both is replaced by a campaign
+	// loading while this sleeps, and reading either one afterwards would be reading the wrong campaign.
+	var/campaign_id = manifest.campaign_id
+	var/datum/colony_research_record/restoring = new
+	research = restoring
+	if(length(manifest.research_record) && !restoring.deserialize(manifest.research_record))
 		// Refusing to load is not the same as having researched nothing, so this is said out loud rather than
 		// quietly handing the colony a blank techweb.
-		log_game("Campaign [manifest.campaign_id] has an unreadable research record; this chapter starts from a fresh techweb.")
+		log_game("Campaign [campaign_id] has an unreadable research record; this chapter starts from a fresh techweb.")
 		message_admins("The colony's research record could not be read. This chapter starts from an unresearched techweb.")
 		return FALSE
 
 	var/datum/techweb/web = get_colony_techweb()
 	if(!web)
-		log_game("Campaign [manifest.campaign_id] found no techweb to restore its research into.")
+		log_game("Campaign [campaign_id] found no techweb to restore its research into.")
 		return FALSE
 
 	// Cut back before anything is restored, so the colony's own record is what widens the techweb rather than
@@ -583,15 +591,22 @@ SUBSYSTEM_DEF(campaign)
 	if(CONFIG_GET(flag/campaign_restrict_starting_research))
 		var/removed = restrict_techweb_to_campaign_start(web)
 		if(removed)
-			log_game("Campaign [manifest.campaign_id] withheld [removed] station starting nodes.")
+			log_game("Campaign [campaign_id] withheld [removed] station starting nodes.")
+
+	// The sleep is behind us. A campaign loaded during it has already cleared this record, and restoring it now
+	// would hand a new generation the research of the one it replaced - the exact thing begin_load() drops
+	// these fields to prevent.
+	if(research != restoring)
+		log_game("Campaign [campaign_id] abandoned its research restore: the campaign was replaced while the techweb rebuilt.")
+		return FALSE
 
 	if(!CONFIG_GET(flag/campaign_research_persistence))
-		log_game("Campaign [manifest.campaign_id] is not carrying research between chapters; persistence is disabled in config.")
+		log_game("Campaign [campaign_id] is not carrying research between chapters; persistence is disabled in config.")
 		return TRUE
 
-	var/restored = research.restore_into(web)
+	var/restored = restoring.restore_into(web)
 	if(restored)
-		log_game("Campaign [manifest.campaign_id] restored [restored] researched nodes.")
+		log_game("Campaign [campaign_id] restored [restored] researched nodes.")
 	return TRUE
 
 /**

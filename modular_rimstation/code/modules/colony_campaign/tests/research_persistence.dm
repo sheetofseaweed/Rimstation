@@ -85,6 +85,92 @@
 	TEST_ASSERT(after_retirement.researched_nodes[node.id], "Dropping a retired node also dropped a valid one.")
 
 
+/**
+ * A campaign loaded while the last one's research is still being restored does not inherit it.
+ *
+ * `restore_research()` runs asynchronously and sleeps inside the techweb rebuild, so the campaign it started on
+ * can be replaced before it finishes. It used to read the subsystem's record after that sleep, which threw a
+ * runtime every test run and would have handed a new generation the research of the one it replaced.
+ *
+ * The assertion that matters is made for us: a runtime raised while a test is running fails that test. The two
+ * below only hold if the rebuild actually yielded, so that is measured rather than assumed - a tick with room
+ * to spare finishes the restore outright, and then there was no reload to survive.
+ */
+/datum/unit_test/campaign_failure_path/rimstation_research_restore_abandoned_on_reload
+	test_campaign_id = "unit-test-research-reload"
+	/// The colony techweb is shared, and the real restore path rewrites it. Put back when Run() finishes.
+	var/list/saved_researched_nodes
+
+/// Cleans up in Run(), not Destroy() like its siblings: putting the techweb back recalculates it, and that
+/// yields. The assertions live in a helper, so an early return from one still reaches the rollback.
+/datum/unit_test/campaign_failure_path/rimstation_research_restore_abandoned_on_reload/Run()
+	check_restore_is_abandoned()
+	restore_colony_techweb()
+
+/datum/unit_test/campaign_failure_path/rimstation_research_restore_abandoned_on_reload/proc/check_restore_is_abandoned()
+	take_campaign()
+	ensure_techweb_nodes_for_test()
+
+	var/datum/techweb/web = get_colony_techweb()
+	TEST_ASSERT_NOTNULL(web, "There is no colony techweb for a campaign to restore into.")
+	saved_researched_nodes = web.researched_nodes.Copy()
+
+	// Outside the colony's starting set, or the restore would be indistinguishable from arriving with it.
+	var/list/colony_start = CAMPAIGN_STARTING_RESEARCH_NODES
+	var/datum/techweb_node/node
+	for(var/node_id in SSresearch.techweb_nodes)
+		if(SSresearch.techweb_nodes_starting[node_id] || (node_id in colony_start))
+			continue
+		node = SSresearch.techweb_nodes[node_id]
+		break
+	TEST_ASSERT_NOTNULL(node, "Every techweb node is one a colony starts with, so a restore cannot be observed.")
+
+	var/datum/techweb/source = new /datum/techweb
+	allocated += source
+	TEST_ASSERT(source.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE), "A node could not be researched into a fresh techweb.")
+	var/datum/colony_research_record/record = new
+	allocated += record
+	TEST_ASSERT(record.capture_from(source), "The colony's research could not be read out of its techweb.")
+
+	var/datum/campaign_manifest/first = new(test_campaign_id, "generation-1")
+	allocated += first
+	first.research_record = record.serialize()
+	TEST_ASSERT(SScampaign.begin_load(first), "The campaign carrying the research could not be loaded.")
+
+	// Spend the tick, so the rebuild inside the restore yields the first time it checks.
+	for(var/burn in 1 to 100000)
+		if(TICK_CHECK)
+			break
+
+	INVOKE_ASYNC(SScampaign, TYPE_PROC_REF(/datum/controller/subsystem/campaign, restore_research))
+	// The call above returns as soon as the restore sleeps, so an unrestored node means it is parked mid-flight.
+	var/parked_mid_restore = !web.researched_nodes[node.id]
+
+	// Replace the campaign underneath it. Clearing these fields is exactly what begin_load() is doing here.
+	SScampaign.campaign_state = CAMPAIGN_STATE_NONE
+	var/datum/campaign_manifest/second = new("[test_campaign_id]-next", "generation-2")
+	allocated += second
+	TEST_ASSERT(SScampaign.begin_load(second), "The replacing campaign could not be loaded.")
+	TEST_ASSERT_NULL(SScampaign.research, "Loading a campaign left the previous one's research record in place.")
+
+	// Let the parked restore wake and find its campaign gone.
+	sleep(2 SECONDS)
+
+	if(!parked_mid_restore)
+		return
+
+	TEST_ASSERT_NULL(SScampaign.research, "An abandoned restore put the replaced campaign's research record back.")
+	TEST_ASSERT(!web.researched_nodes[node.id], "A new generation was given the research of the campaign it replaced.")
+
+/// Hands the shared colony techweb back exactly as this test found it.
+/datum/unit_test/campaign_failure_path/rimstation_research_restore_abandoned_on_reload/proc/restore_colony_techweb()
+	var/datum/techweb/web = get_colony_techweb()
+	if(web && saved_researched_nodes)
+		web.researched_nodes = saved_researched_nodes
+		web.recalculate_nodes(recalculate_designs = TRUE)
+	saved_researched_nodes = null
+
+
 /// Records come off disk, so a hand-edited one must not hand a colony a fortune or a debt.
 /datum/unit_test/rimstation_colony_research_record_validation
 

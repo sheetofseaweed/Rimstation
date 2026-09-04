@@ -28,6 +28,33 @@
 
 
 /**
+ * No incident is destroyed before the round begins.
+ *
+ * The tag index builds one of every incident type and throws them away, and it used to do that while the
+ * global lists were still being built. The garbage collector stamps a queue entry with the `world.time` it was
+ * made at, and `create_and_destroy` waits for the queue to drain past its own start time - so an entry stamped
+ * with almost nothing is one it can never wait out. Seven of them cost that test its whole 50 minute budget.
+ */
+/datum/unit_test/rimstation_incidents_not_destroyed_before_roundstart
+
+/datum/unit_test/rimstation_incidents_not_destroyed_before_roundstart/Run()
+	// Nothing reaches the garbage collector this early unless it was destroyed during global variable init.
+	var/before_the_round_began = 5 SECONDS
+
+	for(var/list/queue as anything in SSgarbage.queues)
+		for(var/list/packet as anything in queue)
+			if(length(packet) < GC_QUEUE_ITEM_INDEX_COUNT)
+				continue
+			var/queued_at = packet[GC_QUEUE_ITEM_QUEUE_TIME]
+			if(queued_at > before_the_round_began)
+				continue
+			var/datum/queued = packet[GC_QUEUE_ITEM_REF]
+			if(!istype(queued, /datum/colony_incident))
+				continue
+			TEST_FAIL("[queued.type] was destroyed at world.time [queued_at], before the round started. It will sit at the head of the garbage queue all round and stall create_and_destroy.")
+
+
+/**
  * An incident goes through its states in order, and cannot skip the warning.
  *
  * The warning window is the colony's chance to prepare, so an incident that could jump straight to active

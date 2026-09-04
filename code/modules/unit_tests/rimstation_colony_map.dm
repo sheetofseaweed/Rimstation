@@ -2,6 +2,8 @@
 #define RIMSTATION_COLONY_MAP "_maps/map_files/rimstation_colony/rimstation_colony.dmm"
 /// Matches the generated surface size used by the other planetary maps in this repository.
 #define RIMSTATION_COLONY_SIZE 255
+/// Rock below, ground to stand on, sky above. Further levels stack in the middle.
+#define RIMSTATION_COLONY_MINIMUM_LEVELS 3
 
 /datum/unit_test/rimstation_colony_map_contract
 	test_flags = UNIT_TEST_MAP_TEST
@@ -13,7 +15,7 @@
 	TEST_ASSERT(!map_config.defaulted, "Rimstation Colony's map config could not be loaded.")
 	TEST_ASSERT_EQUAL(map_config.map_name, "Rimstation Colony", "The development map should keep its stable display name.")
 	TEST_ASSERT_EQUAL(map_config.map_path, "map_files/rimstation_colony", "The map should live in its dedicated map directory.")
-	TEST_ASSERT_EQUAL(map_config.map_file, "rimstation_colony.dmm", "The config should load the three-level seed DMM.")
+	TEST_ASSERT_EQUAL(map_config.map_file, "rimstation_colony.dmm", "The config should load the colony seed DMM.")
 	TEST_ASSERT(map_config.planetary, "Rimstation Colony should use planetary atmosphere behavior.")
 	TEST_ASSERT(!map_config.height_autosetup, "The map's vertical links should be explicit rather than inferred.")
 	TEST_ASSERT_EQUAL(map_config.minetype, MINETYPE_NONE, "The underground layer is part of the map and should not load a separate mining level.")
@@ -21,31 +23,45 @@
 	TEST_ASSERT_EQUAL(map_config.space_empty_levels, 0, "The colony seed should not add empty space levels.")
 	TEST_ASSERT_EQUAL(map_config.wilderness_levels, 0, "The colony seed should not add generated wilderness levels.")
 
-	TEST_ASSERT_EQUAL(length(map_config.traits), 3, "The colony seed should contain underground, surface, and sky levels.")
-	var/list/underground_traits = map_config.traits[1]
-	var/list/surface_traits = map_config.traits[2]
-	var/list/sky_traits = map_config.traits[3]
+	// Levels are checked by role, not by index. The colony may gain layers; what may not change is that the
+	// bottom is diggable rock, the top is open air, and the links between them are unbroken.
+	var/level_count = length(map_config.traits)
+	TEST_ASSERT(level_count >= RIMSTATION_COLONY_MINIMUM_LEVELS, "The colony seed declares [level_count] levels and needs at least [RIMSTATION_COLONY_MINIMUM_LEVELS].")
 
+	// What a colony level may strip down to. Anything else decays into station or space turf when scraped.
+	var/list/colony_baseturfs = list(
+		"/turf/open/misc/asteroid/rimstation",
+		"/turf/open/misc/dirt/planet/rimstation",
+		"/turf/open/openspace/rimstation",
+	)
+
+	var/list/underground_traits = map_config.traits[1]
 	TEST_ASSERT(underground_traits[ZTRAIT_STATION], "The underground should be part of the loaded colony map.")
-	TEST_ASSERT(underground_traits[ZTRAIT_MINING], "Only the underground should carry the mining-level trait.")
+	TEST_ASSERT(underground_traits[ZTRAIT_MINING], "Only the bottom level should carry the mining-level trait.")
 	TEST_ASSERT(underground_traits[ZTRAIT_GRAVITY], "The underground should have standard gravity.")
-	TEST_ASSERT(underground_traits[ZTRAIT_UP] && !underground_traits[ZTRAIT_DOWN], "The underground should link upward to the surface only.")
+	TEST_ASSERT(underground_traits[ZTRAIT_UP] && !underground_traits[ZTRAIT_DOWN], "The bottom level should link upward only.")
 	TEST_ASSERT_NULL(underground_traits[ZTRAIT_LINKAGE], "The underground should not cross-link at its map edges.")
 	TEST_ASSERT_EQUAL(underground_traits[ZTRAIT_BASETURF], "/turf/open/misc/asteroid/rimstation", "The underground baseturf should preserve breathable excavated stone.")
 
-	TEST_ASSERT(surface_traits[ZTRAIT_STATION], "The surface should be part of the loaded colony map.")
-	TEST_ASSERT(!surface_traits[ZTRAIT_MINING], "The main surface should not be treated as a mining level.")
-	TEST_ASSERT(surface_traits[ZTRAIT_GRAVITY], "The surface should have standard gravity.")
-	TEST_ASSERT(surface_traits[ZTRAIT_UP] && surface_traits[ZTRAIT_DOWN], "The surface should link to both surrounding levels.")
-	TEST_ASSERT_NULL(surface_traits[ZTRAIT_LINKAGE], "The surface should not cross-link at its map edges.")
-	TEST_ASSERT_EQUAL(surface_traits[ZTRAIT_BASETURF], "/turf/open/misc/dirt/planet/rimstation", "The surface baseturf should preserve Earthlike soil.")
-
+	var/list/sky_traits = map_config.traits[level_count]
 	TEST_ASSERT(sky_traits[ZTRAIT_STATION], "The sky should be part of the loaded colony map.")
 	TEST_ASSERT(!sky_traits[ZTRAIT_MINING], "The sky should not be treated as a mining level.")
-	TEST_ASSERT(sky_traits[ZTRAIT_GRAVITY], "The sky should have standard gravity for falling and future cliffs.")
-	TEST_ASSERT(!sky_traits[ZTRAIT_UP] && sky_traits[ZTRAIT_DOWN], "The sky should link downward to the surface only.")
+	TEST_ASSERT(sky_traits[ZTRAIT_GRAVITY], "The sky should have standard gravity for falling and cliffs.")
+	TEST_ASSERT(!sky_traits[ZTRAIT_UP] && sky_traits[ZTRAIT_DOWN], "The top level should link downward only.")
 	TEST_ASSERT_NULL(sky_traits[ZTRAIT_LINKAGE], "The sky should not cross-link at its map edges.")
 	TEST_ASSERT_EQUAL(sky_traits[ZTRAIT_BASETURF], "/turf/open/openspace/rimstation", "The upper level should remain open sky when stripped to baseturf.")
+
+	// Everything between the two ends. A level that links only one way splits the z-stack in half, and
+	// roofing walks that stack to decide which tiles see the sky.
+	for(var/level_index in 2 to level_count - 1)
+		var/list/middle_traits = map_config.traits[level_index]
+		TEST_ASSERT(middle_traits[ZTRAIT_STATION], "Level [level_index] is not part of the loaded colony map, so sunlight and weather would skip it.")
+		TEST_ASSERT(!middle_traits[ZTRAIT_MINING], "Level [level_index] carries the mining trait, which belongs to the bottom level alone.")
+		TEST_ASSERT(middle_traits[ZTRAIT_GRAVITY], "Level [level_index] should have standard gravity.")
+		TEST_ASSERT(middle_traits[ZTRAIT_UP] && middle_traits[ZTRAIT_DOWN], "Level [level_index] does not link both ways, which breaks the z-stack above or below it.")
+		TEST_ASSERT_NULL(middle_traits[ZTRAIT_LINKAGE], "Level [level_index] should not cross-link at its map edges.")
+		var/middle_baseturf = middle_traits[ZTRAIT_BASETURF]
+		TEST_ASSERT((middle_baseturf in colony_baseturfs), "Level [level_index] strips down to [middle_baseturf], which is not a colony baseturf.")
 
 	var/list/required_paths = list(
 		"/area/rimstation_colony/underground",
@@ -88,30 +104,34 @@
 	TEST_ASSERT(!initial(underground_area.outdoors), "The underground should not receive daylight.")
 	TEST_ASSERT_EQUAL(initial(underground_area.base_lighting_alpha), 0, "The underground should begin naturally dark.")
 
+	// RIMSTATION EDIT CHANGE START - Daylight comes from the sky above each tile now, not from the area, so
+	// the surface has to carry ordinary lighting objects and no base lighting at all. An area still lighting
+	// itself would stay bright under a roof, which is the bug this replaced.
 	var/area/rimstation_colony/surface/surface_area = /area/rimstation_colony/surface
 	TEST_ASSERT(initial(surface_area.outdoors), "The main layer should be exposed to the planet's sky.")
-	TEST_ASSERT(!initial(surface_area.static_lighting), "The surface should use outdoor base lighting rather than room lighting objects.")
-	TEST_ASSERT(initial(surface_area.base_lighting_alpha) > 0, "The main outdoor layer should receive daylight without treating Z3 as a roof.")
+	TEST_ASSERT(initial(surface_area.static_lighting), "The surface needs lighting objects so lamps and roof shade work on it.")
+	TEST_ASSERT_EQUAL(initial(surface_area.base_lighting_alpha), 0, "The surface must not light itself; roofing it would leave it bright.")
 
 	var/area/rimstation_colony/sky/sky_area = /area/rimstation_colony/sky
 	TEST_ASSERT(initial(sky_area.outdoors), "The upper layer should be open air.")
-	TEST_ASSERT(!initial(sky_area.static_lighting), "The upper layer should use outdoor base lighting.")
-	TEST_ASSERT(initial(sky_area.base_lighting_alpha) > 0, "The open-air layer should be daylight-lit.")
+	TEST_ASSERT(initial(sky_area.static_lighting), "The upper layer needs lighting objects for the same reason as the surface.")
+	TEST_ASSERT_EQUAL(initial(sky_area.base_lighting_alpha), 0, "The open-air layer must not light itself.")
+	// RIMSTATION EDIT CHANGE END
 
 	var/datum/parsed_map/parsed_map = new(file(RIMSTATION_COLONY_MAP))
 	allocated += parsed_map
 	TEST_ASSERT_NOTNULL(parsed_map.parsed_bounds, "The Rimstation Colony DMM could not be parsed.")
 	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXX] - parsed_map.parsed_bounds[MAP_MINX] + 1, RIMSTATION_COLONY_SIZE, "The colony map should be [RIMSTATION_COLONY_SIZE] tiles wide.")
 	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXY] - parsed_map.parsed_bounds[MAP_MINY] + 1, RIMSTATION_COLONY_SIZE, "The colony map should be [RIMSTATION_COLONY_SIZE] tiles tall.")
-	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXZ] - parsed_map.parsed_bounds[MAP_MINZ] + 1, 3, "The colony map should contain exactly three z-levels.")
+	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXZ] - parsed_map.parsed_bounds[MAP_MINZ] + 1, level_count, "The colony DMM holds a different number of z-levels than its map config declares traits for.")
 
 	// Each level is restricted to the areas that belong on it. The surface carries two: generated wilds and
 	// the hand-placed landing clearing that must never be generated over.
-	var/list/allowed_layer_areas = list(
-		list("/area/rimstation_colony/underground"),
-		list("/area/rimstation_colony/surface/wilds", "/area/rimstation_colony/surface/landing"),
-		list("/area/rimstation_colony/sky"),
-	)
+	var/list/underground_areas = list("/area/rimstation_colony/underground")
+	var/list/surface_areas = list("/area/rimstation_colony/surface/wilds", "/area/rimstation_colony/surface/landing")
+	var/list/sky_areas = list("/area/rimstation_colony/sky")
+	// Only the two ends are fixed by role. A level added in the middle may be any of the three kinds.
+	var/list/middle_areas = underground_areas + surface_areas + sky_areas
 	// A station-grade spawn on a colony map would drop players into a department that does not exist here.
 	var/list/forbidden_model_fragments = list(
 		"/obj/effect/landmark/start/",
@@ -125,7 +145,11 @@
 	var/found_raid_insertion = FALSE
 	var/list/seen_keys = list()
 	for(var/datum/grid_set/grid_set as anything in parsed_map.gridSets)
-		var/list/allowed_areas = allowed_layer_areas[grid_set.zcrd]
+		var/list/allowed_areas = middle_areas
+		if(grid_set.zcrd == 1)
+			allowed_areas = underground_areas
+		else if(grid_set.zcrd == level_count)
+			allowed_areas = sky_areas
 		for(var/grid_line in grid_set.gridLines)
 			for(var/key_position in 1 to length(grid_line) step parsed_map.key_len)
 				var/model_key = copytext(grid_line, key_position, key_position + parsed_map.key_len)
@@ -166,4 +190,5 @@
 
 #undef RIMSTATION_COLONY_CONFIG
 #undef RIMSTATION_COLONY_MAP
+#undef RIMSTATION_COLONY_MINIMUM_LEVELS
 #undef RIMSTATION_COLONY_SIZE

@@ -50,15 +50,20 @@
 	/// The question currently before the colony, if any.
 	var/datum/colony_decision/decision
 
+/// Every incident type's tags, keyed by typepath text. Filled in on the first read.
+GLOBAL_LIST_EMPTY(colony_incident_tags)
+
 /**
- * Every incident type's tags, keyed by typepath text.
+ * Builds the tag index.
  *
- * Built by instantiating each type once, because `initial()` returns nothing for a list variable - a list is
+ * Each type is instantiated once, because `initial()` returns nothing for a list variable - a list is
  * constructed at runtime, so there is no compile-time value to read. Reading tags off the type path directly
  * silently yields null, which is exactly the sort of nothing that makes a penalty quietly never apply.
+ *
+ * Built on first read rather than at global variable init, which is the one time a datum must not be
+ * destroyed: the garbage collector stamps its queue entry with a `world.time` of almost zero, and that entry
+ * then sits at the head of the queue for the whole round, holding back every drain check made after it.
  */
-GLOBAL_LIST_INIT(colony_incident_tags, build_colony_incident_tag_index())
-
 /proc/build_colony_incident_tag_index()
 	RETURN_TYPE(/list)
 	var/list/index = list()
@@ -71,6 +76,8 @@ GLOBAL_LIST_INIT(colony_incident_tags, build_colony_incident_tag_index())
 /// The tags a given incident type carries.
 /proc/get_colony_incident_tags(incident_type)
 	RETURN_TYPE(/list)
+	if(!length(GLOB.colony_incident_tags))
+		GLOB.colony_incident_tags = build_colony_incident_tag_index()
 	return GLOB.colony_incident_tags["[incident_type]"] || list()
 
 /datum/colony_incident/New()
@@ -82,6 +89,9 @@ GLOBAL_LIST_INIT(colony_incident_tags, build_colony_incident_tag_index())
 /datum/colony_incident/Destroy(force)
 	// Nothing may outlive the incident holding a callback into it. Concrete incidents that register signals
 	// unregister them here through the parent call.
+	// Resolving and cancelling both drop the incident from the campaign already. This covers the third way out:
+	// being destroyed outright, which neither of them sees.
+	SScampaign?.forget_incident(src)
 	target_ref = null
 	result = null
 	reservations = null

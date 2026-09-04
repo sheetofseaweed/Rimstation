@@ -162,6 +162,10 @@
 		newA.AddComponent(/datum/component/custom_area)
 		newA.setup(str)
 		newA.default_gravity = oldA.default_gravity
+		// RIMSTATION EDIT ADDITION START - Roof-based sunlight. Where there is no level above, outdoors is
+		// the only thing that says whether a tile can see the sky. A new area must not silently roof itself.
+		newA.outdoors = oldA.outdoors
+		// RIMSTATION EDIT ADDITION END
 		GLOB.custom_areas[newA] = TRUE
 		require_area_resort() //new area registered. resort the names
 	else

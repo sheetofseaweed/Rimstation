@@ -639,7 +639,7 @@
 		// Already on the map. Walking somewhere known to look at it would buy nothing.
 		return FALSE
 
-	var/list/reachable = (only_within || list()).Copy()
+	var/list/reachable = only_within ? only_within.Copy() : list()
 	reachable[cell_id] = TRUE
 
 	var/list/planned = region.plan_route(current_cell, cell_id, kind, reachable)
