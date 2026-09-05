@@ -6,12 +6,76 @@
 /turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_expedition/transit)
 "c" = (
-/obj/effect/landmark/rimstation_caravan_spawn,
+/obj/structure/flora/tree/rimstation_deciduous/style_3,
 /turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_expedition/transit)
 "d" = (
-/obj/machinery/computer/colony_overworld,
+/obj/structure/firepit,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"e" = (
+/obj/structure/flora/tree/rimstation_deciduous,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"f" = (
+/obj/structure/flora/bush/sparsegrass/style_random,
+/obj/structure/flora/tree/rimstation_deciduous/style_5,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"k" = (
+/obj/structure/flora/tree/rimstation_deciduous/style_4,
 /turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/transit)
+"m" = (
+/obj/structure/chair/stool/bamboo,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"w" = (
+/obj/effect/landmark/rimstation_caravan_spawn,
+/obj/effect/landmark/rimstation_caravan_spawn,
+/obj/structure/flora/bush/sparsegrass/style_random,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"z" = (
+/obj/structure/flora/bush/sparsegrass/style_random,
+/obj/structure/flora/bush/grassy/style_random,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"C" = (
+/obj/structure/flora/bush/sparsegrass/style_random,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"D" = (
+/obj/item/extinguisher/mini,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"J" = (
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"N" = (
+/obj/effect/landmark/rimstation_caravan_spawn,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"P" = (
+/obj/structure/flora/bush/grassy/style_random,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/transit)
+"Q" = (
+/obj/machinery/computer/colony_overworld,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"W" = (
+/obj/structure/flora/tree/rimstation_deciduous/style_2,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/transit)
+"X" = (
+/obj/effect/landmark/rimstation_caravan_spawn,
+/obj/structure/flora/bush/sparsegrass/style_random,
+/turf/open/misc/grass/rimstation,
+/area/rimstation_expedition/transit)
+"Z" = (
+/obj/structure/flora/bush/grassy/style_random,
+/turf/open/misc/grass/rimstation,
 /area/rimstation_expedition/transit)
 
 (1,1,1) = {"
@@ -27,87 +91,87 @@ a
 "}
 (2,1,1) = {"
 a
+a
+a
 b
 b
-b
-b
-b
-b
+a
+a
 b
 a
 "}
 (3,1,1) = {"
 a
+a
 b
-c
+e
+J
+k
 b
-b
-b
-c
 b
 a
 "}
 (4,1,1) = {"
 a
 b
-b
-b
-b
-b
-b
-b
+z
+C
+C
+Z
+Z
+a
 a
 "}
 (5,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
+e
+J
+N
+N
+N
+J
+J
 a
 "}
 (6,1,1) = {"
 a
-b
-b
-b
+Q
+m
+J
 d
-b
-b
-b
+D
+C
+J
 a
 "}
 (7,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
+J
+f
+X
+X
+w
+J
+e
 a
 "}
 (8,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
+Z
+J
+J
+C
+J
+Z
+P
 a
 "}
 (9,1,1) = {"
 a
 b
-c
 b
-b
+P
+P
 b
 c
 b
@@ -115,13 +179,13 @@ a
 "}
 (10,1,1) = {"
 a
+a
+a
 b
-b
-b
-b
-b
-b
-b
+W
+a
+a
+a
 a
 "}
 (11,1,1) = {"

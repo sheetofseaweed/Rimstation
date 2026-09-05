@@ -19,7 +19,7 @@
 	shared_supplies = list(
 		// Fire: light, warmth and cooking, and the thing a new colony builds first.
 		/obj/item/stack/sheet/mineral/wood = list("base" = 20, "per_colonist" = 2, "cap" = 60),
-		/obj/item/match = list("base" = 6, "per_colonist" = 2, "cap" = 20),
+		/obj/item/storage/box/matches = list("base" = 2, "per_colonist" = 2, "cap" = 2),
 		// Shelter and bedding.
 		/obj/item/stack/sheet/cloth = list("base" = 10, "per_colonist" = 1, "cap" = 30),
 		// The first renewable food, rather than a food stockpile.

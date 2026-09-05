@@ -11,16 +11,128 @@
 /area/rimstation_expedition/site)
 "d" = (
 /obj/effect/landmark/rimstation_expedition_arrival,
-/turf/open/floor/plating,
+/turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_expedition/site)
 "e" = (
 /obj/machinery/computer/colony_overworld,
-/turf/open/floor/plating,
+/turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_expedition/site)
 "f" = (
-/obj/structure/rimstation_ruin_rubble,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"h" = (
+/obj/structure/stone_tile/slab/cracked,
 /turf/open/floor/plating,
 /area/rimstation_expedition/site)
+"i" = (
+/obj/effect/spawner/random/structure/crate,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"j" = (
+/obj/item/flashlight/lamp/green,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"k" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/turf/closed/wall,
+/area/rimstation_expedition/site)
+"n" = (
+/obj/structure/stone_tile/slab/cracked,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"o" = (
+/obj/effect/spawner/random/structure/crate,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"t" = (
+/turf/closed/indestructible/rock,
+/area/rimstation_expedition/site)
+"u" = (
+/obj/structure/glowshroom/single,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"w" = (
+/obj/structure/stone_tile/surrounding/cracked,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"y" = (
+/obj/structure/glowshroom/single,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"z" = (
+/obj/effect/spawner/random/glass_shards,
+/obj/structure/closet/crate/secure,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"D" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"E" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/obj/effect/spawner/random/glass_shards/mini,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"F" = (
+/obj/effect/spawner/random/maintenance/seven,
+/obj/structure/closet/crate/secure,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"H" = (
+/obj/effect/turf_decal/arrows/white{
+	dir = 1
+	},
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"K" = (
+/obj/structure/stone_tile/center/cracked,
+/obj/structure/stone_tile/block/cracked,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"L" = (
+/mob/living/basic/spider/maintenance,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"M" = (
+/obj/effect/spawner/random/maintenance/seven,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"N" = (
+/obj/effect/turf_decal/arrows/white{
+	dir = 4
+	},
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"R" = (
+/obj/structure/glowshroom/single,
+/turf/closed/indestructible/rock,
+/area/rimstation_expedition/site)
+"T" = (
+/turf/closed/wall,
+/area/rimstation_expedition/site)
+"V" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/obj/effect/spawner/random/glass_shards,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"W" = (
+/obj/effect/spawner/random/structure/closet_empty/crate/with_loot,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"X" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/mob/living/basic/spider/growing/young/hunter,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"Y" = (
+/obj/structure/girder,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+"Z" = (
+/obj/effect/spawner/random/glass_shards,
+/turf/open/floor/plating,
+/area/rimstation_expedition/site)
+
 (1,1,1) = {"
 a
 a
@@ -33,149 +145,221 @@ a
 a
 a
 a
+a
+t
+t
+t
+t
+t
 "}
 (2,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
-b
-b
-a
+T
+T
+T
+T
+T
+T
+T
+T
+T
+t
+t
+t
+t
+t
+t
+t
 "}
 (3,1,1) = {"
 a
+T
+E
+D
+F
+Y
 b
+W
+b
+k
+y
 f
-b
-b
-b
-b
-b
-b
-b
-a
+f
+t
+t
+t
+t
 "}
 (4,1,1) = {"
 a
-b
-b
-b
-b
+T
+W
+u
+L
+Y
+Z
+X
+u
+T
 f
-b
-b
-b
 f
-a
+f
+f
+R
+t
+t
 "}
 (5,1,1) = {"
 a
+T
+z
 b
+D
+M
 b
+L
 b
-b
-b
-b
-b
-b
-b
-a
+T
+f
+f
+w
+n
+t
+t
+t
 "}
 (6,1,1) = {"
 a
+T
 b
-b
-b
-b
-b
-b
-b
-b
-b
-a
+Y
+T
+T
+T
+k
+T
+Y
+h
+f
+n
+n
+f
+f
+t
 "}
 (7,1,1) = {"
 a
+T
 b
+D
+L
 b
-c
+D
+V
+L
 b
-b
-b
-b
+H
+h
+f
+f
 d
-b
-a
+f
+t
 "}
 (8,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
+T
+Y
+T
+k
+Y
+N
+T
+T
+T
+h
+h
+K
+f
 e
-b
-a
+f
+t
 "}
 (9,1,1) = {"
 a
+T
+Z
 b
+D
+M
 b
-b
-b
-b
-b
-b
-b
-b
-a
+D
+i
+Y
+o
+f
+f
+f
+f
+t
+t
 "}
 (10,1,1) = {"
 a
+T
 b
+c
+H
+D
+D
+E
 b
-b
-b
+T
 f
-b
-b
-b
-b
-a
+f
+y
+f
+t
+t
+t
 "}
 (11,1,1) = {"
 a
+T
+u
+j
+M
+L
+W
+u
 b
+T
+y
 f
-b
-b
-b
-b
-b
-b
-b
-a
+t
+t
+t
+t
+t
 "}
 (12,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
-b
-b
-a
+T
+T
+T
+T
+T
+T
+T
+T
+T
+t
+t
+t
+t
+t
+t
+t
 "}
 (13,1,1) = {"
 a
@@ -189,4 +373,10 @@ a
 a
 a
 a
+t
+t
+t
+t
+t
+t
 "}

@@ -17,6 +17,55 @@
 /obj/machinery/computer/colony_overworld,
 /turf/open/misc/dirt/planet/rimstation,
 /area/rimstation_expedition/site)
+"h" = (
+/obj/item/flashlight/lantern,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"v" = (
+/obj/structure/glowshroom/single,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"w" = (
+/obj/structure/ore_vein/silver,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"A" = (
+/obj/item/stack/ore/titanium,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"C" = (
+/obj/structure/ore_vein/diamond,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"D" = (
+/obj/item/stack/ore/silver,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"H" = (
+/obj/structure/ore_vein/stone,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"I" = (
+/obj/item/stack/ore/glass/thirty,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"P" = (
+/obj/item/stack/ore/slag,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"T" = (
+/obj/item/stack/ore/iron,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"V" = (
+/obj/structure/ore_vein/gold,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+"X" = (
+/obj/structure/ore_vein/iron,
+/turf/open/misc/dirt/planet/rimstation,
+/area/rimstation_expedition/site)
+
 (1,1,1) = {"
 a
 a
@@ -32,72 +81,72 @@ a
 "}
 (2,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
-b
-b
+a
+a
+a
+a
+a
+a
+a
+a
+a
 a
 "}
 (3,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
-b
-b
+a
+a
+a
+H
+v
+a
+a
+a
+a
 a
 "}
 (4,1,1) = {"
 a
+a
+a
 b
 b
 b
-b
-b
-b
-b
-b
-b
+A
+a
+a
+a
 a
 "}
 (5,1,1) = {"
 a
+a
+C
+h
+T
 b
 b
 b
-b
-b
-b
-b
-b
-b
+a
+a
 a
 "}
 (6,1,1) = {"
 a
+v
+T
 b
 b
 b
+I
 b
-b
-b
-b
-b
-b
+a
+a
 a
 "}
 (7,1,1) = {"
 a
-b
+X
 b
 b
 c
@@ -115,62 +164,62 @@ b
 b
 b
 b
-b
-b
+D
+h
 e
-b
+a
 a
 "}
 (9,1,1) = {"
 a
 b
+v
+T
 b
+P
 b
-b
-b
-b
-b
-b
-b
+a
+a
+a
 a
 "}
 (10,1,1) = {"
 a
+a
+w
 b
+V
 b
-b
-b
-b
-b
-b
-b
-b
+a
+a
+a
+a
 a
 "}
 (11,1,1) = {"
 a
+a
+a
+a
 b
-b
-b
-b
-b
-b
-b
-b
-b
+a
+a
+a
+a
+a
 a
 "}
 (12,1,1) = {"
 a
-b
-b
-b
-b
-b
-b
-b
-b
-b
+a
+a
+a
+a
+a
+a
+a
+a
+a
 a
 "}
 (13,1,1) = {"

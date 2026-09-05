@@ -45,6 +45,149 @@
 	var/datum/job/assistant = SSjob.get_job(JOB_ASSISTANT)
 	TEST_ASSERT(assistant in SSjob.joinable_occupations, "Adding a colonist job made the assistant unjoinable on an ordinary station map.")
 
+	// Every colony role goes with it. The gate reads a flag now, so a role that forgot to set it leaks here.
+	for(var/datum/job/job as anything in SSjob.all_occupations)
+		if(!job.colony_role)
+			continue
+		TEST_ASSERT(!(job in SSjob.joinable_occupations), "Colony role '[job.title]' is joinable on a map that is not a colony.")
+
+
+/**
+ * The leader is a colony role with three slots, and its card opens a communications console.
+ *
+ * The access is the entire point of the job: the console refuses anyone without ACCESS_COMMAND, so an incident
+ * asking the colony a question would sit unanswered until it expired.
+ */
+/datum/unit_test/rimstation_colony_leader_carries_command_access
+
+/datum/unit_test/rimstation_colony_leader_carries_command_access/Run()
+	var/datum/job/colony_leader/leader = SSjob.get_job(JOB_COLONY_LEADER)
+	TEST_ASSERT_NOTNULL(leader, "The colony leader job is not registered with SSjob at all.")
+	TEST_ASSERT(istype(leader), "The job registered under '[JOB_COLONY_LEADER]' is not the colony leader job.")
+	TEST_ASSERT(leader.colony_role, "The colony leader is not marked as a colony role, so a station round would offer it.")
+	TEST_ASSERT_EQUAL(leader.total_positions, 3, "The colony leader does not have three slots.")
+	TEST_ASSERT_EQUAL(leader.spawn_positions, 3, "The colony leader does not have three roundstart slots.")
+
+	var/datum/id_trim/job/colony_leader/trim = SSid_access.trim_singletons_by_path[/datum/id_trim/job/colony_leader]
+	TEST_ASSERT_NOTNULL(trim, "The colony leader trim has no singleton, so no card can ever be stamped with it.")
+	TEST_ASSERT(ACCESS_COMMAND in trim.access, "The colony leader trim does not grant ACCESS_COMMAND, so a communications console will not log them in.")
+
+	// The console checks its own req_access, so ask a real one rather than re-deriving what it wants.
+	var/obj/machinery/computer/communications/console = allocate(/obj/machinery/computer/communications)
+	var/obj/item/card/id/advanced/card = allocate(/obj/item/card/id/advanced)
+	SSid_access.apply_trim_to_card(card, /datum/id_trim/job/colony_leader)
+	TEST_ASSERT(console.check_access(card), "A colony leader's card was refused by a communications console.")
+
+
+/**
+ * A promoted colonist collecting last chapter's card gets this chapter's rank written onto it.
+ *
+ * Their stored card was stamped whenever they last put it away, so somebody elected between chapters would
+ * otherwise come back holding a colonist's card and find the console shut to them.
+ */
+/datum/unit_test/rimstation_colony_leader_restamps_stored_card
+
+/datum/unit_test/rimstation_colony_leader_restamps_stored_card/Run()
+	var/mob/living/carbon/human/consistent/leader = allocate(/mob/living/carbon/human/consistent)
+	leader.mind_initialize()
+	leader.mind.assigned_role = SSjob.get_job(JOB_COLONY_LEADER)
+	// A card only reaches the ID slot on somebody wearing a uniform, and that slot is where collection puts it.
+	leader.equip_to_appropriate_slot(new /obj/item/clothing/under/color/grey)
+
+	// What they stored last chapter: their own card, carrying a colonist's access.
+	var/obj/item/card/id/advanced/stored = allocate(/obj/item/card/id/advanced)
+	SSid_access.apply_trim_to_card(stored, /datum/id_trim/job/assistant)
+	var/list/colonist_access = stored.access.Copy()
+	TEST_ASSERT(!(ACCESS_COMMAND in colonist_access), "An assistant-trimmed card already carried ACCESS_COMMAND, so this test proves nothing.")
+	TEST_ASSERT(leader.equip_to_appropriate_slot(stored), "The test could not put a stored card into the colonist's ID slot.")
+
+	TEST_ASSERT(stamp_colony_leader_access(leader), "Collecting a stored card did not re-stamp it for a leader with no command access.")
+	TEST_ASSERT(ACCESS_COMMAND in stored.access, "A re-stamped card still does not open a communications console.")
+	TEST_ASSERT(!stamp_colony_leader_access(leader), "A card that already carries command access was re-stamped a second time.")
+
+	// Applying a trim clears the card first, so the leader trim has to be a superset of the colonist one.
+	for(var/access in colonist_access)
+		TEST_ASSERT(access in stored.access, "Re-stamping a card took away access '[access]' the colonist already had.")
+
+
+/// An ordinary colonist collecting their things is left alone; the stamp reads the job, not the roster.
+/datum/unit_test/rimstation_colonist_card_is_not_promoted
+
+/datum/unit_test/rimstation_colonist_card_is_not_promoted/Run()
+	var/mob/living/carbon/human/consistent/colonist = allocate(/mob/living/carbon/human/consistent)
+	colonist.mind_initialize()
+	colonist.mind.assigned_role = SSjob.get_job(JOB_COLONIST)
+	colonist.equip_to_appropriate_slot(new /obj/item/clothing/under/color/grey)
+
+	var/obj/item/card/id/advanced/stored = allocate(/obj/item/card/id/advanced)
+	SSid_access.apply_trim_to_card(stored, /datum/id_trim/job/assistant)
+	TEST_ASSERT(colonist.equip_to_appropriate_slot(stored), "The test could not put a stored card into the colonist's ID slot.")
+
+	TEST_ASSERT(!stamp_colony_leader_access(colonist), "A plain colonist was handed command access for collecting their own things.")
+	TEST_ASSERT(!(ACCESS_COMMAND in stored.access), "A plain colonist's card came out of storage able to open a communications console.")
+
+
+/**
+ * The whole path a returning leader actually walks: empty the stash, then use the console.
+ *
+ * Asserted against a real collection rather than against the stamp alone, because a returner is undressed when
+ * they arrive and the card only reaches a slot the console reads if the uniform is put on first.
+ */
+/datum/unit_test/rimstation_colony_leader_collects_a_working_card
+
+/datum/unit_test/rimstation_colony_leader_collects_a_working_card/Run()
+	var/mob/living/carbon/human/consistent/leader = allocate(/mob/living/carbon/human/consistent)
+	leader.mind_initialize()
+	leader.mind.assigned_role = SSjob.get_job(JOB_COLONY_LEADER)
+
+	// What the colony kept for them: last chapter's clothes and last chapter's card.
+	var/obj/structure/closet/colonist_storage/stash/stash = allocate(/obj/structure/closet/colonist_storage/stash)
+	var/obj/item/card/id/advanced/stored = new(stash)
+	SSid_access.apply_trim_to_card(stored, /datum/id_trim/job/assistant)
+	new /obj/item/clothing/under/color/grey(stash)
+	new /obj/item/clothing/shoes/workboots(stash)
+
+	TEST_ASSERT(return_colonist_belongings(stash, leader), "A leader collected nothing at all out of the colony stash.")
+
+	var/obj/machinery/computer/communications/console = allocate(/obj/machinery/computer/communications)
+	var/obj/item/card/id/carried = leader.get_idcard(hand_first = FALSE)
+	TEST_ASSERT_NOTNULL(carried, "A leader who emptied the stash is not carrying an ID card anywhere the console looks.")
+	TEST_ASSERT(console.check_access(carried), "A leader collected their belongings and still cannot log into a communications console.")
+
+
+/**
+ * Somebody joining mid-chapter is built on the planet, not on the hub the rest of the fork latejoins to.
+ *
+ * settle_colonist() moves every arrival anyway, so this is only about where the body is made. It matters
+ * because that move needs a roster to look the player up in: a round with no campaign has none, and without
+ * this the latejoiner is left standing on a z-level with no way to reach the colony.
+ */
+/datum/unit_test/rimstation_colony_jobs_latejoin_on_the_planet
+
+/datum/unit_test/rimstation_colony_jobs_latejoin_on_the_planet/Run()
+	var/obj/effect/landmark/rimstation_colony_spawn/landmark = allocate(/obj/effect/landmark/rimstation_colony_spawn, run_loc_floor_bottom_left)
+
+	for(var/datum/job/job as anything in SSjob.all_occupations)
+		if(!job.colony_role)
+			continue
+		TEST_ASSERT_EQUAL(job.get_latejoin_spawn_point(), landmark, "Colony role '[job.title]' latejoins somewhere other than the colony's own landmark.")
+
+	// A station job on the same map is untouched; this must not redirect the whole roster.
+	var/datum/job/assistant = SSjob.get_job(JOB_ASSISTANT)
+	TEST_ASSERT_NOTNULL(assistant, "The assistant job is missing, so this test cannot check the station case.")
+	TEST_ASSERT(assistant.get_latejoin_spawn_point() != landmark, "A station job was sent to the colony's landmark.")
+
+
+/// With no landmark placed, a colony job falls back to the ordinary latejoin point rather than to nowhere.
+/datum/unit_test/rimstation_colony_jobs_latejoin_falls_back
+
+/datum/unit_test/rimstation_colony_jobs_latejoin_falls_back/Run()
+	TEST_ASSERT(!length(GLOB.rimstation_colony_spawns), "A colony spawn landmark outlived the test that made it, so the fallback cannot be checked.")
+
+	var/datum/job/colonist = SSjob.get_job(JOB_COLONIST)
+	TEST_ASSERT_NOTNULL(colonist, "The colonist job is missing entirely.")
+	TEST_ASSERT_NOTNULL(colonist.get_latejoin_spawn_point(), "With no colony landmark placed, a colonist had nowhere at all to latejoin to.")
+
 
 /**
  * Newcomers walk in from the edge; people who already live here start at the settlement.

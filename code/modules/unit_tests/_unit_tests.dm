@@ -376,6 +376,8 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_skills.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_home.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_stash.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/colonist_name_plate.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/firebox_generator.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_checkpoint.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_clock.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/campaign_manifest.dm"

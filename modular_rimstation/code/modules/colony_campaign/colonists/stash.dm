@@ -262,7 +262,7 @@ GLOBAL_LIST_EMPTY(colonist_declared_items)
 
 	var/returned = 0
 	var/left_behind = 0
-	for(var/obj/item/belonging in container.contents)
+	for(var/obj/item/belonging as anything in order_belongings_for_dressing(container))
 		relink_colonist_id(belonging, colonist)
 		if(colonist.equip_to_appropriate_slot(belonging))
 			returned++
@@ -273,8 +273,32 @@ GLOBAL_LIST_EMPTY(colonist_declared_items)
 		to_chat(colonist, span_notice("[container] is empty."))
 		return FALSE
 
+	// A card stored last chapter predates whatever the colony asked of them this one.
+	stamp_colony_leader_access(colonist)
+
 	to_chat(colonist, span_notice("You collect your things[left_behind ? ", though not everything fits" : ""]."))
 	return TRUE
+
+/**
+ * `container`'s contents, uniform first and the rest in storage order.
+ *
+ * The ID, belt and pocket slots all hang off a jumpsuit, so an undressed colonist reached by their own card
+ * before their own clothes has nowhere to put it - equipping fails, the card stays in the locker, and they walk
+ * away from their belongings still holding none of them. A returner is always undressed; see
+ * withdraw_issued_outfit().
+ */
+/proc/order_belongings_for_dressing(obj/structure/closet/colonist_storage/container)
+	RETURN_TYPE(/list)
+	var/list/ordered = list()
+	if(!istype(container))
+		return ordered
+
+	for(var/obj/item/clothing/under/jumpsuit in container.contents)
+		ordered += jumpsuit
+	for(var/obj/item/belonging in container.contents)
+		ordered |= belonging
+
+	return ordered
 
 
 /**

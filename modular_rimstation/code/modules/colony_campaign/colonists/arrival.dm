@@ -87,6 +87,22 @@
 	return null
 
 /**
+ * Where a colony job builds a body for somebody joining mid-chapter, or null if the map placed no landmark.
+ *
+ * settle_colonist() already moves every arrival to the right ground, so this is not what decides where a
+ * colonist ends up. What it decides is where they are *made*: without it the body is built on the Interlink,
+ * because that is where this fork's latejoin landmarks are, and only then teleported onto the planet.
+ *
+ * Worth closing anyway. The move needs a roster to look the player up in, and a round with no campaign has
+ * none - which leaves a latejoiner standing on a hub z-level with no way to reach the colony at all.
+ */
+/proc/get_colony_latejoin_spawn_point()
+	RETURN_TYPE(/obj/effect/landmark/rimstation_colony_spawn)
+	if(!length(GLOB.rimstation_colony_spawns))
+		return null
+	return pick(GLOB.rimstation_colony_spawns)
+
+/**
  * The turf a colonist has claimed as home, or null if they have not claimed one or it is gone.
  *
  * Home points are claimed at a bed and stored as coordinates plus the type that was there. Both are checked on

@@ -379,8 +379,11 @@
 	list(OVERWORLD_TERRAIN_DESERT, OVERWORLD_TERRAIN_SAVANNA, OVERWORLD_TERRAIN_MARSH), \
 )
 
-/// The only job a colony offers. A settlement has no departments and no chain of command to staff.
+/// The job nearly everyone in a colony holds. A settlement has no departments to staff.
 #define JOB_COLONIST "Colonist"
+
+/// The few who can answer for the settlement. The rank is a card the communications console accepts.
+#define JOB_COLONY_LEADER "Colony Leader"
 
 // How a caravan moves through its journey. Forward only: a party that has finished, or been lost, is a closed
 // record. Reopening one would let a journey pay out twice.

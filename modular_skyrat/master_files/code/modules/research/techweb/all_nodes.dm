@@ -83,6 +83,12 @@
 		"weldingmask",
 		"magboots",
 		"flatpacker",
+		// RIMSTATION EDIT ADDITION START - solid fuel generators.
+		// Placed here rather than in modular_rimstation because this node's New() can only be defined once,
+		// and it already belongs to this file. A colony reaches them through its own tech graph instead.
+		"firebox_generator",
+		"firebox_generator_coal",
+		// RIMSTATION EDIT ADDITION END
 	)
 	return ..()
 

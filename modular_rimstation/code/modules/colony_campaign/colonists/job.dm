@@ -1,9 +1,14 @@
+/datum/job
+	/// TRUE for a job on a colony's roster rather than a station's. Decides which half map_check() hides.
+	var/colony_role = FALSE
+
 /**
- * The only role a colony has.
+ * The role nearly everyone in a colony holds.
  *
  * A settlement is not a station: there is no department to belong to, nobody to report to, and no rank to hold.
- * Everything that separates colonists from one another - what they can do, where they sleep, what the colony
- * remembers of them - lives in their record, not in a job title.
+ * Everything that separates one colonist from another - what they can do, where they sleep, what the colony
+ * remembers of them - lives in their record rather than in a job title. See /datum/job/colony_leader for the
+ * single exception, which exists because a communications console asks for a card and not for a person.
  *
  * Unavailable by default. The map that wants colonists says so in its own config, which is also what tells
  * every other job to stand down; see is_colonist_only_map().
@@ -24,6 +29,7 @@
 	department_for_prefs = /datum/job_department/assistant
 	job_flags = STATION_JOB_FLAGS
 	config_tag = "COLONIST"
+	colony_role = TRUE
 
 /**
  * Puts the arriving player into the colony's roster and onto the right piece of ground.
@@ -36,6 +42,11 @@
 	if(!ishuman(spawned) || !player_client)
 		return
 	settle_colonist(spawned, player_client.ckey)
+
+/// Built on the planet rather than on the hub the rest of the fork latejoins to. Falls back if unplaced.
+/datum/job/colonist/get_latejoin_spawn_point()
+	var/atom/colony_arrival = get_colony_latejoin_spawn_point()
+	return colony_arrival || ..()
 
 
 /datum/outfit/job/colonist
