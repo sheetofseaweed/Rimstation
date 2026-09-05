@@ -2,8 +2,8 @@
 #define RIMSTATION_COLONY_MAP "_maps/map_files/rimstation_colony/rimstation_colony.dmm"
 /// Matches the generated surface size used by the other planetary maps in this repository.
 #define RIMSTATION_COLONY_SIZE 255
-/// Rock below, ground to stand on, sky above. Further levels stack in the middle.
-#define RIMSTATION_COLONY_MINIMUM_LEVELS 3
+/// Deep underground, lowlands, highlands/player roofs, and open sky.
+#define RIMSTATION_COLONY_LEVELS 4
 
 /datum/unit_test/rimstation_colony_map_contract
 	test_flags = UNIT_TEST_MAP_TEST
@@ -23,10 +23,8 @@
 	TEST_ASSERT_EQUAL(map_config.space_empty_levels, 0, "The colony seed should not add empty space levels.")
 	TEST_ASSERT_EQUAL(map_config.wilderness_levels, 0, "The colony seed should not add generated wilderness levels.")
 
-	// Levels are checked by role, not by index. The colony may gain layers; what may not change is that the
-	// bottom is diggable rock, the top is open air, and the links between them are unbroken.
 	var/level_count = length(map_config.traits)
-	TEST_ASSERT(level_count >= RIMSTATION_COLONY_MINIMUM_LEVELS, "The colony seed declares [level_count] levels and needs at least [RIMSTATION_COLONY_MINIMUM_LEVELS].")
+	TEST_ASSERT_EQUAL(level_count, RIMSTATION_COLONY_LEVELS, "The colony map must keep its deep-underground, lowland, highland, and open-sky stack.")
 
 	// What a colony level may strip down to. Anything else decays into station or space turf when scraped.
 	var/list/colony_baseturfs = list(
@@ -51,9 +49,8 @@
 	TEST_ASSERT_NULL(sky_traits[ZTRAIT_LINKAGE], "The sky should not cross-link at its map edges.")
 	TEST_ASSERT_EQUAL(sky_traits[ZTRAIT_BASETURF], "/turf/open/openspace/rimstation", "The upper level should remain open sky when stripped to baseturf.")
 
-	// Everything between the two ends. A level that links only one way splits the z-stack in half, and
-	// roofing walks that stack to decide which tiles see the sky.
-	for(var/level_index in 2 to level_count - 1)
+	// A middle level that links only one way splits the z-stack, and roofing walks that stack for daylight.
+	for(var/level_index in 2 to 3)
 		var/list/middle_traits = map_config.traits[level_index]
 		TEST_ASSERT(middle_traits[ZTRAIT_STATION], "Level [level_index] is not part of the loaded colony map, so sunlight and weather would skip it.")
 		TEST_ASSERT(!middle_traits[ZTRAIT_MINING], "Level [level_index] carries the mining trait, which belongs to the bottom level alone.")
@@ -63,13 +60,24 @@
 		var/middle_baseturf = middle_traits[ZTRAIT_BASETURF]
 		TEST_ASSERT((middle_baseturf in colony_baseturfs), "Level [level_index] strips down to [middle_baseturf], which is not a colony baseturf.")
 
+	var/list/lowland_traits = map_config.traits[2]
+	TEST_ASSERT_EQUAL(lowland_traits[ZTRAIT_BASETURF], "/turf/open/misc/dirt/planet/rimstation", "Z2 should scrape down to buildable colony soil.")
+	var/list/highland_traits = map_config.traits[3]
+	TEST_ASSERT_EQUAL(highland_traits[ZTRAIT_BASETURF], "/turf/open/openspace/rimstation", "Z3's empty footprint should remain open air for mountains and player roofs.")
+
 	var/list/required_paths = list(
 		"/area/rimstation_colony/underground",
 		"/area/rimstation_colony/surface",
+		"/area/rimstation_colony/surface/highlands",
 		"/area/rimstation_colony/sky",
+		"/datum/map_generator/rimstation_colony",
+		"/datum/rimstation_colony_generation_context",
 		"/turf/open/misc/asteroid/rimstation",
 		"/turf/closed/mineral/random/rimstation",
 		"/turf/open/misc/dirt/planet/rimstation",
+		"/turf/open/misc/grass/rimstation",
+		"/turf/open/water/rimstation",
+		"/turf/open/water/rimstation/deep",
 		"/turf/open/openspace/rimstation",
 		"/turf/open/cliff/rimstation",
 	)
@@ -89,6 +97,16 @@
 	TEST_ASSERT_EQUAL(initial(surface_turf.initial_gas_mix), OPENTURF_DEFAULT_ATMOS, "The surface should start with Earthlike air.")
 	TEST_ASSERT(initial(surface_turf.planetary_atmos), "The surface should replenish its Earthlike planetary atmosphere.")
 	TEST_ASSERT_EQUAL(initial(surface_turf.baseturfs), /turf/open/misc/dirt/planet/rimstation, "The surface should remain native soil when scraped.")
+
+	var/turf/open/misc/grass/rimstation/grass_turf = /turf/open/misc/grass/rimstation
+	TEST_ASSERT_EQUAL(initial(grass_turf.baseturfs), /turf/open/misc/dirt/planet/rimstation, "Generated grass should scrape down to native colony soil.")
+	TEST_ASSERT(initial(grass_turf.planetary_atmos), "Generated grass should participate in the planetary atmosphere.")
+
+	var/turf/open/water/rimstation/river_turf = /turf/open/water/rimstation
+	TEST_ASSERT(initial(river_turf.planetary_atmos), "River shallows should participate in the planetary atmosphere.")
+	TEST_ASSERT(!initial(river_turf.is_swimming_tile), "Most of the river must remain fordable rather than forcing swimmers.")
+	var/turf/open/water/rimstation/deep/deep_river_turf = /turf/open/water/rimstation/deep
+	TEST_ASSERT(initial(deep_river_turf.is_swimming_tile), "The river's occasional deep pools should require swimming.")
 
 	var/turf/open/openspace/rimstation/sky_turf = /turf/open/openspace/rimstation
 	TEST_ASSERT_EQUAL(initial(sky_turf.initial_gas_mix), OPENTURF_DEFAULT_ATMOS, "The open sky should carry Earthlike air between levels.")
@@ -125,13 +143,12 @@
 	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXY] - parsed_map.parsed_bounds[MAP_MINY] + 1, RIMSTATION_COLONY_SIZE, "The colony map should be [RIMSTATION_COLONY_SIZE] tiles tall.")
 	TEST_ASSERT_EQUAL(parsed_map.parsed_bounds[MAP_MAXZ] - parsed_map.parsed_bounds[MAP_MINZ] + 1, level_count, "The colony DMM holds a different number of z-levels than its map config declares traits for.")
 
-	// Each level is restricted to the areas that belong on it. The surface carries two: generated wilds and
-	// the hand-placed landing clearing that must never be generated over.
+	// Each level is restricted to its vertical role. The lowland carries both generated wilds and the
+	// hand-placed landing clearing; the highland is one coordinated placeholder area.
 	var/list/underground_areas = list("/area/rimstation_colony/underground")
 	var/list/surface_areas = list("/area/rimstation_colony/surface/wilds", "/area/rimstation_colony/surface/landing")
+	var/list/highland_areas = list("/area/rimstation_colony/surface/highlands")
 	var/list/sky_areas = list("/area/rimstation_colony/sky")
-	// Only the two ends are fixed by role. A level added in the middle may be any of the three kinds.
-	var/list/middle_areas = underground_areas + surface_areas + sky_areas
 	// A station-grade spawn on a colony map would drop players into a department that does not exist here.
 	var/list/forbidden_model_fragments = list(
 		"/obj/effect/landmark/start/",
@@ -142,13 +159,17 @@
 
 	var/found_colony_spawn = FALSE
 	var/found_settlement_center = FALSE
-	var/found_raid_insertion = FALSE
+	var/found_authored_raid_insertion = FALSE
 	var/list/seen_keys = list()
 	for(var/datum/grid_set/grid_set as anything in parsed_map.gridSets)
-		var/list/allowed_areas = middle_areas
+		var/list/allowed_areas
 		if(grid_set.zcrd == 1)
 			allowed_areas = underground_areas
-		else if(grid_set.zcrd == level_count)
+		else if(grid_set.zcrd == 2)
+			allowed_areas = surface_areas
+		else if(grid_set.zcrd == 3)
+			allowed_areas = highland_areas
+		else
 			allowed_areas = sky_areas
 		for(var/grid_line in grid_set.gridLines)
 			for(var/key_position in 1 to length(grid_line) step parsed_map.key_len)
@@ -173,22 +194,26 @@
 				if(findtext(model, "/obj/effect/landmark/rimstation_settlement_center"))
 					found_settlement_center = TRUE
 				if(findtext(model, "/obj/effect/landmark/rimstation_raid_insertion"))
-					found_raid_insertion = TRUE
+					found_authored_raid_insertion = TRUE
 
 	TEST_ASSERT(found_colony_spawn, "The colony map has nowhere for colonists to start.")
 	TEST_ASSERT(found_settlement_center, "The colony map has no settlement centre, so raids cannot measure an exclusion radius.")
-	TEST_ASSERT(found_raid_insertion, "The colony map has no validated raid insertion points, so attackers would have to spawn arbitrarily.")
+	TEST_ASSERT(!found_authored_raid_insertion, "Raid insertion points must follow generated reachability rather than fixed map coordinates.")
 
 	// The wilds are genturf and rely on the generator running; the landing site must not be generated over.
 	var/area/rimstation_colony/surface/wilds/wilds_area = /area/rimstation_colony/surface/wilds
 	TEST_ASSERT(initial(wilds_area.use_mapgen), "The wilds must run their map generator, or the map keeps its placeholder genturf.")
 	TEST_ASSERT(initial(wilds_area.area_flags_mapping) & CAVES_ALLOWED, "The wilds must allow cave generation.")
-	TEST_ASSERT_EQUAL(initial(wilds_area.map_generator), /datum/map_generator/cave_generator/rimstation_colony, "The wilds should generate from the colony's own seeded generator.")
+	TEST_ASSERT_EQUAL(initial(wilds_area.map_generator), /datum/map_generator/rimstation_colony, "The wilds should generate from the coordinated colony landscape generator.")
 
 	var/area/rimstation_colony/surface/landing/landing_area = /area/rimstation_colony/surface/landing
 	TEST_ASSERT(!initial(landing_area.use_mapgen), "The landing site must stay hand-placed so colonists cannot spawn inside rock.")
 
+	var/area/rimstation_colony/surface/highlands/highlands_area = /area/rimstation_colony/surface/highlands
+	TEST_ASSERT(!initial(highlands_area.use_mapgen), "The highlands must be materialized by the Z2 plan instead of sampling an independent generator.")
+	TEST_ASSERT_NULL(initial(highlands_area.map_generator), "The highlands should not own a second generator that can drift out of vertical alignment.")
+
 #undef RIMSTATION_COLONY_CONFIG
 #undef RIMSTATION_COLONY_MAP
-#undef RIMSTATION_COLONY_MINIMUM_LEVELS
+#undef RIMSTATION_COLONY_LEVELS
 #undef RIMSTATION_COLONY_SIZE

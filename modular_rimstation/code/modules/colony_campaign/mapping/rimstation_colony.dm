@@ -32,7 +32,7 @@
 /**
  * The generated wilderness that makes up most of the surface.
  *
- * Everything here is genturf in the DMM and gets replaced at init by the colony cave generator, so the
+ * Everything here is genturf in the DMM and gets replaced at init by the colony landscape generator, so the
  * checked-in map stays small and the terrain comes from the planet record instead.
  */
 /area/rimstation_colony/surface/wilds
@@ -40,7 +40,7 @@
 	icon_state = "unexplored"
 	area_flags_mapping = UNIQUE_AREA | CAVES_ALLOWED | FLORA_ALLOWED | MOB_SPAWN_ALLOWED
 	use_mapgen = TRUE
-	map_generator = /datum/map_generator/cave_generator/rimstation_colony
+	map_generator = /datum/map_generator/rimstation_colony
 
 /**
  * The one clearing the colony starts in.
@@ -52,6 +52,19 @@
 	name = "Rimstation Landing Site"
 	icon_state = "explored"
 	use_mapgen = FALSE
+
+/**
+ * The upper face of the shared elevation plan.
+ *
+ * It starts as open air in the DMM. The Z2 wilds generator owns this level too and replaces only mountain
+ * footprints, which prevents two area generators from sampling subtly different vertical landscapes.
+ */
+/area/rimstation_colony/surface/highlands
+	name = "Rimstation Highlands"
+	icon_state = "explored"
+	area_flags_mapping = UNIQUE_AREA
+	use_mapgen = FALSE
+	map_generator = null
 
 /area/rimstation_colony/sky
 	name = "Rimstation Open Air"
@@ -86,6 +99,76 @@
 	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
 	planetary_atmos = TRUE
 
+/// Damp soil along river margins and wetlands.
+/turf/open/misc/dirt/planet/rimstation/wet
+	name = "damp colony soil"
+	icon_state = "greenerdirt"
+	base_icon_state = "greenerdirt"
+
+/// Temperate ground used for grasslands, forests, and mountain plateaus.
+/turf/open/misc/grass/rimstation
+	name = "colony grass"
+	desc = "A hardy carpet of temperate grass."
+	baseturfs = /turf/open/misc/dirt/planet/rimstation
+	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
+	planetary_atmos = TRUE
+
+/// A solid mountain top. The rock face projects over adjacent open air; leaving the top causes a real z-fall.
+/turf/open/misc/grass/rimstation/highland
+	name = "rocky highland"
+	desc = "Grass-covered rock overlooking the lowlands. The exposed edges drop steeply away."
+	smoothing_flags = SMOOTH_BITMASK | SMOOTH_BORDER
+
+/turf/open/misc/grass/rimstation/highland/set_smoothed_icon_state(new_junction)
+	. = ..()
+	// ChangeTurf queues neighboring turfs to smooth, so the ledge also follows construction and excavation.
+	update_appearance(UPDATE_OVERLAYS)
+
+/turf/open/misc/grass/rimstation/highland/update_overlays()
+	. = ..()
+	var/exposed_directions = NONE
+	for(var/direction in GLOB.cardinals)
+		var/turf/neighbor = get_step(src, direction)
+		if(isopenspaceturf(neighbor))
+			exposed_directions |= direction
+	if(!exposed_directions)
+		return
+
+	// These are edge strips and exterior corner pieces, not full rock tiles. Reuse the eight appearances.
+	var/static/list/cliff_edges = list()
+	for(var/direction in GLOB.alldirs)
+		if((exposed_directions & direction) != direction)
+			continue
+		// At an inward corner, the adjacent edge strips already meet. Do not draw a cap over solid ground.
+		var/turf/neighbor = get_step(src, direction)
+		if(!isopenspaceturf(neighbor))
+			continue
+		var/mutable_appearance/cliff_edge = cliff_edges["[direction]"]
+		if(!cliff_edge)
+			cliff_edge = mutable_appearance('modular_rimstation/icons/turf/ntf_rockcliff.dmi', "rockcliff_overlay", ABOVE_OPEN_TURF_LAYER, appearance_flags = RESET_TRANSFORM)
+			cliff_edge = make_mutable_appearance_directional(cliff_edge, direction)
+			cliff_edge.pixel_w = ((direction & EAST) ? world.icon_size : 0) - ((direction & WEST) ? world.icon_size : 0)
+			cliff_edge.pixel_z = ((direction & NORTH) ? world.icon_size : 0) - ((direction & SOUTH) ? world.icon_size : 0)
+			cliff_edges["[direction]"] = cliff_edge
+		. += cliff_edge
+
+/// Fordable fresh water. Most of a generated river uses this type.
+/turf/open/water/rimstation
+	name = "river shallows"
+	desc = "Cool fresh water, shallow enough to ford with care."
+	baseturfs = /turf/open/water/rimstation
+	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
+	planetary_atmos = TRUE
+
+/// Occasional pools break up the otherwise fordable channel.
+/turf/open/water/rimstation/deep
+	name = "deep river pool"
+	desc = "A deep pocket in the river channel."
+	icon_state = "deep_riverwater_motion"
+	immerse_overlay = "immerse_deep"
+	baseturfs = /turf/open/water/rimstation/deep
+	is_swimming_tile = TRUE
+
 /// Open planetary air above the surface. This is transparent and permits z-falls.
 /turf/open/openspace/rimstation
 	name = "open sky"
@@ -94,14 +177,26 @@
 	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
 	planetary_atmos = TRUE
 
-/// Earthlike cliff support for later hand-mapping on the upper layer.
+/// Legacy single-z cliff face for authored maps. Generated mountain tops use highland grass and real z-falls.
 /turf/open/cliff/rimstation
 	name = "rocky cliff"
 	desc = "A steep escarpment overlooking the colony."
+	icon = 'icons/turf/cliff/icerock_cliff.dmi'
+	icon_state = "icerock_wall-0"
+	base_icon_state = "icerock_wall"
+	smoothing_flags = SMOOTH_BITMASK | SMOOTH_BORDER
+	smoothing_groups = SMOOTH_GROUP_TURF_OPEN_CLIFF
+	canSmoothWith = SMOOTH_GROUP_TURF_OPEN_CLIFF
+	layer = EDGED_TURF_LAYER
+	plane = WALL_PLANE
+	transform = MAP_SWITCH(TRANSLATE_MATRIX(-4, -4), matrix())
 	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
 	planetary_atmos = TRUE
+	baseturfs = /turf/open/misc/dirt/planet/rimstation
 	underlay_tile = /turf/open/misc/dirt/planet/rimstation
 	underlay_plane = FLOOR_PLANE
+	undertile_pixel_x = 4
+	undertile_pixel_y = 4
 
 /**
  * Ground an expedition stands on, away from the colony.

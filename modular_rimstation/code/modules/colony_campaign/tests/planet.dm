@@ -149,7 +149,7 @@
 	TEST_ASSERT(legacy_varied, "Unseeded drift stopped being random, which would make inherited maps repeat their terrain.")
 
 
-/// The point of the whole task: one planet record rebuilds one surface.
+/// One planet record and optional overmap-cell identity rebuild one complete landscape plan.
 /datum/unit_test/rimstation_planet_terrain_fingerprint
 
 /datum/unit_test/rimstation_planet_terrain_fingerprint/Run()
@@ -167,11 +167,12 @@
 	allocated += same_generator
 	allocated += other_generator
 
-	var/fingerprint = generator.terrain_fingerprint(1)
+	var/fingerprint = generator.terrain_fingerprint()
 	TEST_ASSERT_NOTNULL(fingerprint, "The colony generator produced no terrain fingerprint.")
-	TEST_ASSERT_EQUAL(fingerprint, generator.terrain_fingerprint(1), "One generator produced two different fingerprints for the same z level.")
-	TEST_ASSERT_EQUAL(fingerprint, same_generator.terrain_fingerprint(1), "An identical planet record produced a different surface.")
-	TEST_ASSERT_NOTEQUAL(fingerprint, other_generator.terrain_fingerprint(1), "Two different root seeds produced the same surface.")
-	TEST_ASSERT_NOTEQUAL(fingerprint, generator.terrain_fingerprint(2), "Two z levels of one planet produced the same surface.")
+	TEST_ASSERT_EQUAL(fingerprint, generator.terrain_fingerprint(), "One generator produced two different fingerprints for the same landscape.")
+	TEST_ASSERT_EQUAL(fingerprint, same_generator.terrain_fingerprint(), "An identical planet record produced a different landscape.")
+	TEST_ASSERT_NOTEQUAL(fingerprint, other_generator.terrain_fingerprint(), "Two different root seeds produced the same landscape.")
+	TEST_ASSERT_NOTEQUAL(fingerprint, generator.terrain_fingerprint(cell_identity = "overmap:12,7"), "Adding a chosen overmap cell did not namespace the landscape plan.")
+
 
 #undef PLANET_TEST_SEED

@@ -5,6 +5,10 @@
  * others: new ruin themes must not move the terrain a colony was already built on.
  */
 #define PLANET_STREAM_TERRAIN "terrain"
+#define PLANET_STREAM_ELEVATION "elevation"
+#define PLANET_STREAM_RIDGES "ridges"
+#define PLANET_STREAM_RIVERS "rivers"
+#define PLANET_STREAM_CAVES "caves"
 #define PLANET_STREAM_BIOME_HEAT "biome_heat"
 #define PLANET_STREAM_BIOME_HUMIDITY "biome_humidity"
 #define PLANET_STREAM_RESOURCES "resources"
@@ -14,6 +18,10 @@
 /// Every stream a planet definition will derive. Adding one here is safe; renaming one retires old worlds.
 #define PLANET_GENERATION_STREAMS list( \
 	PLANET_STREAM_TERRAIN, \
+	PLANET_STREAM_ELEVATION, \
+	PLANET_STREAM_RIDGES, \
+	PLANET_STREAM_RIVERS, \
+	PLANET_STREAM_CAVES, \
 	PLANET_STREAM_BIOME_HEAT, \
 	PLANET_STREAM_BIOME_HUMIDITY, \
 	PLANET_STREAM_RESOURCES, \
@@ -30,7 +38,7 @@
  * Bump this only when a generator change should deliberately produce different worlds from the same root
  * seed. Existing campaigns keep the version stored in their own record, so they stay reproducible.
  */
-#define PLANET_GENERATION_VERSION 1
+#define PLANET_GENERATION_VERSION 2
 
 /// Length of a derived stream seed in hex characters.
 #define PLANET_STREAM_SEED_LENGTH 16
@@ -46,6 +54,29 @@
 
 /// Root seed for the development colony world, used until a campaign manifest chooses one.
 #define RIMSTATION_DEVELOPMENT_PLANET_SEED "rimstation-development-world"
+
+/// Planned terrain classes shared by the lowland and highland materialization passes.
+#define RIMSTATION_TERRAIN_LOWLAND 1
+#define RIMSTATION_TERRAIN_RIVER_BANK 2
+#define RIMSTATION_TERRAIN_RIVER_SHALLOW 3
+#define RIMSTATION_TERRAIN_RIVER_DEEP 4
+#define RIMSTATION_TERRAIN_MOUNTAIN 5
+#define RIMSTATION_TERRAIN_CAVE 6
+
+/// Temperate ecology bands. These decide density as well as which flora table is used.
+#define RIMSTATION_BIOME_GRASSLAND 1
+#define RIMSTATION_BIOME_SCRUBLAND 2
+#define RIMSTATION_BIOME_FOREST 3
+#define RIMSTATION_BIOME_WETLAND 4
+#define RIMSTATION_BIOME_HIGHLAND 5
+#define RIMSTATION_BIOME_CAVE 6
+
+/// The authored landing shape is kept flat, and terrain fades back in through this many tiles from its edge.
+#define RIMSTATION_LANDING_BLEND_RADIUS 6
+/// Hard cap keeps generated routes readable and prevents every mountain edge becoming a staircase.
+#define RIMSTATION_MAX_ASCENTS 12
+/// Independent, entrance-connected cave systems attempted across the mountain footprint.
+#define RIMSTATION_MAX_CAVE_SYSTEMS 8
 
 /// Faction shared by colonists and their animals. Anything outside it can contest the core.
 #define RIMSTATION_COLONY_FACTION "rimstation_colony"
@@ -286,7 +317,7 @@
 	OVERWORLD_ROUGHNESS_RUGGED = 10, \
 )
 
-// What a site is. The kind decides its marker, its physical template and what resolving it pays.
+// What a site is. The kind decides its marker, scene provider and what resolving it pays.
 #define OVERWORLD_SITE_RESOURCE "resource"
 #define OVERWORLD_SITE_RUIN "ruin"
 
@@ -440,8 +471,8 @@
 /// Journeys, as the settlement's books see them.
 #define LEDGER_CATEGORY_EXPEDITION "expedition"
 
-// Lazy-loaded scenes an expedition can be standing in. Keyed rather than pathed because that is what
-// GLOB.lazy_templates is indexed by; the datums themselves live in overworld/destinations.dm.
+// Authored scenes an expedition can be standing in. Generated scenes use providers beside the destination
+// loader; these keys remain for transit, ruins, and the small resource fallback/debug map.
 /// The camp the party travels in.
 #define LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT "LT_RIMSTATION_TRANSIT"
 /**
@@ -459,6 +490,12 @@
 #define LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE "LT_RIMSTATION_RESOURCE_SITE"
 /// Somebody else's survey post, long abandoned.
 #define LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE "LT_RIMSTATION_RUIN_SITE"
+
+/// Footprint reserved for each generated expedition scene. Kept modest because loaded scenes last all boot.
+#define OVERWORLD_PROCEDURAL_SCENE_WIDTH 47
+#define OVERWORLD_PROCEDURAL_SCENE_HEIGHT 47
+/// Solid perimeter inside the reservation, before the reservation system's own cordon.
+#define OVERWORLD_PROCEDURAL_SCENE_BORDER 2
 
 /**
  * What recovering a ruin's archive is worth to the settlement, in credits.

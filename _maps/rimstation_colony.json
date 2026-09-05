@@ -27,6 +27,14 @@
 			"No Parallax": true
 		},
 		{
+			"Up": true,
+			"Down": true,
+			"Linkage": null,
+			"Gravity": true,
+			"Baseturf": "/turf/open/openspace/rimstation",
+			"No Parallax": true
+		},
+		{
 			"Down": true,
 			"Linkage": null,
 			"Gravity": true,

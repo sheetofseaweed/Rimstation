@@ -32,7 +32,7 @@
 	site_template.map_name = real_name
 
 	// And a refused load builds nothing rather than leaving an empty shell in the registry.
-	TEST_ASSERT_NULL(load_overworld_destination("site-that-cannot-load", "LT_THIS_DOES_NOT_EXIST"), "A destination was returned for a template that cannot be loaded.")
+	TEST_ASSERT_NULL(load_overworld_destination("site-that-cannot-load", null), "A destination was returned without a valid provider.")
 	TEST_ASSERT_NULL(GLOB.rimstation_overworld_destinations["site-that-cannot-load"], "A failed load left an entry in the destination registry.")
 
 
@@ -48,7 +48,7 @@
 	// The camp may already be standing: any expedition that departs brings it up, and reservations are never
 	// released. That is fine - what is under test is that asking for it yields one bound, usable scene, which
 	// is true whether this call built it or found it.
-	var/datum/overworld_destination/camp = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	var/datum/overworld_destination/camp = load_overworld_destination(null, /datum/overworld_scene_provider/premade/transit)
 	TEST_ASSERT_NOTNULL(camp, "The travelling camp could not be loaded.")
 	TEST_ASSERT_NOTNULL(camp.reservation, "A loaded destination reserved no turfs.")
 	TEST_ASSERT_NULL(camp.site_id, "The travelling camp claimed to belong to a site.")
@@ -64,7 +64,7 @@
 
 	// Asking again returns what is standing rather than building a second copy - which would strand anybody in
 	// the first one and reserve another block of turfs for nothing.
-	var/datum/overworld_destination/again = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	var/datum/overworld_destination/again = load_overworld_destination(null, /datum/overworld_scene_provider/premade/transit)
 	TEST_ASSERT_EQUAL(again, camp, "Loading the camp twice built a second one.")
 
 	// The reservation is a fact about this boot. If it ever reached the campaign record, the next boot would
@@ -76,6 +76,61 @@
 
 	// Deliberately not cleaned up: the reservation cannot be released, and dropping the registry entry would
 	// only make the next caller reserve a second block for the same camp.
+
+
+/// A generated site's plan is local, repeatable, and guarantees a walkable route to its objective.
+/datum/unit_test/rimstation_overworld_destinations/procedural_resource_plan
+
+/datum/unit_test/rimstation_overworld_destinations/procedural_resource_plan/Run()
+	var/datum/planet_definition/planet = new("expedition-scene-test-seed", "expedition-scene-test")
+	var/datum/overworld_site/site = new(OVERWORLD_SITE_RESOURCE, 3, 4, -2)
+	var/datum/overworld_cell/cell = new(4, -2)
+	cell.terrain = OVERWORLD_TERRAIN_FOREST
+	cell.topology = OVERWORLD_TOPOLOGY_DIFFICULT
+	cell.danger = 2
+
+	var/datum/rimstation_expedition_scene_context/first = new(planet, site, cell)
+	var/datum/rimstation_expedition_scene_context/second = new(planet, site, cell)
+	TEST_ASSERT(first.build_plan(), "The first procedural resource plan could not be built.")
+	TEST_ASSERT(second.build_plan(), "The same procedural resource plan could not be rebuilt.")
+	TEST_ASSERT_EQUAL(first.fingerprint(), second.fingerprint(), "The same planet and site produced different resource scenes.")
+
+	var/arrival_index = first.coordinate_index(first.arrival_x, first.arrival_y)
+	var/objective_index = first.coordinate_index(first.objective_x, first.objective_y)
+	TEST_ASSERT(first.trail_mask[arrival_index], "The guaranteed trail does not include the caravan arrival.")
+	TEST_ASSERT(first.trail_mask[objective_index], "The guaranteed trail does not reach the deposit clearing.")
+	TEST_ASSERT(ispath(first.turf_plan[arrival_index], /turf/open), "The caravan arrival was planned as closed terrain.")
+	TEST_ASSERT(ispath(first.turf_plan[objective_index], /turf/open), "The resource objective was planned as closed terrain.")
+	TEST_ASSERT(ispath(first.turf_plan[first.coordinate_index(1, 1)], /turf/closed/indestructible/rock), "The reservation edge was not safely enclosed.")
+
+	var/list/frontier = list(arrival_index)
+	var/list/reached = new /list(first.width * first.height)
+	reached[arrival_index] = TRUE
+	while(length(frontier))
+		var/current = frontier[1]
+		frontier.Cut(1, 2)
+		var/current_x = first.index_x(current)
+		var/current_y = first.index_y(current)
+		for(var/list/offset as anything in list(list(1, 0), list(-1, 0), list(0, 1), list(0, -1)))
+			var/neighbour = first.coordinate_index(current_x + offset[1], current_y + offset[2])
+			if(isnull(neighbour) || reached[neighbour] || !first.trail_mask[neighbour])
+				continue
+			reached[neighbour] = TRUE
+			frontier += neighbour
+	TEST_ASSERT(reached[objective_index], "The generated trail has a break between arrival and objective.")
+
+	var/datum/overworld_site/other_site = new(OVERWORLD_SITE_RESOURCE, 4, 4, -2)
+	var/datum/rimstation_expedition_scene_context/other = new(planet, other_site, cell)
+	TEST_ASSERT(other.build_plan(), "A second site's procedural resource plan could not be built.")
+	TEST_ASSERT_NOTEQUAL(first.fingerprint(), other.fingerprint(), "Two different site identities produced the same resource scene.")
+
+	qdel(other)
+	qdel(other_site)
+	qdel(second)
+	qdel(first)
+	qdel(cell)
+	qdel(site)
+	qdel(planet)
 
 
 /// A deposit pays once, and the campaign record rather than the object is what remembers that.
@@ -117,3 +172,38 @@
 	TEST_ASSERT(!second_visit.bind_to_site(deposit_site.site_id()), "A deposit at an already-stripped site bound itself as workable.")
 	TEST_ASSERT(second_visit.worked, "Walking back into a stripped site offered the ore again.")
 	TEST_ASSERT_NOTNULL(second_visit.inert_reason, "A spent deposit gave no reason a player could read.")
+
+
+/// A procedural provider reserves real turfs and binds a real objective to the generated site.
+/datum/unit_test/rimstation_colonist_chapter/overworld_generated_resource_scene
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_generated_resource_scene/Run()
+	begin_test_campaign()
+	SScampaign.overworld = new(default_overworld_options())
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_site/resource_site
+	for(var/site_id in region?.sites)
+		var/datum/overworld_site/candidate = region.sites[site_id]
+		if(candidate.kind == OVERWORLD_SITE_RESOURCE)
+			resource_site = candidate
+			break
+	TEST_ASSERT_NOTNULL(resource_site, "The test campaign generated no resource site.")
+
+	var/site_id = resource_site.site_id()
+	TEST_ASSERT_EQUAL(overworld_site_scene_provider(site_id), /datum/overworld_scene_provider/procedural_resource, "A resource site did not select the procedural provider.")
+	TEST_ASSERT_NULL(overworld_scene_problem(site_id, /datum/overworld_scene_provider/procedural_resource), "The procedural provider refused a valid resource site.")
+
+	var/datum/overworld_destination/destination = load_overworld_destination(site_id, /datum/overworld_scene_provider/procedural_resource)
+	TEST_ASSERT_NOTNULL(destination, "The procedural resource scene could not be materialized.")
+	TEST_ASSERT_NOTNULL(destination.reservation, "The procedural resource scene reserved no turfs.")
+	TEST_ASSERT_EQUAL(destination.reservation.width, OVERWORLD_PROCEDURAL_SCENE_WIDTH, "The resource reservation has the wrong width.")
+	TEST_ASSERT_EQUAL(destination.reservation.height, OVERWORLD_PROCEDURAL_SCENE_HEIGHT, "The resource reservation has the wrong height.")
+	TEST_ASSERT_NOTNULL(destination.scene_area, "The generated scene has no independent expedition area.")
+	TEST_ASSERT(length(destination.arrival_turfs), "The generated scene has nowhere for the caravan to arrive.")
+	TEST_ASSERT_NOTNULL(destination.pick_arrival_turf(), "The generated scene offered no open arrival turf.")
+
+	var/obj/structure/rimstation_resource_deposit/deposit = destination.objective_ref?.resolve()
+	TEST_ASSERT_NOTNULL(deposit, "The generated resource scene has no deposit.")
+	TEST_ASSERT_EQUAL(deposit.site_id, site_id, "The generated deposit was not bound to its strategic site.")
+	TEST_ASSERT_EQUAL(get_area(deposit), destination.scene_area, "The generated deposit is not in the scene's own area.")

@@ -166,8 +166,8 @@ SUBSYSTEM_DEF(overworld)
 /datum/controller/subsystem/overworld/proc/bring_up_site(party_id, site_id)
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
-	// Which scene depends on what kind of site it is: a deposit and a ruin are different places to stand.
-	var/datum/overworld_destination/site = load_overworld_destination(site_id, overworld_site_template_key(site_id))
+	// Which provider is used depends on what kind of site it is: deposits are generated and ruins are authored.
+	var/datum/overworld_destination/site = load_overworld_destination(site_id, overworld_site_scene_provider(site_id))
 	loading_destination = FALSE
 
 	var/datum/overworld_party/party = SScampaign.get_active_party()
@@ -234,7 +234,7 @@ SUBSYSTEM_DEF(overworld)
 /datum/controller/subsystem/overworld/proc/board_for_return(party_id)
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
-	var/datum/overworld_destination/camp = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	var/datum/overworld_destination/camp = load_overworld_destination(null, /datum/overworld_scene_provider/premade/transit)
 	loading_destination = FALSE
 
 	var/datum/overworld_party/party = SScampaign.get_active_party()
@@ -303,7 +303,7 @@ SUBSYSTEM_DEF(overworld)
 	// SSmapping.lazy_load_template() would have provided.
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
-	var/datum/overworld_destination/camp = load_overworld_destination(null, LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT)
+	var/datum/overworld_destination/camp = load_overworld_destination(null, /datum/overworld_scene_provider/premade/transit)
 	loading_destination = FALSE
 
 	// From here on, everything is as it is now rather than as it was when somebody clicked.
@@ -647,24 +647,24 @@ SUBSYSTEM_DEF(overworld)
 	// At a site they are at the site; anywhere else on the journey they are in the camp.
 	var/at_site = party.state == OVERWORLD_PARTY_AT_SITE
 	var/site_id = at_site ? party.destination_site_id : null
-	var/template_key = at_site ? overworld_site_template_key(site_id) : LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT
+	var/provider_type = at_site ? overworld_site_scene_provider(site_id) : /datum/overworld_scene_provider/premade/transit
 
 	// Preflighted before anything is promised. A content problem should leave somebody standing in the colony
 	// with an admin warning, not halfway into a scene that does not exist.
-	var/problem = overworld_template_problem(template_key)
+	var/problem = overworld_scene_problem(site_id, provider_type)
 	if(problem)
 		log_game("Colony campaign: [colonist_id] could not be returned to their expedition: [problem].")
 		message_admins(span_boldwarning("[colonist_id] rejoined an expedition but its scene could not be loaded: [problem]. They have been left in the colony."))
 		return FALSE
 
-	INVOKE_ASYNC(src, PROC_REF(transfer_to_expedition), colonist_id, party.party_id, site_id, template_key)
+	INVOKE_ASYNC(src, PROC_REF(transfer_to_expedition), colonist_id, party.party_id, site_id, provider_type)
 	return TRUE
 
 /// Brings the scene up and puts one rejoining body in it.
-/datum/controller/subsystem/overworld/proc/transfer_to_expedition(colonist_id, party_id, site_id, template_key)
+/datum/controller/subsystem/overworld/proc/transfer_to_expedition(colonist_id, party_id, site_id, provider_type)
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
-	var/datum/overworld_destination/destination = load_overworld_destination(site_id, template_key)
+	var/datum/overworld_destination/destination = load_overworld_destination(site_id, provider_type)
 	loading_destination = FALSE
 
 	// Everything asked again, because a map load is long enough for all of it to have changed.

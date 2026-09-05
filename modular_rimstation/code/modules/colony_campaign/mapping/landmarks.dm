@@ -11,8 +11,9 @@
 /**
  * A validated map-edge tile a raid is allowed to arrive on.
  *
- * Mapped in rather than searched for at runtime so that arrival points stay off cliffs and out of the
- * settlement, and so a mapper can see exactly where attackers can come from.
+ * Generated after terrain and ecology from landing-connected edge coordinates. It remains only a proposal:
+ * the raid validates real turf density and connectivity again when an attack begins, after players may have
+ * changed the map.
  */
 /obj/effect/landmark/rimstation_raid_insertion
 	name = "rimstation raid insertion point"

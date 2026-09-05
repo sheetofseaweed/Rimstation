@@ -104,54 +104,58 @@
 
 
 /**
- * The colony generator has to stay deterministic.
- *
- * The inherited non-biome path selects turfs with pick(), which is only reproducible while there is exactly
- * one candidate per side. Adding a second turf type would silently reintroduce an unseeded roll, so this
- * guards the assumption rather than the terrain.
+ * The planner must produce a useful, vertically coordinated landscape without touching the global RNG.
  */
 /datum/unit_test/rimstation_colony_generator_determinism
 
 /datum/unit_test/rimstation_colony_generator_determinism/Run()
-	var/datum/map_generator/cave_generator/rimstation_colony/generator = new
+	var/datum/planet_definition/planet = new("rimstation-landscape-test")
+	var/datum/map_generator/rimstation_colony/generator = new(planet)
+	var/datum/rimstation_colony_generation_context/first = generator.create_generation_context(1, 1, 96, 96, 2)
+	var/datum/rimstation_colony_generation_context/second = generator.create_generation_context(1, 1, 96, 96, 2)
+	allocated += planet
 	allocated += generator
+	allocated += first
+	allocated += second
+	first.set_landing_bounds(43, 43, 54, 54)
+	second.set_landing_bounds(43, 43, 54, 54)
+	TEST_ASSERT(first.build_plan(), "The first deterministic landscape plan could not be built.")
+	TEST_ASSERT(second.build_plan(), "The repeated deterministic landscape plan could not be built.")
+	TEST_ASSERT_EQUAL(first.fingerprint(), second.fingerprint(), "The same planet and bounds produced two different landscape plans.")
 
-	TEST_ASSERT_EQUAL(length(generator.open_turf_types), 1, "The colony generator has more than one open turf type, which makes pick() reintroduce randomness into terrain.")
-	TEST_ASSERT_EQUAL(length(generator.closed_turf_types), 1, "The colony generator has more than one closed turf type, which makes pick() reintroduce randomness into terrain.")
-	TEST_ASSERT_NOTNULL(generator.generation_seed_provider, "The colony generator was not bound to a planet, so its terrain would not be reproducible.")
-
-	// The parent installs lavaland defaults in New() when these are left unset, which would put goliaths and
-	// megafauna on a surface whose colonists start with a knife.
 	var/area/rimstation_colony/surface/wilds/wilds_area = /area/rimstation_colony/surface/wilds
 	TEST_ASSERT(!(initial(wilds_area.area_flags_mapping) & MEGAFAUNA_SPAWN_ALLOWED), "The colony surface would spawn megafauna, which a starting colony cannot answer.")
-	for(var/mob_type in generator.mob_spawn_list)
-		TEST_ASSERT(!ispath(mob_type, /mob/living/basic/mining), "The colony surface would spawn lavaland fauna ([mob_type]) into the opening.")
-	for(var/flora_type in generator.flora_spawn_list)
-		TEST_ASSERT(!ispath(flora_type, /obj/structure/flora/ash), "The colony surface would spawn ashland flora ([flora_type]) on an Earthlike world.")
-	TEST_ASSERT(length(generator.mob_spawn_list), "The colony surface has no fauna at all, leaving nothing to hunt or herd.")
-	TEST_ASSERT(length(generator.flora_spawn_list), "The colony surface has no flora at all, so there is no renewable wood.")
 
-	// The same coordinate must resolve the same way every time the grid is built.
-	var/cave_seed = generator.resolve_generation_seed(PLANET_STREAM_TERRAIN, 1)
-	TEST_ASSERT_NOTNULL(cave_seed, "The colony generator produced no terrain seed.")
-	// Sampled across the whole surface rather than one row: perlin features are tens of tiles wide, so a
-	// narrow sample can legitimately be uniform even when the map as a whole is not.
-	var/open_count = 0
-	var/total_count = 0
-	var/lowest_noise = INFINITY
-	var/highest_noise = -INFINITY
-	for(var/x = 1; x <= 240; x += 8)
-		for(var/y = 1; y <= 240; y += 8)
-			var/noise = text2num(rustg_noise_get_at_coordinates("[cave_seed]", "[x / generator.perlin_zoom]", "[y / generator.perlin_zoom]"))
-			lowest_noise = min(lowest_noise, noise)
-			highest_noise = max(highest_noise, noise)
-			var/open = generator.resolve_cave_openness(cave_seed, x, y)
-			TEST_ASSERT_EQUAL(open, generator.resolve_cave_openness(cave_seed, x, y), "Cave openness changed between calls at [x],[y].")
-			total_count++
-			if(open)
-				open_count++
+	var/list/terrain_counts = list()
+	var/ascent_count = 0
+	for(var/index in 1 to length(first.terrain_plan))
+		var/terrain = first.terrain_plan[index]
+		var/terrain_key = "[terrain]"
+		terrain_counts[terrain_key] = (terrain_counts[terrain_key] || 0) + 1
+		if(first.ascent_directions[index])
+			ascent_count++
+	TEST_ASSERT(terrain_counts["[RIMSTATION_TERRAIN_LOWLAND]"], "The generated plan contains no ordinary lowland.")
+	TEST_ASSERT(terrain_counts["[RIMSTATION_TERRAIN_MOUNTAIN]"], "The generated plan contains no solid mountain interiors.")
+	TEST_ASSERT(terrain_counts["[RIMSTATION_TERRAIN_CAVE]"], "The generated mountains contain no entrance-connected caves.")
+	TEST_ASSERT(terrain_counts["[RIMSTATION_TERRAIN_RIVER_SHALLOW]"], "The generated river contains no fordable channel.")
+	TEST_ASSERT(terrain_counts["[RIMSTATION_TERRAIN_RIVER_DEEP]"], "The generated river contains no occasional deep pools.")
+	TEST_ASSERT(ascent_count > 0, "The highlands have no generated ascent point.")
+	TEST_ASSERT(ascent_count <= RIMSTATION_MAX_ASCENTS, "The highlands generated [ascent_count] ascents, above the bounded maximum of [RIMSTATION_MAX_ASCENTS].")
+	TEST_ASSERT(length(first.raid_insertion_indices) > 0, "The generated plan found no landing-connected raid insertion points.")
+	TEST_ASSERT(length(first.raid_insertion_indices) <= 8, "The generated plan produced more than two raid insertion points per map edge.")
+	for(var/index in first.raid_insertion_indices)
+		TEST_ASSERT(first.is_plan_walkable(index), "A generated raid insertion point is not walkable in the terrain plan.")
+		var/x = first.index_x(index)
+		var/y = first.index_y(index)
+		var/edge_distance = min(x - first.min_x, first.max_x - x, y - first.min_y, first.max_y - y)
+		TEST_ASSERT(edge_distance < COLONY_RAID_EDGE_BAND, "A generated raid insertion point at [x],[y] is outside the allowed edge band.")
 
-	var/open_percent = round((open_count / total_count) * 100, 1)
-	TEST_ASSERT(open_count > 0 && open_count < total_count, "The seeded cave grid came out entirely [open_count ? "open" : "solid"], which would make the surface unplayable. Noise ranged [lowest_noise] to [highest_noise] against a threshold of [generator.noise_percent / 100].")
-	// A surface that is nearly all rock or nearly all field is technically playable and practically useless.
-	TEST_ASSERT(open_percent >= 20 && open_percent <= 80, "The seeded cave grid came out [open_percent]% open, outside the usable 20-80% band. Noise ranged [lowest_noise] to [highest_noise].")
+	TEST_ASSERT(first.landing_distance(37, 37) > RIMSTATION_LANDING_BLEND_RADIUS, "The landing blend still expands from square bounding-box corners.")
+	for(var/x in first.min_x to first.max_x)
+		for(var/y in first.min_y to first.max_y)
+			if(first.landing_distance(x, y) > RIMSTATION_LANDING_BLEND_RADIUS)
+				continue
+			var/index = first.coordinate_index(x, y)
+			var/terrain = first.terrain_plan[index]
+			TEST_ASSERT(terrain != RIMSTATION_TERRAIN_MOUNTAIN && terrain != RIMSTATION_TERRAIN_CAVE, "Mountain terrain intruded into the landing blend at [x],[y].")
+			TEST_ASSERT(terrain != RIMSTATION_TERRAIN_RIVER_SHALLOW && terrain != RIMSTATION_TERRAIN_RIVER_DEEP, "The river intruded into the landing blend at [x],[y].")

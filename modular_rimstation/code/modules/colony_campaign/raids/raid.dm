@@ -174,9 +174,9 @@ GLOBAL_LIST_EMPTY(colony_raids)
 /**
  * Collects the turfs this raid is allowed to arrive on.
  *
- * Candidates are mapped-in landmarks, but a landmark is only a *proposal*. The surface is generated after the
- * map is authored, so a mapper cannot promise a tile is reachable - generation routinely seals one inside a
- * closed pocket of rock. Attackers spawned there simply stand around, which is how this was found.
+ * Candidates are generated landmarks, but a landmark is only a *proposal*. Players can build walls, dig out
+ * mountains, bridge water, or otherwise change connectivity after map generation. Attackers spawned into a
+ * stale sealed pocket would simply stand around.
  *
  * So every candidate is checked against a walkable region flood-filled outward from the core. That is a real
  * connectivity answer rather than a proxy for one, and it is done here rather than through SSpathfinder

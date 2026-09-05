@@ -1,8 +1,9 @@
 /**
  * The places an expedition physically stands in, and the one path that brings them into being.
  *
- * Every scene out here is a lazy template: it does not exist until somebody walks to it, and once loaded it is
- * kept until the server reboots. Releasing a scene mid-round is deliberately not attempted - players will have
+ * Every scene out here is provided on demand: some come from lazy templates and some are generated into a
+ * fresh turf reservation. They do not exist until somebody walks to them, and once loaded they are kept until
+ * the server reboots. Releasing a scene mid-round is deliberately not attempted - players will have
  * built, dropped and broken things in it, and tearing down a reservation somebody is standing in is a far worse
  * failure than holding a few hundred turfs longer than strictly necessary. The region caps how many sites can
  * exist, so the memory is bounded by design rather than by cleanup.
@@ -20,7 +21,7 @@
 /obj/effect/landmark/rimstation_expedition_arrival
 	name = "expedition arrival point"
 
-/// Where a returning party is put down in the colony, if the map offers somewhere.
+/// Where a returning party is put down in the colony. Mapgen places one inside the authored landing shape.
 /obj/effect/landmark/rimstation_caravan_return
 	name = "caravan return point"
 
@@ -37,27 +38,6 @@
 	map_name = "rimstation_ruin_site"
 
 /**
- * Which scene a site is standing in, by what kind of site it is.
- *
- * Asked of the region rather than stored on the party, because the kind is a fact about the generated site and
- * the party only ever knew its id. A site id that no longer describes anything returns null, and the loader
- * refuses rather than guessing at a scene.
- */
-/proc/overworld_site_template_key(site_id)
-	var/datum/overworld_region/region = get_active_overworld_region()
-	var/datum/overworld_site/site = region?.sites[site_id]
-	if(!site)
-		return null
-
-	switch(site.kind)
-		if(OVERWORLD_SITE_RUIN)
-			return LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE
-		if(OVERWORLD_SITE_RESOURCE)
-			return LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE
-	return null
-
-
-/**
  * One loaded scene, and what was found in it.
  *
  * Runtime only. None of this is persisted: a reservation is a fact about this boot, and writing one into the
@@ -66,26 +46,32 @@
 /datum/overworld_destination
 	/// The site this scene is for, or null for the shared travelling camp.
 	var/site_id
-	/// The template key it was built from.
+	/// The scene provider that built it.
+	var/provider_type
+	/// The template key it was built from, when its provider used one.
 	var/template_key
 	/// The reservation holding it. Kept so the turfs are not handed back out from under people.
 	var/datum/turf_reservation/reservation
+	/// Runtime area made for a procedural scene. Premade scenes receive theirs from the map loader.
+	var/area/scene_area
 	/// Turfs somebody arriving should be put on, in map order.
 	var/list/arrival_turfs
 	/// The deposit or objective in this scene, if it has one.
 	var/datum/weakref/objective_ref
 
-/datum/overworld_destination/New(site_id, template_key)
+/datum/overworld_destination/New(site_id, provider_type)
 	. = ..()
 	src.site_id = site_id
-	src.template_key = template_key
+	src.provider_type = provider_type
 	arrival_turfs = list()
 
 /datum/overworld_destination/Destroy(force)
 	// The reservation is deliberately not released; see the file comment. Dropping the reference is enough.
 	reservation = null
+	scene_area = null
 	arrival_turfs = null
 	objective_ref = null
+	provider_type = null
 	return ..()
 
 /// Somewhere in this scene to put a body, or null if the map offered nowhere.
@@ -141,7 +127,7 @@ GLOBAL_LIST_EMPTY(rimstation_overworld_destinations)
  * is allowed to. Everything that calls it does so through INVOKE_ASYNC and revalidates afterwards, because a
  * great deal can change in the seconds a load takes.
  */
-/proc/load_overworld_destination(site_id, template_key)
+/proc/load_overworld_destination(site_id, provider_type)
 	RETURN_TYPE(/datum/overworld_destination)
 	var/registry_key = site_id || OVERWORLD_TRANSIT_DESTINATION_KEY
 
@@ -150,19 +136,19 @@ GLOBAL_LIST_EMPTY(rimstation_overworld_destinations)
 	if(existing)
 		return existing
 
-	var/problem = overworld_template_problem(template_key)
+	var/problem = overworld_scene_problem(site_id, provider_type)
 	if(problem)
 		log_game("Overworld destination '[registry_key]' could not be loaded: [problem].")
 		message_admins(span_boldwarning("An expedition destination could not be loaded: [problem]. This is a content problem, not a player one."))
 		return null
 
-	var/datum/overworld_destination/destination = new(site_id, template_key)
+	var/datum/overworld_destination/destination = new(site_id, provider_type)
 	if(!destination.load_scene())
 		qdel(destination)
 		return null
 
 	GLOB.rimstation_overworld_destinations[registry_key] = destination
-	log_game("Overworld destination '[registry_key]' loaded from '[template_key]' with [length(destination.arrival_turfs)] arrival points.")
+	log_game("Overworld destination '[registry_key]' loaded by '[provider_type]' with [length(destination.arrival_turfs)] arrival points.")
 	return destination
 
 /**
@@ -176,6 +162,16 @@ GLOBAL_LIST_EMPTY(rimstation_overworld_destinations)
  * the same scene, so each gets its own load.
  */
 /datum/overworld_destination/proc/load_scene()
+	if(!ispath(provider_type, /datum/overworld_scene_provider))
+		return FALSE
+	var/datum/overworld_scene_provider/provider = new provider_type
+	var/loaded = provider.load_destination(src)
+	qdel(provider)
+	return loaded
+
+/// Loads one premade scene. Procedural providers do not pass through this path.
+/datum/overworld_destination/proc/load_template_scene(template_key)
+	src.template_key = template_key
 	var/datum/lazy_template/template = GLOB.lazy_templates[template_key]
 	if(!template)
 		return FALSE
