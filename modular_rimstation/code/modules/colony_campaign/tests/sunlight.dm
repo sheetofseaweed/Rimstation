@@ -188,3 +188,45 @@
 	var/transition = SSdaylight.transition_length()
 	TEST_ASSERT(transition > 0, "The colour fade had no duration.")
 	TEST_ASSERT(transition <= SSdaylight.day_length(), "The colour fade ([transition]) outlasts a whole day ([SSdaylight.day_length()]).")
+
+
+/**
+ * A roof stops the weather, not only the light.
+ *
+ * The shelter capsule always worked because it brings an indoor area with it. A built room does not: its area
+ * is carved out of open country and inherits `outdoors` from it, so the area flag alone calls it outside. This
+ * asserts the turf is asked as well, which is what makes a player-built roof keep the rain off.
+ */
+/datum/unit_test/rimstation_weather_respects_roofs
+
+/datum/unit_test/rimstation_weather_respects_roofs/Run()
+	var/turf/subject = run_loc_floor_bottom_left
+	var/area/test_area = subject.loc
+	var/was_outdoors = test_area.outdoors
+	var/had_override = subject.roofed_override
+
+	// Open country, so the area is not what refuses the weather below.
+	test_area.outdoors = TRUE
+	subject.roofed_override = FALSE
+
+	var/datum/weather/storm = new /datum/weather/particle/rain_storm(list(subject.z))
+	allocated += storm
+
+	TEST_ASSERT(subject.is_sky_visible(), "The test turf is not under open sky, so this test cannot ask its question.")
+	TEST_ASSERT(storm.can_weather_act_turf(subject), "Rain did not fall on open ground.")
+
+	// The same tile, roofed. Nothing about the area changed - only what is over the tile.
+	subject.roofed_override = TRUE
+	TEST_ASSERT(!subject.is_sky_visible(), "A roofed tile still reported open sky.")
+	TEST_ASSERT(!storm.can_weather_act_turf(subject), "Rain fell through a roof, because the weather asked the area instead of the tile.")
+
+	// Open country is never treated as covered. This is the early exit that keeps the wilds cheap to check.
+	test_area.outdoors = TRUE
+	subject.roofed_override = FALSE
+	TEST_ASSERT(!area_is_fully_roofed(test_area, list(subject.z)), "Open country was reported as fully roofed, which would stop weather everywhere.")
+
+	// An area with no turfs on the level being checked is absent, not covered.
+	TEST_ASSERT(!area_is_fully_roofed(test_area, list()), "An area was called covered without a single level being checked.")
+
+	test_area.outdoors = was_outdoors
+	subject.roofed_override = had_override

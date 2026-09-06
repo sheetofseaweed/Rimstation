@@ -3358,6 +3358,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\sunlight\time_of_day.dm"
 #include "modular_rimstation\code\modules\colony_campaign\sunlight\roof.dm"
 #include "modular_rimstation\code\modules\colony_campaign\sunlight\sunlight_debug.dm"
+#include "modular_rimstation\code\modules\colony_campaign\sunlight\weather_roofing.dm"
 #include "code\game\turfs\open\river.dm"
 #include "code\game\turfs\open\sand.dm"
 #include "code\game\turfs\open\snow.dm"
