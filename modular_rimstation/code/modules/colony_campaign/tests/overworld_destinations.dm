@@ -12,10 +12,10 @@
 /datum/unit_test/rimstation_overworld_destinations/refuses_before_loading
 
 /datum/unit_test/rimstation_overworld_destinations/refuses_before_loading/Run()
-	// The two the campaign actually ships. If either of these ever reports a problem, the content is missing
-	// and every expedition in the game is broken - which is worth failing a test over.
+	// Transit and the retained authored fallbacks must remain loadable.
 	TEST_ASSERT_NULL(overworld_template_problem(LAZY_TEMPLATE_KEY_RIMSTATION_TRANSIT), "The caravan transit template is not loadable.")
 	TEST_ASSERT_NULL(overworld_template_problem(LAZY_TEMPLATE_KEY_RIMSTATION_RESOURCE_SITE), "The resource site template is not loadable.")
+	TEST_ASSERT_NULL(overworld_template_problem(LAZY_TEMPLATE_KEY_RIMSTATION_RUIN_SITE), "The ruin fallback template is not loadable.")
 
 	// A key nobody registered, which is what a typo in a define looks like from here.
 	TEST_ASSERT_NOTNULL(overworld_template_problem("LT_THIS_DOES_NOT_EXIST"), "An unregistered template key was accepted.")
@@ -207,3 +207,128 @@
 	TEST_ASSERT_NOTNULL(deposit, "The generated resource scene has no deposit.")
 	TEST_ASSERT_EQUAL(deposit.site_id, site_id, "The generated deposit was not bound to its strategic site.")
 	TEST_ASSERT_EQUAL(get_area(deposit), destination.scene_area, "The generated deposit is not in the scene's own area.")
+
+
+/// Layout choice and footprint protection are repeatable before any reservation is requested.
+/datum/unit_test/rimstation_overworld_destinations/hybrid_ruin_plan
+
+/datum/unit_test/rimstation_overworld_destinations/hybrid_ruin_plan/Run()
+	var/datum/planet_definition/planet = allocate(/datum/planet_definition, "ruin-scene-test-seed", "ruin-scene-test")
+	var/datum/overworld_site/site = allocate(/datum/overworld_site, OVERWORLD_SITE_RUIN, 3, 4, -2)
+	var/datum/overworld_cell/cell = allocate(/datum/overworld_cell, 4, -2)
+	cell.terrain = OVERWORLD_TERRAIN_MARSH
+	cell.topology = OVERWORLD_TOPOLOGY_IMPASSABLE
+	var/datum/rimstation_expedition_scene_context/ruin/first = allocate(/datum/rimstation_expedition_scene_context/ruin, planet, site, cell)
+	var/datum/rimstation_expedition_scene_context/ruin/second = allocate(/datum/rimstation_expedition_scene_context/ruin, planet, site, cell)
+	TEST_ASSERT(first.build_plan(), "The hybrid ruin plan could not be built.")
+	TEST_ASSERT(second.build_plan(), "The hybrid ruin plan could not be rebuilt.")
+	TEST_ASSERT_EQUAL(first.fingerprint(), second.fingerprint(), "The same site produced a different ruin layout or landscape.")
+	TEST_ASSERT(first.template_type in first.template_types, "The ruin selected a layout outside its catalog.")
+	TEST_ASSERT(first.trail_mask[first.coordinate_index(first.objective_x, first.objective_y)], "The trail did not reach the ruin entrance.")
+
+	for(var/template_type in first.template_types)
+		var/datum/rimstation_expedition_scene_context/ruin/context = allocate(/datum/rimstation_expedition_scene_context/ruin, planet, site, cell)
+		context.template_type = template_type
+		TEST_ASSERT(context.build_plan(), "The authored layout [template_type] could not be planned.")
+		TEST_ASSERT(context.ruin_x > OVERWORLD_PROCEDURAL_SCENE_BORDER, "A ruin starts in the reservation's boundary.")
+		TEST_ASSERT(context.ruin_x + context.ruin_template.width <= context.width - OVERWORLD_PROCEDURAL_SCENE_BORDER, "A ruin extends into the reservation's boundary.")
+		TEST_ASSERT(context.ruin_y + context.ruin_template.height <= context.height - OVERWORLD_PROCEDURAL_SCENE_BORDER, "A ruin extends past the northern boundary.")
+		for(var/y in context.ruin_y to context.ruin_y + context.ruin_template.height - 1)
+			for(var/x in context.ruin_x to context.ruin_x + context.ruin_template.width - 1)
+				var/index = context.coordinate_index(x, y)
+				TEST_ASSERT(context.is_protected_coordinate(x, y, index), "The ruin footprint allows random ecology inside the building.")
+				TEST_ASSERT(ispath(context.turf_plan[index], /turf/open), "A rock can occupy the ruin footprint.")
+				TEST_ASSERT(!ispath(context.turf_plan[index], /turf/open/water), "A stream can flood the ruin's authored route.")
+
+	var/datum/rimstation_expedition_scene_context/ruin/too_small = allocate(/datum/rimstation_expedition_scene_context/ruin, planet, site, cell, 21, 21)
+	TEST_ASSERT(!too_small.build_plan(), "A ruin was accepted without room between its entrance and the arrival clearing.")
+
+
+/// Load every authored layout through real generated terrain and walk from arrival to archive without tools.
+/datum/unit_test/rimstation_colonist_chapter/overworld_generated_ruin_scene
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_generated_ruin_scene/Run()
+	begin_test_campaign()
+	SScampaign.overworld = new(default_overworld_options())
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/datum/overworld_site/ruin_site
+	for(var/site_id in region?.sites)
+		var/datum/overworld_site/candidate = region.sites[site_id]
+		if(candidate.kind == OVERWORLD_SITE_RUIN)
+			ruin_site = candidate
+			break
+	TEST_ASSERT_NOTNULL(ruin_site, "The test campaign generated no ruin site.")
+	var/site_id = ruin_site.site_id()
+	TEST_ASSERT_EQUAL(overworld_site_scene_provider(site_id), /datum/overworld_scene_provider/hybrid_ruin, "A ruin did not select the hybrid provider.")
+	TEST_ASSERT_NULL(overworld_scene_problem(site_id, /datum/overworld_scene_provider/hybrid_ruin), "The hybrid provider refused a valid ruin.")
+	TEST_ASSERT_NOTNULL(overworld_scene_problem(site_id, /datum/overworld_scene_provider/procedural_resource), "The resource provider accepted a ruin.")
+	var/datum/overworld_destination/cached = load_overworld_destination(site_id, /datum/overworld_scene_provider/hybrid_ruin)
+	TEST_ASSERT_NOTNULL(cached, "The hybrid provider could not load a ruin.")
+	TEST_ASSERT_EQUAL(load_overworld_destination(site_id, /datum/overworld_scene_provider/hybrid_ruin), cached, "A second visit generated a duplicate ruin reservation.")
+
+	var/datum/overworld_cell/cell = allocate(/datum/overworld_cell, ruin_site.q, ruin_site.r)
+	cell.topology = OVERWORLD_TOPOLOGY_DIFFICULT
+	var/list/biomes = list(OVERWORLD_TERRAIN_FOREST, OVERWORLD_TERRAIN_DESERT, OVERWORLD_TERRAIN_FROZEN_STEPPE)
+	var/list/template_types = /datum/rimstation_expedition_scene_context/ruin::template_types
+	var/layout_number = 0
+	for(var/template_type in template_types)
+		cell.terrain = biomes[(layout_number % length(biomes)) + 1]
+		layout_number++
+		var/datum/rimstation_expedition_scene_context/ruin/context = allocate(/datum/rimstation_expedition_scene_context/ruin, get_active_colony_planet(), ruin_site, cell)
+		context.template_type = template_type
+		var/datum/overworld_destination/destination = allocate(/datum/overworld_destination, site_id, /datum/overworld_scene_provider/hybrid_ruin)
+		TEST_ASSERT(context.build_plan(), "The [template_type] test plan failed.")
+		TEST_ASSERT(context.materialize(destination), "The [template_type] scene failed to materialize.")
+		var/obj/structure/rimstation_ruin_archive/archive = destination.objective_ref?.resolve()
+		TEST_ASSERT(istype(archive), "A hybrid ruin did not bind an archive objective.")
+		TEST_ASSERT_EQUAL(archive.site_id, site_id, "The archive belongs to the wrong strategic site.")
+		TEST_ASSERT_EQUAL(get_area(archive), destination.scene_area, "The authored stamp replaced the reservation's independent area.")
+		TEST_ASSERT(!archive.recovered, "A new ruin archive was already spent.")
+		var/archive_count = 0
+		var/console_count = 0
+		for(var/turf/scene_turf as anything in destination.scene_area)
+			for(var/obj/structure/rimstation_ruin_archive/found_archive in scene_turf)
+				archive_count++
+			for(var/obj/machinery/computer/colony_overworld/console in scene_turf)
+				console_count++
+			TEST_ASSERT(!(locate(/obj/structure/rimstation_resource_deposit) in scene_turf), "A ruin also spawned a resource deposit.")
+		TEST_ASSERT_EQUAL(archive_count, 1, "A ruin must have exactly one archive.")
+		TEST_ASSERT_EQUAL(console_count, 1, "The generated arrival must have exactly one return console.")
+		TEST_ASSERT_EQUAL(length(destination.arrival_turfs), 1, "The ruin stamp added another caravan arrival.")
+
+		var/turf/arrival = destination.pick_arrival_turf()
+		TEST_ASSERT_NOTNULL(arrival, "A hybrid ruin has no usable arrival.")
+		var/list/frontier = list(arrival)
+		var/list/reached = list()
+		reached[arrival] = TRUE
+		var/next_index = 1
+		while(next_index <= length(frontier))
+			var/turf/current = frontier[next_index]
+			next_index++
+			for(var/direction in GLOB.cardinals)
+				var/turf/neighbour = get_step(current, direction)
+				if(!neighbour || get_area(neighbour) != destination.scene_area || reached[neighbour] || isclosedturf(neighbour) || istype(neighbour, /turf/open/water))
+					continue
+				var/blocked = FALSE
+				for(var/obj/obstacle in neighbour)
+					if(obstacle.density)
+						blocked = TRUE
+						break
+				if(blocked)
+					continue
+				reached[neighbour] = TRUE
+				frontier += neighbour
+			CHECK_TICK
+		var/reached_archive = FALSE
+		for(var/direction in GLOB.cardinals)
+			if(reached[get_step(archive, direction)])
+				reached_archive = TRUE
+		TEST_ASSERT(reached_archive, "The archive in [template_type] cannot be reached from arrival without crossing walls, furniture, or water.")
+		// Only these unregistered test scenes are released; the real provider's cached destination stays alive.
+		QDEL_NULL(destination.reservation)
+
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	TEST_ASSERT(region_state.set_site_state(region, site_id, OVERWORLD_SITE_STATE_RESOLVED, "test"), "The ruin could not be recorded as resolved.")
+	var/obj/structure/rimstation_ruin_archive/revisit = allocate(/obj/structure/rimstation_ruin_archive, run_loc_floor_bottom_left)
+	TEST_ASSERT(!revisit.bind_to_site(site_id), "A regenerated archive at a resolved ruin offered a second payout.")
+	TEST_ASSERT(revisit.recovered, "The resolved site's archive was not inert.")

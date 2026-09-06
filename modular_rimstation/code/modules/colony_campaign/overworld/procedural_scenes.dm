@@ -6,7 +6,7 @@
  *
  * A provider owns how a scene is made, while /datum/overworld_destination continues to own the resulting
  * reservation and the landmarks found in it. This keeps the expedition lifecycle independent of content:
- * transit and ruins can remain authored maps while resource sites are generated from their strategic cell.
+ * transit stays authored, resource landscapes are generated, and ruins combine terrain with authored structures.
  */
 /datum/overworld_scene_provider
 
@@ -51,25 +51,27 @@
 	return ..()
 
 
-/// A resource landscape generated from the planet, site identity, and strategic cell.
-/datum/overworld_scene_provider/procedural_resource
+/// A landscape generated from the planet, site identity, and strategic cell.
+/datum/overworld_scene_provider/procedural
+	var/site_kind = OVERWORLD_SITE_RESOURCE
+	var/context_type = /datum/rimstation_expedition_scene_context
 
-/datum/overworld_scene_provider/procedural_resource/problem(site_id)
+/datum/overworld_scene_provider/procedural/problem(site_id)
 	var/datum/overworld_region/region = get_active_overworld_region()
 	var/datum/overworld_site/site = region?.sites[site_id]
-	if(!site || site.kind != OVERWORLD_SITE_RESOURCE)
-		return "'[site_id]' is not a resource site in the active region"
+	if(!site || site.kind != site_kind)
+		return "'[site_id]' is not a [site_kind] site in the active region"
 	if(!get_active_colony_planet())
 		return "the active campaign has no planet definition"
 	if(!region.cells["[site.q],[site.r]"])
-		return "resource site '[site_id]' does not stand on a valid region cell"
+		return "site '[site_id]' does not stand on a valid region cell"
 	return null
 
-/datum/overworld_scene_provider/procedural_resource/load_destination(datum/overworld_destination/destination)
+/datum/overworld_scene_provider/procedural/load_destination(datum/overworld_destination/destination)
 	var/datum/overworld_region/region = get_active_overworld_region()
 	var/datum/overworld_site/site = region?.sites[destination?.site_id]
 	var/datum/overworld_cell/cell = region?.cells["[site?.q],[site?.r]"]
-	var/datum/rimstation_expedition_scene_context/context = new(get_active_colony_planet(), site, cell)
+	var/datum/rimstation_expedition_scene_context/context = new context_type(get_active_colony_planet(), site, cell)
 	if(!context.build_plan() || !context.materialize(destination))
 		qdel(context)
 		if(destination?.reservation)
@@ -80,6 +82,15 @@
 	return TRUE
 
 
+/datum/overworld_scene_provider/procedural_resource
+	parent_type = /datum/overworld_scene_provider/procedural
+
+/datum/overworld_scene_provider/hybrid_ruin
+	parent_type = /datum/overworld_scene_provider/procedural
+	site_kind = OVERWORLD_SITE_RUIN
+	context_type = /datum/rimstation_expedition_scene_context/ruin
+
+
 /// Provider for a generated site's kind. Null means the site does not describe loadable content.
 /proc/overworld_site_scene_provider(site_id)
 	var/datum/overworld_site/site = get_active_overworld_region()?.sites[site_id]
@@ -87,7 +98,7 @@
 		if(OVERWORLD_SITE_RESOURCE)
 			return /datum/overworld_scene_provider/procedural_resource
 		if(OVERWORLD_SITE_RUIN)
-			return /datum/overworld_scene_provider/premade/ruin
+			return /datum/overworld_scene_provider/hybrid_ruin
 	return null
 
 /// Why a provider cannot make this destination, without reserving any turfs.
@@ -101,7 +112,7 @@
 
 
 /**
- * Pure plan and runtime materializer for one resource scene.
+ * Local terrain plan and runtime materializer for one expedition scene.
  *
  * All generation works in local coordinates. Moving the reservation, loading another scene first, or changing
  * world.maxx therefore cannot change the result. The strategic cell supplies its visible terrain, traversal
@@ -188,8 +199,8 @@
 	if(isnull(terrain_seed) || isnull(ecology_seed) || isnull(resource_seed))
 		return FALSE
 
-	objective_x = round(width / 2) - round(width / 6) + coordinate_roll(resource_seed, width, height, "objective", round(width / 3))
-	objective_x = clamp(objective_x, 7, width - 6)
+	if(!prepare_objective())
+		return FALSE
 	has_stream = cell.terrain == OVERWORLD_TERRAIN_MARSH
 	if(cell.terrain == OVERWORLD_TERRAIN_FOREST)
 		has_stream = coordinate_roll(terrain_seed, 1, 1, "stream") < 6500
@@ -214,7 +225,13 @@
 	plan_built = TRUE
 	return TRUE
 
-/// A three-tile trail guarantees a walkable route from the caravan to the deposit.
+/// Reserve the objective's approach before terrain and trails are planned.
+/datum/rimstation_expedition_scene_context/proc/prepare_objective()
+	objective_x = round(width / 2) - round(width / 6) + coordinate_roll(resource_seed, width, height, "objective", round(width / 3))
+	objective_x = clamp(objective_x, 7, width - 6)
+	return TRUE
+
+/// A three-tile trail guarantees a walkable route from the caravan to the objective's approach.
 /datum/rimstation_expedition_scene_context/proc/build_trail()
 	var/vertical_span = max(1, objective_y - arrival_y)
 	var/first_trail_x
@@ -365,23 +382,19 @@
 		CHECK_TICK
 	SSlighting.setup_static_lighting_if_needed(generated_turfs)
 
-	populate(destination, bottom_left)
-	log_game("Generated expedition resource site '[site_id]' as [width]x[height] [cell.terrain]/[cell.topology] terrain.")
+	if(!populate(destination, bottom_left))
+		return FALSE
+	log_game("Generated expedition [site.kind] site '[site_id]' as [width]x[height] [cell.terrain]/[cell.topology] terrain.")
 	return length(destination.arrival_turfs) && destination.objective_ref
 
 /datum/rimstation_expedition_scene_context/proc/populate(datum/overworld_destination/destination, turf/bottom_left)
 	var/turf/arrival = local_turf(bottom_left, arrival_x, arrival_y)
-	var/turf/objective = local_turf(bottom_left, objective_x, objective_y)
-	if(!arrival || !objective)
+	if(!arrival || !place_objective(destination, bottom_left))
 		return FALSE
 
 	new /obj/effect/landmark/rimstation_expedition_arrival(arrival)
 	destination.arrival_turfs += arrival
 	new /obj/machinery/computer/colony_overworld(local_turf(bottom_left, arrival_x + 2, arrival_y))
-
-	var/obj/structure/rimstation_resource_deposit/deposit = new(objective)
-	deposit.bind_to_site(site_id)
-	destination.objective_ref = WEAKREF(deposit)
 
 	for(var/index in 1 to length(turf_plan))
 		var/x = index_x(index)
@@ -394,6 +407,15 @@
 		populate_coordinate(target, x, y)
 		CHECK_TICK
 
+	return TRUE
+
+/datum/rimstation_expedition_scene_context/proc/place_objective(datum/overworld_destination/destination, turf/bottom_left)
+	var/turf/objective = local_turf(bottom_left, objective_x, objective_y)
+	if(!objective || isclosedturf(objective))
+		return FALSE
+	var/obj/structure/rimstation_resource_deposit/deposit = new(objective)
+	deposit.bind_to_site(site_id)
+	destination.objective_ref = WEAKREF(deposit)
 	return TRUE
 
 /datum/rimstation_expedition_scene_context/proc/local_turf(turf/bottom_left, x, y)
@@ -450,6 +472,112 @@
 
 	var/obj/structure/flora/spawned = new flora_type(target)
 	spawned.dir = GLOB.cardinals[(coordinate_roll(ecology_seed, x, y, "flora_direction", 4)) + 1]
+
+
+/**
+ * One authored, roofless structure inside generated terrain. Template no-op areas retain the reservation's
+ * independent area; no-op turfs let the local ground show through missing floors and the broken outline.
+ * Each stamp must have one archive and an unobstructed route from its southern entrance to that archive.
+ */
+/datum/map_template/rimstation_expedition_ruin
+	var/entrance_x = 7
+	var/entrance_y = 1
+
+/datum/map_template/rimstation_expedition_ruin/depot
+	name = "Abandoned supply depot"
+	mappath = "_maps/templates/rimstation_ruins/supply_depot.dmm"
+
+/datum/map_template/rimstation_expedition_ruin/relay
+	name = "Collapsed survey relay"
+	mappath = "_maps/templates/rimstation_ruins/survey_relay.dmm"
+
+/datum/map_template/rimstation_expedition_ruin/shelter
+	name = "Ruined field shelter"
+	mappath = "_maps/templates/rimstation_ruins/field_shelter.dmm"
+
+
+/datum/rimstation_expedition_scene_context/ruin
+	/// Catalog order and length are part of generation; changing either can change a site's layout after reboot.
+	var/static/list/template_types = list(
+		/datum/map_template/rimstation_expedition_ruin/depot,
+		/datum/map_template/rimstation_expedition_ruin/relay,
+		/datum/map_template/rimstation_expedition_ruin/shelter,
+	)
+	/// May be supplied by map previews; normal expeditions select from the catalog using the ruins stream.
+	var/template_type
+	var/datum/map_template/rimstation_expedition_ruin/ruin_template
+	var/ruin_x
+	var/ruin_y
+
+/datum/rimstation_expedition_scene_context/ruin/Destroy(force)
+	QDEL_NULL(ruin_template)
+	return ..()
+
+/datum/rimstation_expedition_scene_context/ruin/prepare_objective()
+	var/ruin_seed = resolve_seed(PLANET_STREAM_RUINS)
+	if(isnull(ruin_seed))
+		return FALSE
+	if(!template_type)
+		template_type = template_types[coordinate_roll(ruin_seed, width, height, "layout", length(template_types)) + 1]
+	if(!ispath(template_type, /datum/map_template/rimstation_expedition_ruin))
+		return FALSE
+	var/datum/map_template/rimstation_expedition_ruin/template_definition = template_type
+	if(!fexists(initial(template_definition.mappath)))
+		log_game("Expedition ruin template '[initial(template_definition.mappath)]' is missing; refusing the scene.")
+		return FALSE
+	ruin_template = new template_type
+	if(ruin_template.width < 3 || ruin_template.height < 3)
+		return FALSE
+	var/margin = OVERWORLD_PROCEDURAL_SCENE_BORDER + 2
+	var/last_x = width - ruin_template.width - margin + 1
+	ruin_y = height - ruin_template.height - margin + 1
+	if(last_x < margin || ruin_y <= arrival_y + 4)
+		return FALSE
+	if(ruin_template.entrance_x < 1 || ruin_template.entrance_x > ruin_template.width || ruin_template.entrance_y != 1)
+		return FALSE
+	ruin_x = margin + coordinate_roll(ruin_seed, width, height, "placement", last_x - margin + 1)
+	// For a ruin, the terrain trail ends at the authored entrance; the stamp owns the interior route.
+	objective_x = ruin_x + ruin_template.entrance_x - 1
+	objective_y = ruin_y + ruin_template.entrance_y - 1
+	return TRUE
+
+/datum/rimstation_expedition_scene_context/ruin/is_protected_coordinate(x, y, index)
+	if(x >= ruin_x - 1 && x <= ruin_x + ruin_template.width && y >= ruin_y - 1 && y <= ruin_y + ruin_template.height)
+		return TRUE
+	return ..()
+
+/datum/rimstation_expedition_scene_context/ruin/choose_turf_type(x, y, index)
+	// Flatten the footprint without painting a rectangular dirt clearing around the structure.
+	if(x >= ruin_x - 1 && x <= ruin_x + ruin_template.width && y >= ruin_y - 1 && y <= ruin_y + ruin_template.height)
+		return ground_turf_type(x, y, trail = !!trail_mask[index])
+	return ..()
+
+/datum/rimstation_expedition_scene_context/ruin/fingerprint(sample_count = 96)
+	var/terrain_fingerprint = ..()
+	if(!terrain_fingerprint)
+		return null
+	return rustg_hash_string(RUSTG_HASH_SHA256, "[terrain_fingerprint]:[template_type]:[ruin_x],[ruin_y]:[ruin_template.width]x[ruin_template.height]")
+
+/datum/rimstation_expedition_scene_context/ruin/place_objective(datum/overworld_destination/destination, turf/bottom_left)
+	var/turf/corner = local_turf(bottom_left, ruin_x, ruin_y)
+	if(!ruin_template.load(corner))
+		return FALSE
+	if(QDELETED(destination) || QDELETED(ruin_template))
+		return FALSE
+	var/obj/structure/rimstation_ruin_archive/archive
+	for(var/turf/stamped as anything in ruin_template.get_affected_turfs(corner))
+		for(var/obj/structure/rimstation_ruin_archive/candidate in stamped)
+			if(archive)
+				log_game("Expedition ruin '[ruin_template.mappath]' has more than one archive; refusing the scene.")
+				return FALSE
+			archive = candidate
+	if(!archive)
+		log_game("Expedition ruin '[ruin_template.mappath]' has no archive; refusing the scene.")
+		return FALSE
+	// A previously resolved site still loads, but bind_to_site makes its archive inert.
+	archive.bind_to_site(site_id)
+	destination.objective_ref = WEAKREF(archive)
+	return TRUE
 
 
 /// Breathable snow for a generated reservation, independent of the reservation z-level's planetary traits.

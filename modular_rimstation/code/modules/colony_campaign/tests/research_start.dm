@@ -1,8 +1,5 @@
 /**
- * A campaign colony starts with what a landing party would bring, not with the station's starting set.
- *
- * A techweb researches every starting node in New() - two dozen of them - which hands a new settlement most of
- * the curve for free. The four kept are the ones a colony plausibly arrives knowing.
+ * The temporary colony starting set retains station prerequisites without granting advanced research.
  */
 /datum/unit_test/rimstation_campaign_starting_research
 
@@ -12,19 +9,17 @@
 	var/datum/techweb/web = new /datum/techweb
 	allocated += web
 
-	// A stock techweb starts with far more than a colony should have.
-	var/station_start = length(web.researched_nodes)
-	TEST_ASSERT(station_start > length(CAMPAIGN_STARTING_RESEARCH_NODES), "A stock techweb starts with no more than a colony would, so restricting it proves nothing.")
+	restrict_techweb_to_campaign_start(web)
 
-	var/removed = restrict_techweb_to_campaign_start(web)
-	TEST_ASSERT(removed > 0, "Restricting a techweb to the colony's starting set withheld nothing.")
-
-	// Exactly the four, and nothing else.
+	// Exactly the configured prerequisites, and nothing else.
 	var/list/allowed = CAMPAIGN_STARTING_RESEARCH_NODES
 	for(var/node_id in allowed)
 		TEST_ASSERT(web.researched_nodes[node_id], "A colony did not start knowing '[node_id]', which it is meant to arrive with.")
 	for(var/node_id in web.researched_nodes)
 		TEST_ASSERT(node_id in allowed, "A colony started knowing '[node_id]', which is outside its starting set.")
+	TEST_ASSERT(web.researched_nodes[TECHWEB_NODE_MEDBAY_EQUIP], "The colony lost its medical starting prerequisite.")
+	TEST_ASSERT(!web.researched_nodes[TECHWEB_NODE_CHEM_SYNTHESIS], "The colony received Chemical Synthesis for free.")
+	TEST_ASSERT(web.available_nodes[TECHWEB_NODE_CHEM_SYNTHESIS], "The medical starting prerequisite did not make Chemical Synthesis available.")
 
 	// The designs those nodes unlock came with them, so the colony can actually build something.
 	TEST_ASSERT(length(web.researched_designs), "A restricted colony techweb unlocked no designs at all.")

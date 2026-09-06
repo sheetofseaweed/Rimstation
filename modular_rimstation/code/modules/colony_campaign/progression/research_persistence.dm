@@ -115,9 +115,8 @@
 /**
  * Cuts a techweb back to what a colony arrives knowing.
  *
- * A techweb researches every starting node in New() - two dozen of them - which hands a new settlement most of
- * the curve for free. This removes everything outside the campaign's starting set and rebuilds the derived
- * lists, so the colony begins where the curve begins.
+ * This removes everything outside the campaign's starting set and rebuilds the derived lists before saved
+ * progress is restored. The temporary starting set includes station prerequisites to keep their branches usable.
  *
  * Nodes are removed rather than the set being built up, because New() has already run by the time anything can
  * intervene. Returns how many were taken away.

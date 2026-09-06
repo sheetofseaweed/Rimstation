@@ -243,7 +243,9 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	while(index <= length(frontier) && length(came_from) < max_turfs)
 		var/turf/current = frontier[index++]
 		for(var/turf/open/neighbour as anything in get_adjacent_open_turfs(current))
-			if(came_from[neighbour])
+			// Retreat destinations are walkable. Never give the origin a parent, or its first neighbour
+			// and the origin point back at each other forever when waypoints are reconstructed.
+			if(neighbour == origin || came_from[neighbour])
 				continue
 			if(!is_walkable_turf(neighbour))
 				continue
@@ -273,13 +275,21 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	if(length(using_route_map) && from)
 		var/turf/current = from
 		var/steps_since_waypoint = 0
+		var/list/visited = list()
 		// Walk parent links back toward the origin. The origin has no parent, which terminates the loop.
 		while(using_route_map[current])
+			if(visited[current])
+				log_game("Colony raid [raid_id] discarded a cyclic waypoint chain at [AREACOORD(current)].")
+				// Keep the existing direct-destination fallback, not a partial route around a cycle.
+				chain.Cut()
+				break
+			visited[current] = TRUE
 			current = using_route_map[current]
 			steps_since_waypoint++
 			if(steps_since_waypoint >= COLONY_RAID_WAYPOINT_SPACING)
 				chain += current
 				steps_since_waypoint = 0
+			CHECK_TICK
 
 	// Always finish on the destination itself, however short the last leg is.
 	if(ending_at)

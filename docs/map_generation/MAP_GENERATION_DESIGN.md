@@ -78,15 +78,33 @@ planet-wide climate, geology, and ecology with no cell identity.
 Expedition sites continue to use their existing reservation, asynchronous loading, arrival, and objective-binding
 contract. Scene providers now allow the system to select one of:
 
-- `premade`: load an authored DMM template; transit and ruins currently use this path;
+- `premade`: load an authored DMM template; transit uses this path, with the old resource and ruin maps retained as explicit fallbacks;
 - `procedural`: reserve a bounded block and generate from a site context; resource sites now use this path;
-- `hybrid`: generate terrain, then stamp an authored ruin or objective; this remains the intended next ruin step.
+- `hybrid`: generate terrain, then stamp an authored structure; ruin sites now use this path.
 
 The resource-site context contains the planet and generation streams, stable site id, overmap coordinates,
 strategic terrain/topology/danger, reservation-local bounds, and site kind. Its seeds do not depend on
 `world.maxx`, absolute reservation coordinates, load order, or the global RNG. A 47 by 47 scene translates the
 strategic terrain into ground cover, topology into rock density, wet biomes into deterministic streams, and
 danger into sparse fauna. It guarantees an open meandering trail between the caravan arrival and deposit.
+
+Hybrid ruins use the same 47 by 47 landscape, with a separate ruins seed stream selecting and positioning one
+authored, roofless outpost. The initial catalog contains a supply depot, survey relay, and field shelter. The
+terrain pass reserves the structure's footprint and a narrow margin against rocks, streams, and random ecology;
+it retains biome ground cover rather than painting a rectangular dirt clearing. The approach trail reaches the
+southern entrance, and each authored layout keeps a walkable route to its archive.
+
+The stamps live in `_maps/templates/rimstation_ruins/` and use `/area/template_noop` throughout, preserving the
+generated scene's own area. `/turf/template_noop` lets native ground show through missing floors and the broken
+outline. They contain exactly one ruin archive and no caravan arrival, return console, random loot spawner, or
+resource deposit. Arrival and the return console remain the landscape provider's responsibility. Existing archive
+rewards and resolved-site checks are unchanged; rebuilding a resolved site's physical scene does not renew its
+archive reward. Ordinary furniture and walls remain salvageable through their existing mechanics.
+
+Adding a layout means adding a DMM and its `/datum/map_template/rimstation_expedition_ruin` subtype to the stable
+catalog. Its declared southern entrance must be open, and the whole stamp must fit inside the protected footprint.
+Catalog order, catalog length, and map contents are generation inputs: changing them can change rebuilt ruins
+after a reboot. Loaded destinations remain cached until reboot; this is not physical per-site persistence.
 
 Procedural sites are runtime generation. They use a fresh turf reservation, runtime-safe `ChangeTurf`, immediate
 runtime atom initialization, bounded yielding, adjacency/static-lighting rebuilds, and revalidation of the party

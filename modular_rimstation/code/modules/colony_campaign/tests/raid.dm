@@ -141,6 +141,7 @@
 	var/turf/origin = run_loc_floor_bottom_left
 	var/list/reachable = raid.build_route_map(origin)
 	TEST_ASSERT(length(reachable), "The flood fill found nothing walkable next to an open floor turf.")
+	TEST_ASSERT_NULL(reachable[origin], "A walkable retreat destination acquired a parent, creating a route cycle.")
 
 	// Neighbours of an open floor are reachable; the origin's own ring seeds the fill.
 	var/turf/open/neighbour = get_step(origin, EAST)
@@ -148,6 +149,9 @@
 		TEST_ASSERT(reachable[neighbour], "An adjacent open floor turf was not considered reachable.")
 		// Parent links have to lead home, or waypoint chains would be built from nothing.
 		TEST_ASSERT_EQUAL(reachable[neighbour], origin, "A turf adjacent to the origin did not record the origin as its route parent.")
+		var/list/turf/retreat_chain = raid.build_waypoint_chain(neighbour, reachable, origin)
+		TEST_ASSERT_EQUAL(length(retreat_chain), 1, "An adjacent retreat should need only its destination waypoint.")
+		TEST_ASSERT_EQUAL(retreat_chain[1], origin, "The retreat chain did not finish at its walkable destination.")
 
 	// A dense object makes a turf unwalkable, which is the same rejection generated rock relies on.
 	var/turf/blocked_turf = get_step(origin, WEST)
@@ -183,6 +187,19 @@
 	var/list/turf/chain = raid.build_waypoint_chain(run_loc_floor_bottom_left)
 	TEST_ASSERT(length(chain), "A waypoint chain came back empty, leaving attackers with nowhere to go.")
 	TEST_ASSERT_EQUAL(chain[length(chain)], get_turf(core), "A waypoint chain did not end at the objective.")
+
+	// Malformed parent links must fail safely instead of growing a list until the server locks up.
+	var/turf/first = run_loc_floor_bottom_left
+	var/turf/second = get_step(first, EAST)
+	var/list/cyclic_map = list()
+	cyclic_map[first] = second
+	cyclic_map[second] = first
+	var/list/turf/cycle_fallback = raid.build_waypoint_chain(first, cyclic_map, core)
+	TEST_ASSERT_EQUAL(length(cycle_fallback), 1, "A cyclic route did not fall back to the destination alone.")
+	TEST_ASSERT_EQUAL(cycle_fallback[1], get_turf(core), "A cyclic route lost its destination.")
+	cyclic_map[first] = first
+	cycle_fallback = raid.build_waypoint_chain(first, cyclic_map, core)
+	TEST_ASSERT_EQUAL(length(cycle_fallback), 1, "A self-referencing route did not terminate safely.")
 
 	// Attackers with no route still have to be pointed at something.
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/attacker = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)

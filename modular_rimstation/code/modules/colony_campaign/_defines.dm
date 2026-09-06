@@ -791,13 +791,12 @@
 /**
  * What a colony arrives already knowing.
  *
- * A station techweb researches two dozen starting nodes in New(), which hands a new settlement most of the
- * curve for free. A colony gets the four that a landing party would plausibly bring: how to build, how to make
- * parts, how to do science at all, and how to work raw material.
+ * Temporarily retain the station's public starting prerequisites so medical and other branches remain usable.
+ * Advanced research still has to be earned. Keep the colony's original four basics explicitly as well.
  */
-#define CAMPAIGN_STARTING_RESEARCH_NODES list( \
+#define CAMPAIGN_STARTING_RESEARCH_NODES ((SSresearch.techweb_nodes_starting - SSresearch.techweb_nodes_hidden) | list( \
 	TECHWEB_NODE_CONSTRUCTION, \
 	TECHWEB_NODE_PARTS, \
 	TECHWEB_NODE_FUNDIMENTAL_SCI, \
 	TECHWEB_NODE_MATERIAL_PROC, \
-)
+))

@@ -1,0 +1,257 @@
+//MAP CONVERTED BY dmm2tgm.py THIS HEADER COMMENT PREVENTS RECONVERSION, DO NOT REMOVE
+"a" = (
+/turf/template_noop,
+/area/template_noop)
+"b" = (
+/turf/closed/wall/rust,
+/area/template_noop)
+"c" = (
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"d" = (
+/obj/structure/rimstation_ruin_archive,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"e" = (
+/obj/structure/rimstation_ruin_rubble,
+/obj/item/knife/combat/survival,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"f" = (
+/obj/structure/rimstation_ruin_rubble,
+/turf/template_noop,
+/area/template_noop)
+"g" = (
+/obj/structure/table,
+/obj/item/knife/combat/survival,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"h" = (
+/obj/structure/chair,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"i" = (
+/obj/structure/bed,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"s" = (
+/obj/effect/spawner/random/structure/closet_empty/crate/with_loot,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"x" = (
+/mob/living/basic/spider/maintenance,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"z" = (
+/obj/effect/decal/cleanable/blood,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"A" = (
+/obj/structure/rimstation_ruin_rubble,
+/obj/effect/spawner/random/engineering/toolbox,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"C" = (
+/obj/structure/bed,
+/obj/item/knife/combat/survival,
+/obj/effect/decal/cleanable/blood,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"F" = (
+/obj/structure/girder,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"H" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/mob/living/basic/spider/maintenance,
+/obj/effect/decal/cleanable/blood,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"J" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"L" = (
+/obj/structure/glowshroom/single,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"R" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/obj/structure/glowshroom/single,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+"S" = (
+/obj/effect/mapping_helpers/burnt_floor,
+/obj/structure/girder,
+/turf/open/floor/plating/rust,
+/area/template_noop)
+
+(1,1,1) = {"
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+"}
+(2,1,1) = {"
+a
+a
+a
+a
+a
+a
+f
+a
+a
+a
+a
+"}
+(3,1,1) = {"
+b
+b
+b
+b
+b
+a
+c
+b
+b
+b
+a
+"}
+(4,1,1) = {"
+b
+i
+s
+C
+b
+F
+c
+L
+i
+b
+a
+"}
+(5,1,1) = {"
+b
+x
+L
+c
+L
+c
+c
+J
+h
+b
+a
+"}
+(6,1,1) = {"
+b
+L
+J
+S
+J
+s
+e
+c
+c
+c
+a
+"}
+(7,1,1) = {"
+a
+a
+a
+a
+a
+F
+c
+a
+a
+c
+c
+"}
+(8,1,1) = {"
+a
+F
+c
+c
+A
+z
+c
+c
+c
+F
+a
+"}
+(9,1,1) = {"
+b
+c
+c
+c
+b
+J
+J
+R
+i
+b
+a
+"}
+(10,1,1) = {"
+b
+H
+R
+c
+c
+L
+F
+s
+h
+b
+a
+"}
+(11,1,1) = {"
+b
+d
+s
+g
+b
+a
+f
+b
+b
+b
+a
+"}
+(12,1,1) = {"
+a
+b
+b
+b
+b
+a
+a
+a
+a
+a
+a
+"}
+(13,1,1) = {"
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+a
+"}
