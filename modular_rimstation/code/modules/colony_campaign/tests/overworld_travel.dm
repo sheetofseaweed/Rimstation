@@ -405,3 +405,45 @@
 	TEST_ASSERT(loaded.is_surveying(), "A resumed survey came back as an ordinary expedition.")
 	TEST_ASSERT_NULL(loaded.destination_site_id, "A resumed survey acquired a site it never had.")
 	TEST_ASSERT_EQUAL(json_encode(loaded.route), json_encode(party.route), "A resumed survey lost its route.")
+
+
+/**
+ * The table reports what it is being asked to look at.
+ *
+ * Both kinds of destination are chosen the same way: the panel offers routes only for whichever of the two the
+ * payload says is being previewed. The survey half shipped tracked but never sent, so no route could be picked
+ * for one and no survey could ever leave. The other tests here prove the journey works; this proves it can be
+ * asked for.
+ */
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/the_table_reports_what_it_previews
+
+/datum/unit_test/rimstation_colonist_chapter/overworld_travel/the_table_reports_what_it_previews/Run()
+	begin_travel_campaign()
+	var/datum/overworld_region/region = get_active_overworld_region()
+	var/obj/machinery/computer/colony_overworld/table = allocate(/obj/machinery/computer/colony_overworld)
+
+	var/target = null
+	for(var/cell_id in get_overworld_frontier_cells(region))
+		target = cell_id
+		break
+	TEST_ASSERT_NOTNULL(target, "There is no frontier to preview, so this test cannot ask its question.")
+
+	var/site_id = null
+	for(var/known_site_id in region.sites)
+		site_id = known_site_id
+		break
+	TEST_ASSERT_NOTNULL(site_id, "The region holds no site to preview.")
+
+	// Unknown ground. Without this in the payload the survey offers below are built and then never shown.
+	table.previewed_survey_cell = target
+	var/list/data = table.ui_data(null)
+	TEST_ASSERT_EQUAL(data["previewed_survey_cell"], target, "The table did not report the frontier cell it was previewing, so its survey offers can never be reached.")
+	TEST_ASSERT(length(data["survey_offers"]), "A previewed frontier cell was offered no way to reach it.")
+	TEST_ASSERT(length(data["frontier_cells"]), "The table sent no frontier, so no cell can be picked to survey in the first place.")
+
+	// And the site half, which is the same contract and the reason the missing one was not obvious.
+	table.previewed_survey_cell = null
+	table.previewed_site_id = site_id
+	data = table.ui_data(null)
+	TEST_ASSERT_EQUAL(data["previewed_site_id"], site_id, "The table did not report the site it was previewing.")
+	TEST_ASSERT_NULL(data["previewed_survey_cell"], "The table reported a survey target it had been told to forget.")

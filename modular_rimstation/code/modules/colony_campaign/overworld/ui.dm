@@ -218,6 +218,9 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	data["viewer_has_locker"] = viewer ? !isnull(get_personal_colonist_locker(viewer.colonist_id)) : FALSE
 
 	data["previewed_site_id"] = previewed_site_id
+	// Sent beside the site for a reason: the panel gates its route offers on whichever of the two is set, so a
+	// missing one is not a blank field but a step of the journey nobody can reach.
+	data["previewed_survey_cell"] = previewed_survey_cell
 	data["party"] = build_party_payload(region, discovered, viewer)
 	data["route_offers"] = build_route_offers(region, discovered)
 
