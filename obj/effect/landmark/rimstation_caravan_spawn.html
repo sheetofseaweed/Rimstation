@@ -1,0 +1,11 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><base href="../../../"><link rel="stylesheet" href="dmdoc.css"><title>/obj/effect/landmark/rimstation_caravan_spawn - /tg/ Station 13</title></head><body><header><a href="index.html">/tg/ Station 13</a> - <a href="index.html#modules">Modules</a> - <a href="index.html#types">Types</a></header><main><h1>rimstation_caravan_spawn <aside>/<a href="obj.html">obj</a>/<a href="obj/effect/landmark/rimstation_caravan_spawn.html">effect/landmark/rimstation_caravan_spawn</a></aside> <a href="https://github.com/sheetofseaweed/Rimstation/blob/f7b59cc6576d9ba50d07a28aef3644c9b02fdf66/modular_rimstation/code/modules/colony_campaign/overworld/destinations.dm#L17"><img src="git.png" width="16" height="16" title="modular_rimstation/code/modules/colony_campaign/overworld/destinations.dm 17"></a></h1><p>The places an expedition physically stands in, and the one path that brings them into being.</p>
+<p>Every scene out here is provided on demand: some come from lazy templates and some are generated into a
+fresh turf reservation. They do not exist until somebody walks to them, and once loaded they are kept until
+the server reboots. Releasing a scene mid-round is deliberately not attempted - players will have
+built, dropped and broken things in it, and tearing down a reservation somebody is standing in is a far worse
+failure than holding a few hundred turfs longer than strictly necessary. The region caps how many sites can
+exist, so the memory is bounded by design rather than by cleanup.</p>
+<p>The loader validates before it calls the inherited one, because the inherited one does not fail politely: a
+missing file, an unparseable map or an exhausted reservation pool all CRASH. Nothing here can prevent the
+last of those, so the rule is that the party stays where it was until a load has actually returned.
+Where a party member appears in the travelling camp.</p></main><footer>tgstation.dme <a href="https://github.com/sheetofseaweed/Rimstation/tree/f7b59cc6576d9ba50d07a28aef3644c9b02fdf66">f7b59cc</a> (master) — <a href="https://github.com/SpaceManiac/SpacemanDMM/blob/master/crates/dmdoc/README.md">dmdoc 1.11.0</a></footer></body></html>
