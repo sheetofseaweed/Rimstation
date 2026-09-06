@@ -394,6 +394,22 @@ GLOBAL_LIST_EMPTY(teleportlocs)
 		areas_in_z["[z]"] = list()
 	areas_in_z["[z]"] += src
 
+// RIMSTATION EDIT ADDITION START
+/**
+ * Takes this area back out of SSmapping.areas_in_z.
+ *
+ * Registration was one-way, so any area that was deleted after being registered stayed on that list forever
+ * and could never be collected. That is every area a blueprint merges away, and it now includes the areas
+ * rebuilt from a checkpoint. Every z is swept rather than the area's own, because by the time an area is being
+ * destroyed it has no turfs left and so no z to ask for.
+ */
+/area/proc/unreg_in_areas_in_z()
+	if(isnull(SSmapping?.areas_in_z))
+		return
+	for(var/z_key in SSmapping.areas_in_z)
+		SSmapping.areas_in_z[z_key] -= src
+// RIMSTATION EDIT ADDITION END
+
 /**
  * Destroy an area and clean it up
  *
@@ -413,6 +429,7 @@ GLOBAL_LIST_EMPTY(teleportlocs)
 		GLOB.areas -= src
 	if(!isnull(GLOB.custom_areas))
 		GLOB.custom_areas -= src
+	unreg_in_areas_in_z() // RIMSTATION EDIT ADDITION - registration was one-way, so a deleted area never left
 	//machinery cleanup
 	STOP_PROCESSING(SSobj, src)
 	QDEL_NULL(alarm_manager)

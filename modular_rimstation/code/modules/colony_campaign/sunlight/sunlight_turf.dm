@@ -55,8 +55,13 @@
  * A wall under open sky casts no shadow, so it should not make its neighbours border tiles.
  */
 /turf/proc/update_sky_state()
+	var/sees_sky = is_sky_visible()
+	// The weather's hole in this tile turns on the same answer, so it is set from here rather than from a queue
+	// of its own. It has to happen before the early return below, which a dark roofed tile takes.
+	update_roof_mask(sees_sky)
+
 	var/new_state
-	if(!is_sky_visible())
+	if(!sees_sky)
 		new_state = SKY_BLOCKED
 	else
 		new_state = SKY_VISIBLE

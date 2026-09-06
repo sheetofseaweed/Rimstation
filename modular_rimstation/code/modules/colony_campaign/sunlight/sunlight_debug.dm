@@ -4,7 +4,7 @@
  * The three layers fail differently and look the same on screen: a tile can be wrongly roofed, correctly
  * roofed but wrongly rendered, or correct but stuck in a queue. This says which.
  */
-ADMIN_VERB(sunlight_inspect, R_DEBUG, "Inspect Sunlight", "Show the sunlight state of a tile.", ADMIN_CATEGORY_DEBUG, turf/target in world)
+ADMIN_VERB(sunlight_inspect, R_DEBUG, "Inspect Sunlight", "Show the sunlight state of a tile.", ADMIN_CATEGORY_COLONY_DEBUG, turf/target in world)
 	var/atom/movable/sunlight_effect/effect = target.sunlight_effect
 	var/turf/ceiling = GET_TURF_ABOVE(target)
 	var/area/our_area = target.loc
@@ -44,7 +44,7 @@ ADMIN_VERB(sunlight_inspect, R_DEBUG, "Inspect Sunlight", "Show the sunlight sta
  * Waiting out a real day to look at dusk makes tuning the colours impractical. This does not move the clock,
  * so the cycle carries on from wherever it really is on the next step - long enough to judge a colour.
  */
-ADMIN_VERB(sunlight_set_time, R_DEBUG, "Set Time Of Day", "Jump the sky to a chosen time of day.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(sunlight_set_time, R_DEBUG, "Set Time Of Day", "Jump the sky to a chosen time of day.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/list/choices = list()
 	for(var/datum/time_of_day/step as anything in SSdaylight.day_steps)
 		choices[step.name] = step

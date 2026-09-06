@@ -20,6 +20,10 @@
 			RemoveElement(/datum/element/connect_loc, connections)
 
 /obj/machinery/computer/shuttle/custom_shuttle/connect_to_shuttle(mapload, obj/docking_port/mobile/port, obj/docking_port/stationary/dock)
+	// RIMSTATION EDIT ADDITION - a console read off a saved map initialises before its shuttle is registered, so
+	// it is handed no port and would go on to read the name off it. The port calls linkup() when it restores.
+	if(isnull(port))
+		return FALSE
 	var/obj/docking_port/mobile/custom/custom_port = port
 	if(istype(custom_port))
 		if(custom_port.control_console?.resolve())
@@ -70,6 +74,10 @@
 	return ..()
 
 /obj/machinery/computer/camera_advanced/shuttle_docker/custom/connect_to_shuttle(mapload, obj/docking_port/mobile/port, obj/docking_port/stationary/dock)
+	// RIMSTATION EDIT ADDITION - the parent returns TRUE for any mapload, port or not, and everything below here
+	// dereferences the port. Harmless while only a shuttle template could load one; a saved console gets null.
+	if(isnull(port))
+		return FALSE
 	if(shuttleId) //We normally should only be connecting unlinked consoles to shuttles, but just in case...
 		var/obj/docking_port/mobile/old_shuttle = SSshuttle.getShuttle(shuttleId)
 		if(old_shuttle)

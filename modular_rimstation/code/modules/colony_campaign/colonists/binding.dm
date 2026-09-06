@@ -28,6 +28,12 @@
 	// Death is recorded as it happens rather than counted at the end of the chapter: a body that is gone by
 	// commit time cannot be asked whether it died, and those are exactly the deaths worth remembering.
 	RegisterSignal(parent, COMSIG_LIVING_DEATH, PROC_REF(on_colonist_death))
+	// Cards off a checkpoint carry a dead account reference. Watched here rather than on the card, because a
+	// colonist is one registration and every ID card in the colony is hundreds.
+	RegisterSignal(parent, COMSIG_MOB_EQUIPPED_ITEM, PROC_REF(on_colonist_equipped_item))
+	// Binding can land either side of the job dressing the body, so what is already carried is swept once. The
+	// signal above covers everything picked up afterwards.
+	relink_all_carried_ids(parent)
 
 /datum/component/colonist_binding/Destroy(force)
 	// Written down on the way out, because commit can only read bodies that are still standing. A colonist who
@@ -35,7 +41,7 @@
 	var/mob/living/body = parent
 	if(istype(body))
 		SScampaign.capture_skills_for(colonist_id, body.mind)
-		UnregisterSignal(body, COMSIG_LIVING_DEATH)
+		UnregisterSignal(body, list(COMSIG_LIVING_DEATH, COMSIG_MOB_EQUIPPED_ITEM))
 
 	SScampaign.forget_colonist_body(colonist_id, body_ref)
 	body_ref = null
@@ -44,3 +50,7 @@
 /datum/component/colonist_binding/proc/on_colonist_death(mob/living/source, gibbed)
 	SIGNAL_HANDLER
 	SScampaign.note_colonist_death(colonist_id)
+
+/datum/component/colonist_binding/proc/on_colonist_equipped_item(mob/living/source, obj/item/equipped, slot)
+	SIGNAL_HANDLER
+	relink_ids_carried_in(equipped, source)

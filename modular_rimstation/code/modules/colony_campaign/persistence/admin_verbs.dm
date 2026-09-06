@@ -8,7 +8,7 @@
  * The round this is run on becomes chapter one, and the colony as it stands at round end is what gets
  * committed - so it is meant to be run on a fresh colony round, not halfway through a ruined one.
  */
-ADMIN_VERB(rimstation_start_colony_campaign, R_ADMIN, "Start Colony Campaign", "Begins a persistent campaign on this colony, committing it at round end.", ADMIN_CATEGORY_EVENTS)
+ADMIN_VERB(rimstation_start_colony_campaign, R_ADMIN, "Start Colony Campaign", "Begins a persistent campaign on this colony, committing it at round end.", ADMIN_CATEGORY_COLONY)
 	// The screen itself reports why a campaign cannot start, so the checks are not duplicated here - the reason
 	// is more useful shown beside the button it disables than as a line of chat before anything opens.
 	var/datum/campaign_setup/setup = new(key_name(user))
@@ -21,7 +21,7 @@ ADMIN_VERB(rimstation_start_colony_campaign, R_ADMIN, "Start Colony Campaign", "
  * Takes effect at the next boot rather than now, because which colony is on the map was decided while the
  * world was loading and cannot be changed underneath the people standing on it.
  */
-ADMIN_VERB(rimstation_resume_colony_campaign, R_ADMIN, "Resume Colony Campaign", "Sets which existing campaign this server runs, from the next round.", ADMIN_CATEGORY_EVENTS)
+ADMIN_VERB(rimstation_resume_colony_campaign, R_ADMIN, "Resume Colony Campaign", "Sets which existing campaign this server runs, from the next round.", ADMIN_CATEGORY_COLONY)
 	var/list/campaigns = list_campaign_ids()
 	if(!length(campaigns))
 		to_chat(user, span_warning("There are no campaigns in storage to resume."))
@@ -46,7 +46,7 @@ ADMIN_VERB(rimstation_resume_colony_campaign, R_ADMIN, "Resume Colony Campaign",
  * Reads only. This is the question to ask before selecting something for recovery, and the answer separates
  * "the files are there" from "this finished being written".
  */
-ADMIN_VERB(rimstation_validate_colony_checkpoint, R_ADMIN, "Validate Campaign Checkpoint", "Checks whether a checkpoint on disk is complete and loadable.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_validate_colony_checkpoint, R_ADMIN, "Validate Campaign Checkpoint", "Checks whether a checkpoint on disk is complete and loadable.", ADMIN_CATEGORY_PERSISTENCE)
 	if(!SScampaign.manifest)
 		to_chat(user, span_warning("No campaign is loaded, so there is no generation whose checkpoints could be checked."))
 		return
@@ -82,7 +82,7 @@ ADMIN_VERB(rimstation_validate_colony_checkpoint, R_ADMIN, "Validate Campaign Ch
  *
  * Nothing is written: the committed pointer stays where it is, so a wrong choice costs a reboot and no more.
  */
-ADMIN_VERB(rimstation_select_colony_recovery, R_ADMIN, "Select Campaign Recovery Snapshot", "Chooses a checkpoint to recover from instead of the committed one.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_select_colony_recovery, R_ADMIN, "Select Campaign Recovery Snapshot", "Chooses a checkpoint to recover from instead of the committed one.", ADMIN_CATEGORY_PERSISTENCE)
 	if(!SScampaign.manifest)
 		to_chat(user, span_warning("No campaign is loaded, so there is nothing to recover."))
 		return
@@ -111,7 +111,7 @@ ADMIN_VERB(rimstation_select_colony_recovery, R_ADMIN, "Select Campaign Recovery
  *
  * Holds the world still while it writes, so the copy shows one moment rather than a mixture of several.
  */
-ADMIN_VERB(rimstation_snapshot_colony_campaign, R_ADMIN, "Create Campaign Snapshot", "Writes the colony as it stands now as an uncommitted fallback copy.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_snapshot_colony_campaign, R_ADMIN, "Create Campaign Snapshot", "Writes the colony as it stands now as an uncommitted fallback copy.", ADMIN_CATEGORY_PERSISTENCE)
 	if(!SScampaign.manifest)
 		to_chat(user, span_warning("No campaign is loaded, so there is nothing to snapshot."))
 		return
@@ -132,7 +132,7 @@ ADMIN_VERB(rimstation_snapshot_colony_campaign, R_ADMIN, "Create Campaign Snapsh
 
 
 /// What the campaign currently thinks is true, for diagnosing a colony that loaded as the wrong thing.
-ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign", "Reports the campaign's state, generation and committed checkpoint.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign", "Reports the campaign's state, generation and committed checkpoint.", ADMIN_CATEGORY_COLONY_DEBUG)
 	if(!SScampaign.manifest)
 		var/named = read_active_campaign_id()
 		if(named)
@@ -253,7 +253,7 @@ ADMIN_VERB(rimstation_inspect_colony_campaign, R_ADMIN, "Inspect Colony Campaign
  * producer - the larder - so this stocks that rather than writing the ledger directly, which the next recount
  * would simply undo.
  */
-ADMIN_VERB(rimstation_stock_colony_larder, R_ADMIN, "Stock Colony Larder", "Adds food units to the colony's larder.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_stock_colony_larder, R_ADMIN, "Stock Colony Larder", "Adds food units to the colony's larder.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/obj/structure/closet/crate/freezer/colony_larder/larder = get_colony_larder()
 	if(!larder)
 		to_chat(user, span_warning("This colony has no larder. Build or spawn an /obj/structure/closet/crate/freezer/colony_larder first."))
@@ -283,7 +283,7 @@ ADMIN_VERB(rimstation_stock_colony_larder, R_ADMIN, "Stock Colony Larder", "Adds
  */
 
 /// Puts one hex on the map without anybody walking to it.
-ADMIN_VERB(rimstation_reveal_overworld_cell, R_DEBUG, "Reveal Overworld Cell", "Marks one region cell as discovered.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_reveal_overworld_cell, R_DEBUG, "Reveal Overworld Cell", "Marks one region cell as discovered.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/datum/overworld_region/region = get_active_overworld_region()
 	if(!region)
 		to_chat(user, span_warning("There is no region to reveal anything on."))
@@ -301,7 +301,7 @@ ADMIN_VERB(rimstation_reveal_overworld_cell, R_DEBUG, "Reveal Overworld Cell", "
 	to_chat(user, span_notice("Revealed [typed] and its surroundings ([revealed] newly seen)."))
 
 /// Brings the current leg due immediately, so the next boundary happens on the next subsystem fire.
-ADMIN_VERB(rimstation_advance_expedition_leg, R_DEBUG, "Advance Expedition Leg", "Makes the travelling party's current leg arrive now.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_advance_expedition_leg, R_DEBUG, "Advance Expedition Leg", "Makes the travelling party's current leg arrive now.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/datum/overworld_party/party = SScampaign.get_active_party()
 	if(!party)
 		to_chat(user, span_warning("No expedition exists."))
@@ -320,7 +320,7 @@ ADMIN_VERB(rimstation_advance_expedition_leg, R_DEBUG, "Advance Expedition Leg",
 	to_chat(user, span_notice("The leg is due now. It arrives on the next overworld tick."))
 
 /// Stops the party at the next boundary with a chosen kind of problem.
-ADMIN_VERB(rimstation_force_expedition_decision, R_DEBUG, "Force Expedition Decision", "Halts the travelling party with a chosen decision archetype.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_force_expedition_decision, R_DEBUG, "Force Expedition Decision", "Halts the travelling party with a chosen decision archetype.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/datum/overworld_party/party = SScampaign.get_active_party()
 	var/datum/overworld_region/region = get_active_overworld_region()
 	if(!party || !region)
@@ -374,7 +374,7 @@ ADMIN_VERB(rimstation_force_expedition_decision, R_DEBUG, "Force Expedition Deci
  * cannot get it out of. It walks them home properly rather than teleporting, so the return, the refund and the
  * arrival all happen the way they normally would.
  */
-ADMIN_VERB(rimstation_recall_expedition, R_DEBUG, "Recall Expedition", "Turns the travelling party around and sends it home.", ADMIN_CATEGORY_DEBUG)
+ADMIN_VERB(rimstation_recall_expedition, R_DEBUG, "Recall Expedition", "Turns the travelling party around and sends it home.", ADMIN_CATEGORY_COLONY_DEBUG)
 	var/datum/overworld_party/party = SScampaign.get_active_party()
 	var/datum/overworld_region/region = get_active_overworld_region()
 	if(!party || !region)

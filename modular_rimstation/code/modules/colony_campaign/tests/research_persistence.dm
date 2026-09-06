@@ -171,6 +171,79 @@
 	saved_researched_nodes = null
 
 
+/**
+ * A completed experiment survives disk as something the techweb can actually use.
+ *
+ * The record used to copy `completed_experiments` straight out of the techweb, which is `path -> datum`. Neither
+ * half survives json_encode(): paths became text and the datums became their own names. The R&D console calls
+ * to_ui_data() on every value, so it runtimed and rendered "No research techweb found" instead of the techweb,
+ * and have_experiments_for_node() could not match a text key against a real path, relocking every gated node.
+ *
+ * The round trip is what proves it. Asserting on the record alone passed throughout the bug.
+ */
+/datum/unit_test/rimstation_colony_experiments_survive_disk
+
+/datum/unit_test/rimstation_colony_experiments_survive_disk/Run()
+	ensure_techweb_nodes_for_test()
+
+	var/datum/techweb/source = new /datum/techweb
+	allocated += source
+	var/datum/experiment/experiment = new /datum/experiment/scanning/points/bluespace_crystal(source)
+	allocated += experiment
+	source.complete_experiment(experiment)
+	TEST_ASSERT(source.completed_experiments[experiment.type], "A techweb did not record an experiment it was told was completed.")
+
+	var/datum/colony_research_record/record = new
+	allocated += record
+	TEST_ASSERT(record.capture_from(source), "The colony's research could not be read out of its techweb.")
+
+	var/datum/colony_research_record/restored = new
+	allocated += restored
+	TEST_ASSERT(restored.deserialize(json_decode(json_encode(record.serialize()))), "A research record did not survive a JSON round trip.")
+
+	var/datum/techweb/destination = new /datum/techweb
+	allocated += destination
+	restored.restore_into(destination)
+
+	// The exact shape the techweb's own consumers demand: a real path for the key, a real datum for the value.
+	var/datum/experiment/came_back = destination.completed_experiments[/datum/experiment/scanning/points/bluespace_crystal]
+	TEST_ASSERT_NOTNULL(came_back, "A completed experiment did not come back keyed by its typepath, so no node can see it.")
+	TEST_ASSERT(istype(came_back), "A completed experiment came back as [came_back] rather than an experiment datum, which is what the R&D console calls to_ui_data() on.")
+
+	// The techweb must not still be offering an experiment it has been told is finished.
+	for(var/datum/experiment/still_offered as anything in destination.available_experiments)
+		TEST_ASSERT(still_offered.type != came_back.type, "A restored experiment was left in available_experiments as well as completed.")
+
+	// A node that needs it can now be unlocked, which is the whole point of remembering the fieldwork.
+	var/datum/techweb_node/gated = new
+	allocated += gated
+	gated.required_experiments = list(/datum/experiment/scanning/points/bluespace_crystal)
+	TEST_ASSERT(destination.have_experiments_for_node(gated), "A restored colony was asked to repeat fieldwork it had already done.")
+
+
+/**
+ * The broken records already written to disk still load.
+ *
+ * Live campaigns hold `completed_experiments` as `"path text" -> "experiment name"`. Refusing those would cost
+ * a running colony its researched nodes and its balance as well, which is a worse outcome than the bug.
+ */
+/datum/unit_test/rimstation_colony_reads_legacy_experiment_record
+
+/datum/unit_test/rimstation_colony_reads_legacy_experiment_record/Run()
+	var/datum/colony_research_record/record = new
+	allocated += record
+
+	var/list/from_disk = record.serialize()
+	from_disk["completed_experiments"] = list(
+		"/datum/experiment/scanning/points/bluespace_crystal" = "Bluespace Crystal Sampling",
+		"/datum/experiment/not/a/real/experiment" = "Something This Build Retired",
+	)
+
+	TEST_ASSERT(record.deserialize(from_disk), "A record written before experiments were saved as paths was refused.")
+	TEST_ASSERT(/datum/experiment/scanning/points/bluespace_crystal in record.completed_experiments, "A legacy record lost an experiment the colony had completed.")
+	TEST_ASSERT_EQUAL(length(record.completed_experiments), 1, "A legacy record restored an experiment type this build does not have.")
+
+
 /// Records come off disk, so a hand-edited one must not hand a colony a fortune or a debt.
 /datum/unit_test/rimstation_colony_research_record_validation
 

@@ -334,8 +334,15 @@
 	TEST_ASSERT(!party.set_state(OVERWORLD_PARTY_LOST, "test"), "A finished expedition was lost afterwards.")
 
 
-/// The first site the colony can actually reach from home, or null. Keeps the party tests off region specifics.
-/proc/pick_any_reachable_site(datum/overworld_region/region, datum/overworld_party/party)
+/**
+ * The first site the colony can actually reach from home, or null. Keeps the party tests off region specifics.
+ *
+ * `skip_loaded` is for tests that assert about whether a scene has been brought up. Destinations are registered
+ * globally for the whole round and their reservations are never handed back, so an earlier test that departed
+ * somewhere leaves that site standing for every test after it. Regions are generated deterministically, so
+ * without this the two tests pick the same site every run.
+ */
+/proc/pick_any_reachable_site(datum/overworld_region/region, datum/overworld_party/party, skip_loaded = FALSE)
 	RETURN_TYPE(/datum/overworld_site)
 	if(!region || !party)
 		return null
@@ -345,6 +352,8 @@
 		var/datum/overworld_site/site = region.sites[site_id]
 		var/cell_id = "[site.q],[site.r]"
 		if(!seen[cell_id])
+			continue
+		if(skip_loaded && get_loaded_destination(site_id))
 			continue
 		if(length(region.plan_route(party.current_cell, cell_id, OVERWORLD_ROUTE_FASTEST, seen)) >= 2)
 			return site

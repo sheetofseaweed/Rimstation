@@ -337,9 +337,13 @@
 	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
 	party.add_member(vera.colonist_id)
 
-	// Standing one step short of a site, with nobody online to arrive at it.
-	var/datum/overworld_site/target = pick_any_reachable_site(region, party)
-	TEST_ASSERT_NOTNULL(target, "The test region offered no site to walk to.")
+	// Standing one step short of a site, with nobody online to arrive at it. It has to be a site nothing has
+	// brought up yet: the registry lasts the whole round, so a site an earlier test departed to is already
+	// standing and would answer this test's question before it asked it. The colony's opening ring is small
+	// and every site in it has been visited by the time this runs, so the map is opened up to reach past them.
+	SScampaign.overworld.discover_radius(region, "0,0", region.radius)
+	var/datum/overworld_site/target = pick_any_reachable_site(region, party, skip_loaded = TRUE)
+	TEST_ASSERT_NOTNULL(target, "The test region offered no unvisited site to walk to.")
 	var/site_cell = "[target.q],[target.r]"
 	var/list/route = region.plan_route("0,0", site_cell, OVERWORLD_ROUTE_FASTEST)
 	TEST_ASSERT(length(route) >= 2, "The test could not plan a route to a site.")

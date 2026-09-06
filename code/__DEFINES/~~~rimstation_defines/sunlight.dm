@@ -10,6 +10,14 @@
 /// 13 is the only free plane between RENDER_PLANE_TURF_LIGHTING and RENDER_PLANE_EMISSIVE.
 #define SUNLIGHTING_PLANE 13
 
+/// Roofed tiles standing under an open-sky area draw one white square here. Never displayed: the weather
+/// planes take it as an inverse alpha mask, so rain is cut away from anything with a roof over it.
+/// -14 sits beside WEATHER_MASK_PLANE, which is the mask it works against.
+#define ROOF_MASK_PLANE -14
+#define ROOF_MASK_RENDER_TARGET "*ROOF_MASK_RENDER_TARGET"
+/// Layer for those squares. They never overlap, so this only has to be stable.
+#define ROOF_MASK_LAYER 1
+
 /// Something above us blocks the sky. No sunlight of our own.
 #define SKY_BLOCKED 0
 /// Nothing above us, and no roofed neighbour. Fully lit, casts nothing.

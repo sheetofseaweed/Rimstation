@@ -10,7 +10,25 @@
 /obj/docking_port/stationary/get_save_vars(save_flags=ALL)
 	. = ..()
 	. += NAMEOF(src, roundstart_template)
+	// RIMSTATION EDIT ADDITION - this is the ground a shuttle docked here falls back to when it lifts off.
+	// Unsaved, Initialize() re-derives it from whatever area the port loaded into - which, for a home dock, is
+	// the shuttle parked on top of it. The dock would then hand the colony shuttle floor instead of its ground.
+	. += NAMEOF(src, area_type)
 	return .
+
+// RIMSTATION EDIT ADDITION START
+/**
+ * How far through installation an engine is.
+ *
+ * Engines default to welded and mapload keeps them that way, which is right for one that was finished. An
+ * engine the crew had left unbolted came back anchored = FALSE but still counted as welded, so it contributed
+ * thrust the shuttle did not have. Only a non-default state is actually written.
+ */
+/obj/machinery/power/shuttle_engine/get_save_vars(save_flags=ALL)
+	. = ..()
+	. += NAMEOF(src, engine_state)
+	return .
+// RIMSTATION EDIT ADDITION END
 
 // The tram is a little tricky to save because all the [/obj/structure/transport/linear] get deleted except for the one at the bottom left of the tram. These all get used during Init to determine the size and shape of the tram.
 // Next problem is the landmark [/obj/effect/landmark/transport/transport_id] gets attatched to the /datum/transport_controller/ and then deleted.

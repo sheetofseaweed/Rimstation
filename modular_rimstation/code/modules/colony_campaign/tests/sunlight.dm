@@ -230,3 +230,50 @@
 
 	test_area.outdoors = was_outdoors
 	subject.roofed_override = had_override
+
+
+/**
+ * The hole in the weather follows the roof.
+ *
+ * Only the bookkeeping is checked here - whether a tile is wearing its mask, and whether that mask is on the
+ * plane the weather subtracts. Whether the rain then stops being drawn is a question for a client's eyes; what
+ * this can prove is that the right tiles are marked and no others, which is where the cost would run away.
+ */
+/datum/unit_test/rimstation_roof_mask_follows_the_roof
+
+/datum/unit_test/rimstation_roof_mask_follows_the_roof/Run()
+	var/turf/subject = run_loc_floor_bottom_left
+	var/area/test_area = subject.loc
+	var/was_outdoors = test_area.outdoors
+	var/had_override = subject.roofed_override
+
+	test_area.outdoors = TRUE
+	subject.roofed_override = FALSE
+	subject.update_roof_mask()
+	TEST_ASSERT(!subject.roof_mask_applied, "Open ground was given a hole in the weather, which would stop rain falling outdoors.")
+
+	// Roofed, under an area that is still open sky. This is the case the whole feature exists for: the area
+	// says outside, the tile says covered, and the tile is the one that should win.
+	subject.roofed_override = TRUE
+	subject.update_roof_mask()
+	TEST_ASSERT(subject.roof_mask_applied, "A roofed tile under an open-sky area got no hole cut, so rain would still be drawn through it.")
+
+	var/mutable_appearance/mask = roof_mask_appearance(subject)
+	TEST_ASSERT_EQUAL(PLANE_TO_TRUE(mask.plane), ROOF_MASK_PLANE, "The roof mask is not drawn on the plane the weather subtracts, so it would cut nothing.")
+	TEST_ASSERT_EQUAL(roof_mask_appearance(subject), mask, "The roof mask is rebuilt per tile instead of cached per level, which would cost an appearance for every roofed turf.")
+
+	// Taking the roof off puts the weather back.
+	subject.roofed_override = FALSE
+	subject.update_roof_mask()
+	TEST_ASSERT(!subject.roof_mask_applied, "Stripping a roof left the weather permanently cut away from the tile.")
+
+	// Somewhere weather never reaches needs no hole. Underground is the whole reason this check exists: a mask
+	// per turf down there would be an appearance for every tile of a level nothing rains on.
+	test_area.outdoors = FALSE
+	subject.roofed_override = TRUE
+	subject.update_roof_mask()
+	TEST_ASSERT(!subject.roof_mask_applied, "An indoor area was given roof masks it can never need.")
+
+	test_area.outdoors = was_outdoors
+	subject.roofed_override = had_override
+	subject.update_roof_mask()

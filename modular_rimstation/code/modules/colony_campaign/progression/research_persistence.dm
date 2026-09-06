@@ -15,7 +15,14 @@
 	var/list/researched_node_ids
 	/// Unspent points, keyed by point type.
 	var/list/research_points
-	/// Experiment types the colony has completed, so a chapter does not repeat the same fieldwork.
+	/**
+	 * Typepaths of the experiments the colony has completed, so a chapter does not repeat the same fieldwork.
+	 *
+	 * Paths, not the experiment datums a techweb holds. A datum cannot be written to disk: json_encode() turns
+	 * one into its name, so a saved colony came back with `"Fish Scanning Experiment 1"` where a datum belonged.
+	 * That killed the R&D console outright - ui_data() calls to_ui_data() on every entry - and left the text keys
+	 * unable to match the real paths that have_experiments_for_node() looks up, relocking every gated node.
+	 */
 	var/list/completed_experiments
 
 /datum/colony_research_record/New()
@@ -34,7 +41,12 @@
 		researched_node_ids += node_id
 
 	research_points = web.research_points?.Copy() || list()
-	completed_experiments = web.completed_experiments?.Copy() || list()
+
+	// Keys only. The values are live datums, which belong to the techweb that made them and cannot be saved.
+	completed_experiments = list()
+	for(var/experiment_path in web.completed_experiments)
+		if(ispath(experiment_path, /datum/experiment))
+			completed_experiments += experiment_path
 	return TRUE
 
 /**
@@ -62,21 +74,56 @@
 		if(web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE))
 			restored++
 
-	for(var/experiment_type in completed_experiments)
-		web.completed_experiments[experiment_type] = completed_experiments[experiment_type]
+	for(var/experiment_path in completed_experiments)
+		restore_experiment(web, experiment_path)
 
 	// Set rather than add: the techweb starts a round with a standard allowance, and a colony's balance is
 	// what it actually had left, not that allowance plus its savings.
 	web.research_points = research_points.Copy()
 	return restored
 
+/**
+ * Marks one experiment complete on a techweb, building the datum the techweb expects.
+ *
+ * The techweb keys `completed_experiments` by real typepath and stores a real /datum/experiment against it.
+ * Both halves matter: have_experiments_for_node() looks the path up, and the R&D console calls to_ui_data() on
+ * the value. Storing anything else is what turned the console into "please synchronize".
+ *
+ * The datum the node's own unlock already put in `available_experiments` is reused where there is one, so the
+ * techweb is not left offering an experiment it has been told is finished.
+ */
+/datum/colony_research_record/proc/restore_experiment(datum/techweb/web, experiment_path)
+	if(!ispath(experiment_path, /datum/experiment) || web.completed_experiments[experiment_path])
+		return FALSE
+
+	var/datum/experiment/finished
+	for(var/datum/experiment/offered as anything in web.available_experiments)
+		if(offered.type == experiment_path)
+			finished = offered
+			break
+
+	if(finished)
+		web.available_experiments -= finished
+	else
+		finished = new experiment_path(web)
+
+	finished.completed = TRUE
+	web.completed_experiments[experiment_path] = finished
+	return TRUE
+
 /datum/colony_research_record/proc/serialize()
 	RETURN_TYPE(/list)
+	// Paths are written as text on purpose. json_encode() would do it anyway, and being explicit means what is
+	// read back matches what a hand-edited record looks like.
+	var/list/experiment_paths = list()
+	for(var/experiment_path in completed_experiments)
+		experiment_paths += "[experiment_path]"
+
 	return list(
 		"schema_version" = schema_version,
 		"researched_node_ids" = researched_node_ids.Copy(),
 		"research_points" = research_points.Copy(),
-		"completed_experiments" = completed_experiments.Copy(),
+		"completed_experiments" = experiment_paths,
 	)
 
 /datum/colony_research_record/proc/deserialize(list/data)
@@ -102,9 +149,19 @@
 			if(isnum(amount) && amount >= 0)
 				incoming_points[point_type] = amount
 
+	// Iterating an assoc list yields its keys and a flat one its values, so this reads both the flat list written
+	// now and the assoc list of `path text -> experiment name` written before completed experiments were paths.
+	// Anything that is not a live experiment path is dropped, which also covers a retired experiment type.
+	var/list/incoming_experiments = list()
+	if(islist(data["completed_experiments"]))
+		for(var/entry in data["completed_experiments"])
+			var/experiment_path = istext(entry) ? text2path(entry) : entry
+			if(ispath(experiment_path, /datum/experiment))
+				incoming_experiments |= experiment_path
+
 	researched_node_ids = incoming_nodes
 	research_points = incoming_points
-	completed_experiments = islist(data["completed_experiments"]) ? data["completed_experiments"] : list()
+	completed_experiments = incoming_experiments
 	return TRUE
 
 /// TRUE when this record describes a colony that has researched nothing and banked nothing.

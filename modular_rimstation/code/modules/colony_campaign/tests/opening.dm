@@ -28,20 +28,24 @@
 			TEST_ASSERT(!ispath(item_type, banned_type), "The opening package contains [item_type], which is industrial-grade starting equipment.")
 		TEST_ASSERT(manifest[item_type] > 0, "The opening package listed [item_type] but granted none of it.")
 
-	// The categories a colony cannot open without.
+	// The categories a colony cannot open without, each satisfied by any of several types. What matters is
+	// that the colony can light a fire, not whether the matches arrive loose or in a box.
 	var/list/required_categories = list(
-		"an ignition source" = /obj/item/match,
-		"bedding material" = /obj/item/stack/sheet/cloth,
-		"renewable food" = /obj/item/seeds,
-		"a water container" = /obj/item/reagent_containers/cup,
-		"a digging tool" = /obj/item/shovel,
+		"an ignition source" = list(/obj/item/match, /obj/item/storage/box/matches, /obj/item/lighter),
+		"bedding material" = list(/obj/item/stack/sheet/cloth),
+		"renewable food" = list(/obj/item/seeds),
+		"a water container" = list(/obj/item/reagent_containers/cup),
+		"a digging tool" = list(/obj/item/shovel),
 	)
 	for(var/category in required_categories)
-		var/required_root = required_categories[category]
+		var/list/accepted_roots = required_categories[category]
 		var/found = FALSE
 		for(var/item_type in manifest)
-			if(ispath(item_type, required_root))
-				found = TRUE
+			for(var/required_root in accepted_roots)
+				if(ispath(item_type, required_root))
+					found = TRUE
+					break
+			if(found)
 				break
 		TEST_ASSERT(found, "The opening package has no [category], so the colony cannot get started.")
 

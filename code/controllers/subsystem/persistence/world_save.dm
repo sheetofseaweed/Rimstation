@@ -42,6 +42,10 @@ SUBSYSTEM_DEF(world_save)
 	if(CONFIG_GET(number/persistent_autosave_period) > 0 && CONFIG_GET(flag/persistent_save_enabled))
 		wait = CONFIG_GET(number/persistent_autosave_period) HOURS
 
+	// RIMSTATION EDIT ADDITION - before anything works out what it is powering, since an APC has to find the
+	// room it belongs to rather than the one the map reader merged it into. See area_identity.dm
+	rebuild_persistent_areas()
+
 	link_loaded_containers() // RIMSTATION EDIT: ORG - the two loops now inside this proc, extracted so tests can drive them
 
 	if(SSatoms.world_save_loaders.len)
@@ -58,6 +62,12 @@ SUBSYSTEM_DEF(world_save)
 
 	GLOB.save_containers_parents.Cut()
 	GLOB.save_containers_children.Cut()
+	// RIMSTATION EDIT ADDITION START - both need every atom off the save to have been through the loop above:
+	// a blueprint cannot find a shuttle that has not registered, and the two load in whatever order the map
+	// happened to put them in. The underlying map is dropped last; what is left named ground nobody claimed.
+	relink_saved_shuttle_blueprints()
+	GLOB.loaded_underlying_areas.Cut()
+	// RIMSTATION EDIT ADDITION END
 
 	return SS_INIT_SUCCESS
 

@@ -435,7 +435,7 @@
 		. += span_notice("It has the plans for a shuttle that no longer exists. It can be reused to construct a new shuttle.")
 	else
 		. += span_notice("It has the plans for \the [shuttle] on it, and can be used to expand [shuttle.p_them()] or modify [shuttle.p_their()] areas.")
-		if(shuttle.master_blueprint.resolve() == src)
+		if(shuttle.master_blueprint?.resolve() == src) // RIMSTATION EDIT: ORG - unguarded; a shuttle linked without a master blueprint threw on examine
 			. += span_notice("This is the master blueprint for \the [shuttle]. You can copy it to a blank set of blueprints, or to an engineering cyborg with a shuttle database module installed.")
 
 /obj/item/shuttle_blueprints/interact_with_atom(atom/interacting_with, mob/living/user, list/modifiers)
@@ -729,7 +729,7 @@
 		. += span_notice("The currently loaded plans are for a shuttle that no longer exists. It will default to shuttle construction mode.")
 	else
 		. += span_notice("It has the plans for \the [shuttle] currently loaded, and can be used to expand [shuttle.p_them()] or modify [shuttle.p_their()] areas.")
-		if(shuttle.master_blueprint.resolve() == src)
+		if(shuttle.master_blueprint?.resolve() == src) // RIMSTATION EDIT: ORG - unguarded; a shuttle linked without a master blueprint threw on examine
 			. += span_notice("This is the master blueprint for \the [shuttle]. You can copy it to a blank set of blueprints, or to another engineering cyborg with a shuttle database module installed.")
 
 /obj/item/shuttle_blueprints/borg/unlink(removing)

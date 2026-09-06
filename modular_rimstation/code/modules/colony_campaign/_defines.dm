@@ -800,3 +800,18 @@
 	TECHWEB_NODE_FUNDIMENTAL_SCI, \
 	TECHWEB_NODE_MATERIAL_PROC, \
 ))
+
+/**
+ * Where the colony's admin verbs live in the verb panel.
+ *
+ * The statpanel makes one tab per distinct category string and sorts them, so a dotted name is not a submenu -
+ * it is a tab of its own that sorts beside the one it is named after. That is what gets fifteen colony verbs
+ * out of the middle of Debug, where they had to be picked out by eye every time.
+ *
+ * Split by who wants them: running a campaign is an ordinary admin job, poking at its state is not, and a
+ * checkpoint is the same kind of thing as a map save, so those join ADMIN_CATEGORY_PERSISTENCE.
+ */
+/// Running a campaign: starting one, resuming one, calling a raid.
+#define ADMIN_CATEGORY_COLONY "Admin.Colony"
+/// Reading and forcing colony state - the larder, the overworld, an expedition, the sky.
+#define ADMIN_CATEGORY_COLONY_DEBUG "Debug.Colony"

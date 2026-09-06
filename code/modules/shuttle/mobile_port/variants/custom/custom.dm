@@ -9,6 +9,14 @@
 
 /obj/docking_port/mobile/custom/Initialize(mapload, list/areas)
 	. = ..()
+	// RIMSTATION EDIT ADDITION START - a port read off a saved map is built by the map loader, which passes no
+	// area list, so this threw during init and left the shuttle half-built. Rebuilding a saved custom shuttle
+	// is separate work; this only stops the runtime.
+	if(!length(areas))
+		if(!mapload)
+			stack_trace("A custom docking port was created outside maploading with no areas to own.")
+		return
+	// RIMSTATION EDIT ADDITION END
 	default_area = areas[1]
 
 /obj/docking_port/mobile/custom/Destroy(force)

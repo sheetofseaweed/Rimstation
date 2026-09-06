@@ -5,7 +5,7 @@
  * pacing is tuned against a colony rather than a station. Until then this is how a raid is started, which is
  * also what makes the vertical slice testable on demand instead of on the storyteller's schedule.
  */
-ADMIN_VERB(rimstation_start_colony_raid, R_ADMIN, "Start Colony Raid", "Begins a telegraphed raid on the colony core.", ADMIN_CATEGORY_EVENTS)
+ADMIN_VERB(rimstation_start_colony_raid, R_ADMIN, "Start Colony Raid", "Begins a telegraphed raid on the colony core.", ADMIN_CATEGORY_COLONY)
 	var/obj/structure/colony_core/core = get_colony_core()
 	if(!core)
 		to_chat(user, span_warning("There is no colony core on this map."))

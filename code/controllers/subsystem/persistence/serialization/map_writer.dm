@@ -12,6 +12,7 @@
 	GLOB.save_containers_parents.Cut()
 	GLOB.save_containers_children.Cut()
 	GLOB.save_sticker_offsets.Cut() // RIMSTATION EDIT ADDITION
+	GLOB.save_area_ids.Cut() // RIMSTATION EDIT ADDITION
 	reset_colonist_stash_write_state() // RIMSTATION EDIT ADDITION
 
 /proc/cancel_write_map()
@@ -210,6 +211,12 @@
 
 					var/metadata = generate_tgm_metadata(target_atom, save_flags)
 					TGM_MAP_BLOCK(current_header, target_atom.type, metadata)
+
+				// RIMSTATION EDIT ADDITION - an area a player built cannot be described by its typepath, so its
+				// identity is written onto the tile instead. Must precede the turf: the loader reads the last two
+				// entries of a block as the turf and the area. See area_identity.dm
+				if(save_flags & SAVE_AREAS)
+					write_persistent_area_marker(current_header, saved_area, pull_from)
 
 				var/turf_metadata
 				//====SAVING ATMOS====
