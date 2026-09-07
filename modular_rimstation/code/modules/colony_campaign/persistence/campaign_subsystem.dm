@@ -1177,11 +1177,25 @@ SUBSYSTEM_DEF(campaign)
  * Eligibility is asked of the candidate itself rather than guessed at from outside: an incident knows what it
  * needs, and building one only to discard it is cheap next to getting the answer wrong. Which of the eligible
  * ones gets built is weighted against what the colony has been through lately.
+ *
+ * `forced_type` names one instead of weighing them, for the admin verb that runs a chosen incident. It still
+ * has to be eligible and still has to agree it can begin: forcing decides which incident, never whether the
+ * world is in a state that can carry one.
  */
-/datum/controller/subsystem/campaign/proc/create_incident(incident_category)
+/datum/controller/subsystem/campaign/proc/create_incident(incident_category, forced_type)
 	RETURN_TYPE(/datum/colony_incident)
 	var/list/candidates = get_eligible_incident_types(incident_category)
 	if(!length(candidates))
+		return null
+
+	if(forced_type)
+		if(!(forced_type in candidates))
+			return null
+		var/datum/colony_incident/forced = new forced_type
+		if(forced.can_begin())
+			LAZYADD(active_incidents, forced)
+			return forced
+		qdel(forced)
 		return null
 
 	var/list/weighted = list()

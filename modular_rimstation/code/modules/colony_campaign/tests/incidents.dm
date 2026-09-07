@@ -60,6 +60,54 @@
  * The warning window is the colony's chance to prepare, so an incident that could jump straight to active
  * would turn a story into a punishment. The order is enforced rather than trusted.
  */
+/**
+ * Forcing an incident chooses which one, never whether the world can carry it.
+ *
+ * The admin verb names an incident and lets the ordinary carrier event run it, so what is worth measuring is
+ * the narrow thing that verb depends on: naming a type gets that type, and naming one that cannot run here is
+ * refused rather than quietly falling back to a random pick. The fallback would be the worst outcome - an
+ * admin asking for one incident and the colony being handed another without being told.
+ */
+/datum/unit_test/campaign_failure_path/rimstation_colony_incident_forced_type
+	test_campaign_id = "unit-test-forced-incident"
+
+/datum/unit_test/campaign_failure_path/rimstation_colony_incident_forced_type/Run()
+	take_campaign()
+	TEST_ASSERT(SScampaign.create_campaign(test_campaign_id, "admin-key"), "A campaign could not be created.")
+
+	var/list/candidates = SScampaign.get_eligible_incident_types(COLONY_INCIDENT_CATEGORY_NEUTRAL)
+	TEST_ASSERT(length(candidates), "No neutral incidents are eligible, so forcing one cannot be tested.")
+	var/datum/colony_incident/wanted = candidates[1]
+
+	var/datum/colony_incident/built = SScampaign.create_incident(COLONY_INCIDENT_CATEGORY_NEUTRAL, wanted)
+	TEST_ASSERT_NOTNULL(built, "Forcing an eligible incident built nothing.")
+	TEST_ASSERT_EQUAL(built.type, wanted, "Forcing an incident built a different one than the one that was named.")
+	SScampaign.forget_incident(built)
+	qdel(built)
+
+	// A real incident of another category is not eligible here, and must be refused rather than substituted.
+	var/list/threats = SScampaign.get_eligible_incident_types(COLONY_INCIDENT_CATEGORY_THREAT)
+	if(length(threats))
+		var/datum/colony_incident/mismatched = SScampaign.create_incident(COLONY_INCIDENT_CATEGORY_NEUTRAL, threats[1])
+		if(mismatched)
+			SScampaign.forget_incident(mismatched)
+			qdel(mismatched)
+		TEST_ASSERT_NULL(mismatched, "Forcing an incident of the wrong category built something anyway, so an admin would be handed an incident they did not ask for.")
+
+	// An abstract type exists to be inherited from, not run. Naming one must refuse.
+	var/datum/colony_incident/abstract_one = SScampaign.create_incident(COLONY_INCIDENT_CATEGORY_NEUTRAL, /datum/colony_incident)
+	if(abstract_one)
+		SScampaign.forget_incident(abstract_one)
+		qdel(abstract_one)
+	TEST_ASSERT_NULL(abstract_one, "Forcing an abstract incident type built something, which would be a random incident wearing an admin's choice.")
+
+	// Asking for nothing in particular still works, or the storyteller's own path would be broken by this.
+	var/datum/colony_incident/ordinary = SScampaign.create_incident(COLONY_INCIDENT_CATEGORY_NEUTRAL)
+	TEST_ASSERT_NOTNULL(ordinary, "An unforced incident could no longer be built, so the storyteller's own path is broken.")
+	SScampaign.forget_incident(ordinary)
+	qdel(ordinary)
+
+
 /datum/unit_test/campaign_failure_path/rimstation_colony_incident_lifecycle
 	test_campaign_id = "unit-test-incident"
 

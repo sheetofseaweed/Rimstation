@@ -1,9 +1,13 @@
 /**
- * The overworld record carries what play changed, and nothing that can be derived.
+ * The overworld record carries what was changed, and nothing that can be derived.
  *
- * If a cell, a terrain type or a site position ever reached this record, the campaign would have two answers
- * to what the region looks like - the stored one and the generated one - and they would drift apart the first
- * time a generation rule changed.
+ * If a cell, a terrain type or a site position ever reached this record as a *fact*, the campaign would have
+ * two answers to what the region looks like - the stored one and the generated one - and they would drift
+ * apart the first time a generation rule changed.
+ *
+ * The two override lists are the deliberate exception, and they hold the line rather than crossing it: they
+ * store an admin's *edit*, not the region. The generator still decides what the map is, the edits are laid
+ * over the top of every build, and there is still exactly one answer to what any cell looks like.
  */
 /datum/unit_test/rimstation_overworld_state_stores_only_changes
 
@@ -30,6 +34,10 @@
 		"next_party_number",
 		"next_decision_number",
 		"active_party",
+		// Admin edits to the generated map. Stored as edits rather than as the map, so the generator stays the
+		// one authority on what the region is and these stay a layer over the top of it.
+		"cell_overrides",
+		"added_sites",
 	)
 
 	for(var/field in stored)
@@ -45,6 +53,178 @@
 
 	// An untouched site is absent rather than recorded as available: absence is what untouched means.
 	TEST_ASSERT(!length(stored["site_states"]), "An untouched region recorded site states it did not need to.")
+	// Same rule for the map itself. A region nobody edited must record no edits, or every campaign would carry
+	// a copy of the generator's output around with it.
+	TEST_ASSERT(!length(stored["cell_overrides"]), "An unedited region recorded cell overrides it did not need to.")
+	TEST_ASSERT(!length(stored["added_sites"]), "A region nobody added a site to recorded placed sites.")
+
+
+/**
+ * An admin's edit to the map outlives the chapter it was made in.
+ *
+ * The region is rebuilt from the planet seed every time anything asks for it, so an edit written to the live
+ * cell would last until the next rebuild and no longer. The whole point of storing the edit is that it can be
+ * laid back over a region built fresh - which is what this measures, by building a second one and checking the
+ * edit is on it.
+ */
+/datum/unit_test/rimstation_overworld_admin_edits_persist
+
+/datum/unit_test/rimstation_overworld_admin_edits_persist/Run()
+	var/datum/planet_definition/planet = new("override-test-seed", "override-test-planet")
+	allocated += planet
+	var/datum/overworld_region/region = new(planet, default_overworld_options())
+	allocated += region
+
+	var/datum/overworld_state/state = new(default_overworld_options())
+	allocated += state
+
+	// The origin cell always exists, whatever the seed produced around it.
+	var/datum/overworld_cell/origin = region.get_cell(0, 0)
+	TEST_ASSERT_NOTNULL(origin, "The region has no origin cell, so there is nothing to edit.")
+	var/generated_terrain = origin.terrain
+
+	// Something the generator did not produce here, so the edit is observable rather than a coincidence.
+	var/edited_terrain = (generated_terrain == OVERWORLD_TERRAIN_MARSH) ? OVERWORLD_TERRAIN_DESERT : OVERWORLD_TERRAIN_MARSH
+
+	TEST_ASSERT(state.set_cell_override(region, "0,0", edited_terrain, OVERWORLD_TOPOLOGY_DIFFICULT, 3), "A cell edit was refused.")
+	TEST_ASSERT_EQUAL(origin.terrain, edited_terrain, "A cell edit did not reach the live region.")
+	TEST_ASSERT_EQUAL(origin.topology, OVERWORLD_TOPOLOGY_DIFFICULT, "A topology edit did not reach the live region.")
+	TEST_ASSERT_EQUAL(origin.danger, 3, "A danger edit did not reach the live region.")
+
+	var/site_id = state.add_site(region, OVERWORLD_SITE_RESOURCE, 0, 0, 42)
+	TEST_ASSERT_NOTNULL(site_id, "A placed site was refused.")
+	TEST_ASSERT_NOTNULL(region.sites[site_id], "A placed site did not reach the live region.")
+
+	// Through disk and back, because that is the trip it actually makes.
+	var/datum/overworld_state/reloaded = new(default_overworld_options())
+	allocated += reloaded
+	TEST_ASSERT(reloaded.deserialize(json_decode(json_encode(state.serialize()))), "An overworld record carrying admin edits did not survive a JSON round trip.")
+
+	// A region built fresh, exactly as the next chapter would build it.
+	var/datum/overworld_region/rebuilt = new(planet, default_overworld_options())
+	allocated += rebuilt
+	var/datum/overworld_cell/rebuilt_origin = rebuilt.get_cell(0, 0)
+	TEST_ASSERT_EQUAL(rebuilt_origin.terrain, generated_terrain, "A freshly built region already carried the edit, so this test cannot tell whether applying it did anything.")
+
+	reloaded.apply_overrides(rebuilt)
+
+	TEST_ASSERT_EQUAL(rebuilt_origin.terrain, edited_terrain, "A cell edit did not survive to the next region build, so an admin's change to the map dies with the chapter.")
+	TEST_ASSERT_EQUAL(rebuilt_origin.topology, OVERWORLD_TOPOLOGY_DIFFICULT, "A topology edit did not survive to the next region build.")
+	TEST_ASSERT_EQUAL(rebuilt_origin.danger, 3, "A danger edit did not survive to the next region build.")
+	var/datum/overworld_site/rebuilt_site = rebuilt.sites[site_id]
+	TEST_ASSERT_NOTNULL(rebuilt_site, "A placed site did not survive to the next region build.")
+	TEST_ASSERT_EQUAL(rebuilt_site.yield, 42, "A placed site came back with a different yield than it was given.")
+
+	// Dropping an edit hands the cell back, rather than freezing whatever it was last set to.
+	TEST_ASSERT(reloaded.clear_cell_override(rebuilt, "0,0"), "Dropping a cell edit was refused.")
+	var/datum/overworld_region/final = new(planet, default_overworld_options())
+	allocated += final
+	reloaded.apply_overrides(final)
+	TEST_ASSERT_EQUAL(final.get_cell(0, 0).terrain, generated_terrain, "A dropped cell edit still applied, so the generator never gets its cell back.")
+
+
+/**
+ * A placed site cannot take a generated site's identity.
+ *
+ * A site is `<kind>:<rank>`, and that id is what everything play has done to it is filed under. A placed site
+ * that landed on a generated one's id would silently inherit its state - and, when the generator later
+ * produced that site for real, there would be two things claiming to be it.
+ */
+/datum/unit_test/rimstation_overworld_placed_sites_get_free_ids
+
+/datum/unit_test/rimstation_overworld_placed_sites_get_free_ids/Run()
+	var/datum/planet_definition/planet = new("placed-site-seed", "placed-site-planet")
+	allocated += planet
+	var/datum/overworld_region/region = new(planet, default_overworld_options())
+	allocated += region
+	var/datum/overworld_state/state = new(default_overworld_options())
+	allocated += state
+
+	var/list/generated_ids = region.sites.Copy()
+	TEST_ASSERT(length(generated_ids), "The region generated no sites, so a collision cannot be tested.")
+
+	var/first = state.add_site(region, OVERWORLD_SITE_RESOURCE, 0, 0, 10)
+	var/second = state.add_site(region, OVERWORLD_SITE_RESOURCE, 0, 0, 10)
+	TEST_ASSERT_NOTNULL(first, "The first placed site was refused.")
+	TEST_ASSERT_NOTNULL(second, "The second placed site was refused.")
+	TEST_ASSERT(first != second, "Two placed sites were given the same id, so one overwrote the other.")
+
+	for(var/site_id in list(first, second))
+		TEST_ASSERT(!(site_id in generated_ids), "A placed site took the id '[site_id]' of a site the generator had already made.")
+
+	// A cell that is not in the region has nowhere to stand.
+	TEST_ASSERT_NULL(state.add_site(region, OVERWORLD_SITE_RESOURCE, 9999, 9999, 10), "A site was placed on a cell outside the region.")
+	TEST_ASSERT_NULL(state.add_site(region, "not_a_kind", 0, 0, 10), "A site was placed with a kind that does not exist.")
+
+
+/**
+ * A record off disk is not trusted, and one written before these fields existed still loads.
+ *
+ * The second half is the one that matters right now: the schema check is an equality test with no migration
+ * behind it, so these fields were added without raising the version. A campaign that was running before they
+ * existed has to keep its discoveries, not be told its map is unreadable.
+ */
+/datum/unit_test/rimstation_overworld_admin_edits_validated
+
+/datum/unit_test/rimstation_overworld_admin_edits_validated/Run()
+	var/datum/overworld_state/state = new(default_overworld_options())
+	allocated += state
+
+	var/list/record = state.serialize()
+	record["cell_overrides"] = list(
+		"0,0" = list("terrain" = "a_terrain_that_does_not_exist", "topology" = "sideways", "danger" = 99),
+		"1,1" = list("terrain" = OVERWORLD_TERRAIN_DESERT),
+		"2,2" = list(),
+	)
+	record["added_sites"] = list(
+		"good:900" = list("kind" = OVERWORLD_SITE_RUIN, "rank" = 900, "q" = 1, "r" = 1, "yield" = 5),
+		"bad:901" = list("kind" = "not_a_kind", "rank" = 901, "q" = 1, "r" = 1),
+		"worse:902" = list("kind" = OVERWORLD_SITE_RUIN, "rank" = "not a number", "q" = 1, "r" = 1),
+	)
+
+	TEST_ASSERT(state.deserialize(record), "A record carrying unusable edits was refused outright, rather than dropping the bad lines.")
+
+	var/list/kept_cell = state.cell_overrides["0,0"]
+	TEST_ASSERT_NOTNULL(kept_cell, "A cell edit was dropped entirely because parts of it were bad.")
+	TEST_ASSERT_NULL(kept_cell["terrain"], "A terrain that does not exist was restored.")
+	TEST_ASSERT_NULL(kept_cell["topology"], "A topology with no traversal cost was restored, which would make the cell free to cross.")
+	TEST_ASSERT_EQUAL(kept_cell["danger"], OVERWORLD_MAX_CELL_DANGER, "An out-of-range danger was not clamped.")
+	TEST_ASSERT_EQUAL(state.cell_overrides["1,1"]["terrain"], OVERWORLD_TERRAIN_DESERT, "A valid cell edit beside a bad one was dropped.")
+	TEST_ASSERT_NULL(state.cell_overrides["2,2"], "An edit that changed nothing was stored.")
+
+	TEST_ASSERT_NOTNULL(state.added_sites["good:900"], "A valid placed site was dropped.")
+	TEST_ASSERT_NULL(state.added_sites["bad:901"], "A placed site with a kind that does not exist was restored.")
+	TEST_ASSERT_NULL(state.added_sites["worse:902"], "A placed site with a non-numeric rank was restored.")
+
+	// A record written before these fields existed. It has to load, and read as a map nobody edited.
+	var/datum/overworld_state/older = new(default_overworld_options())
+	allocated += older
+	var/list/old_record = state.serialize()
+	old_record -= "cell_overrides"
+	old_record -= "added_sites"
+	TEST_ASSERT(older.deserialize(old_record), "A record written before admin edits existed was refused, which would reset a running campaign's map.")
+	TEST_ASSERT(!length(older.cell_overrides), "A record with no edit fields came back carrying edits.")
+	TEST_ASSERT(!length(older.added_sites), "A record with no placed-site field came back carrying placed sites.")
+
+
+/// A lost generation takes its edits with it. A cell id describes ground that no longer exists.
+/datum/unit_test/rimstation_overworld_admin_edits_dropped_with_generation
+
+/datum/unit_test/rimstation_overworld_admin_edits_dropped_with_generation/Run()
+	var/datum/planet_definition/planet = new("generation-drop-seed", "generation-drop-planet")
+	allocated += planet
+	var/datum/overworld_region/region = new(planet, default_overworld_options())
+	allocated += region
+	var/datum/overworld_state/state = new(default_overworld_options())
+	allocated += state
+
+	TEST_ASSERT(state.set_cell_override(region, "0,0", OVERWORLD_TERRAIN_MARSH, null, null), "A cell edit was refused.")
+	TEST_ASSERT_NOTNULL(state.add_site(region, OVERWORLD_SITE_RUIN, 0, 0), "A placed site was refused.")
+
+	state.reset_for_new_generation()
+
+	TEST_ASSERT(!length(state.cell_overrides), "A new generation inherited the last one's cell edits, so an admin's mountain range moved onto a world that never had one.")
+	TEST_ASSERT(!length(state.added_sites), "A new generation inherited the last one's placed sites.")
 
 
 /// The record survives the trip to disk with its discoveries and changes intact.

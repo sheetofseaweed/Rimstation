@@ -379,6 +379,34 @@
 	list(OVERWORLD_TERRAIN_DESERT, OVERWORLD_TERRAIN_SAVANNA, OVERWORLD_TERRAIN_MARSH), \
 )
 
+/// The same labels, flat. The table is indexed by climate; this is for checking a hand-made edit.
+#define OVERWORLD_TERRAINS list( \
+	OVERWORLD_TERRAIN_FROZEN_STEPPE, \
+	OVERWORLD_TERRAIN_TUNDRA, \
+	OVERWORLD_TERRAIN_TAIGA, \
+	OVERWORLD_TERRAIN_SCRUBLAND, \
+	OVERWORLD_TERRAIN_GRASSLAND, \
+	OVERWORLD_TERRAIN_FOREST, \
+	OVERWORLD_TERRAIN_DESERT, \
+	OVERWORLD_TERRAIN_SAVANNA, \
+	OVERWORLD_TERRAIN_MARSH, \
+)
+
+/// Every kind of site that can stand on the map.
+#define OVERWORLD_SITE_KINDS list(OVERWORLD_SITE_RESOURCE, OVERWORLD_SITE_RUIN)
+
+/// Highest danger rating a cell can carry.
+#define OVERWORLD_MAX_CELL_DANGER 3
+
+/**
+ * Rank an admin-placed site starts counting from.
+ *
+ * A site's identity is `<kind>:<rank>`, and the generator ranks from 1 upwards. Placed sites start well above
+ * anything it will reach, so a placed site can never take the id of a generated one - which would silently
+ * transfer whatever play had already done to it.
+ */
+#define OVERWORLD_ADMIN_SITE_RANK_BASE 900
+
 /// The job nearly everyone in a colony holds. A settlement has no departments to staff.
 #define JOB_COLONIST "Colonist"
 

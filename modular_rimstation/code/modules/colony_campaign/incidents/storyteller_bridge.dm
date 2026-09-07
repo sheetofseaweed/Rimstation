@@ -17,6 +17,14 @@
 	description = "Something happens to the colony."
 	/// Which COLONY_INCIDENT_CATEGORY_* this control schedules.
 	var/incident_category
+	/**
+	 * One incident type to run instead of choosing, consumed by the next event this control starts.
+	 *
+	 * Set only by the admin verb that forces a named incident. It goes here rather than being handed straight
+	 * to a bare incident because the incident itself owns no clock - the carrier event drives its warning,
+	 * arrival and end, so an incident built outside one would announce itself and then sit in warning forever.
+	 */
+	var/forced_incident_type
 
 /**
  * Never eligible outside a campaign, and never eligible if the campaign has nothing to offer.
@@ -65,7 +73,10 @@
 
 /datum/round_event/colony_incident/setup()
 	var/datum/round_event_control/colony_incident/incident_control = control
-	incident = SScampaign.create_incident(incident_control?.incident_category)
+	incident = SScampaign.create_incident(incident_control?.incident_category, incident_control?.forced_incident_type)
+	// Cleared whether or not it worked, so a force that found nothing runnable does not wait around to ambush
+	// the storyteller's next ordinary pick of this category.
+	incident_control?.forced_incident_type = null
 	if(!incident)
 		// Nothing to run. Killing the event here means it never announces something that will not arrive.
 		kill()

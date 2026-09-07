@@ -45,6 +45,9 @@ GLOBAL_VAR(active_overworld_signature)
 	QDEL_NULL(GLOB.active_overworld_region)
 	GLOB.active_overworld_region = new(planet, options)
 	GLOB.active_overworld_signature = signature
+	// Laid over every build, not just the first. The region above is thrown away and regenerated whenever the
+	// signature changes, so an edit applied once would last exactly until the next thing asked for the map.
+	region_state?.apply_overrides(GLOB.active_overworld_region)
 	qdel(planet)
 	return GLOB.active_overworld_region
 
