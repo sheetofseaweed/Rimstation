@@ -200,7 +200,8 @@
 #define CAMPAIGN_MANIFEST_SCHEMA_VERSION 6
 
 /// Research record layout version. Migrated alongside the manifest that carries it.
-#define COLONY_RESEARCH_SCHEMA_VERSION 1
+/// Version 2 holds node typepaths. Upstream deleted the string ids version 1 wrote, so they cannot be mapped.
+#define COLONY_RESEARCH_SCHEMA_VERSION 2
 
 /// Settlement ledger layout version. Migrated alongside the manifest that carries it.
 #define COLONY_LEDGER_SCHEMA_VERSION 1
@@ -823,10 +824,10 @@
  * Advanced research still has to be earned. Keep the colony's original four basics explicitly as well.
  */
 #define CAMPAIGN_STARTING_RESEARCH_NODES ((SSresearch.techweb_nodes_starting - SSresearch.techweb_nodes_hidden) | list( \
-	TECHWEB_NODE_CONSTRUCTION, \
-	TECHWEB_NODE_PARTS, \
-	TECHWEB_NODE_FUNDIMENTAL_SCI, \
-	TECHWEB_NODE_MATERIAL_PROC, \
+	/datum/techweb_node/construction, \
+	/datum/techweb_node/parts, \
+	/datum/techweb_node/fundamental_sci, \
+	/datum/techweb_node/material_processing, \
 ))
 
 /**

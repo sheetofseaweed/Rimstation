@@ -4,7 +4,8 @@
  * The three layers fail differently and look the same on screen: a tile can be wrongly roofed, correctly
  * roofed but wrongly rendered, or correct but stuck in a queue. This says which.
  */
-ADMIN_VERB(sunlight_inspect, R_DEBUG, "Inspect Sunlight", "Show the sunlight state of a tile.", ADMIN_CATEGORY_COLONY_DEBUG, turf/target in world)
+ADMIN_VERB(sunlight_inspect, R_DEBUG, "Inspect Sunlight", "Show the sunlight state of a tile.", ADMIN_CATEGORY_COLONY_DEBUG)
+	VERB_ARG_TYPED(target, VERB_ARG_TYPE_TURF, VERB_ARG_SOURCE_WORLD, /turf)
 	var/atom/movable/sunlight_effect/effect = target.sunlight_effect
 	var/turf/ceiling = GET_TURF_ABOVE(target)
 	var/area/our_area = target.loc

@@ -70,7 +70,6 @@
 /datum/design/board/firebox
 	name = "Firebox Generator Board"
 	desc = "The circuit board for a generator that burns wooden planks."
-	id = "firebox_generator"
 	build_type = IMPRINTER | AWAY_IMPRINTER | COLONY_FABRICATOR
 	build_path = /obj/item/circuitboard/machine/firebox
 	category = list(
@@ -81,5 +80,4 @@
 /datum/design/board/firebox/coal
 	name = "Coal Firebox Generator Board"
 	desc = "The circuit board for a generator that burns coal."
-	id = "firebox_generator_coal"
 	build_path = /obj/item/circuitboard/machine/firebox/coal

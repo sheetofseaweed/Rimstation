@@ -5,7 +5,7 @@
 		communicate with each other."
 	key = "e"
 	default_priority = 90
-	flags = TONGUELESS_SPEECH
+	flags = LANGUAGE_TONGUELESS_SPEECH
 	syllables = list(
 		"yi", "ye", "wa", "wi", "wu", "we", "wyu", "va", "vi", "vu", "ve", "vo", "vya", "vyu", "vye", "vyo",
 		"kye", "gye", "kwa", "kwi", "kwe", "kwo", "kwa", "gwa", "gwi", "gwe", "gwo", "gwa", "she", "je", "si", "zi",

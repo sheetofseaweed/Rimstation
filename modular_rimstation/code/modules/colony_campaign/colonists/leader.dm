@@ -17,6 +17,8 @@
 	department_for_prefs = /datum/job_department/assistant
 	job_flags = STATION_JOB_FLAGS
 	config_tag = "COLONY_LEADER"
+	// Any job on the crew manifest needs one, or job_icons fails on it.
+	tgui_icon = FA_ICON_CAMPGROUND
 	colony_role = TRUE
 
 /// A leader arrives the way any colonist does; the roster does not care what they were elected to do.

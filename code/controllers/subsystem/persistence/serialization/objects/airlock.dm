@@ -17,13 +17,12 @@
 	return .
 
 /obj/machinery/door/airlock/on_object_saved(map_string, turf/current_loc)
-	if(abandoned)
-		TGM_MAP_BLOCK(map_string, /obj/effect/mapping_helpers/airlock/abandoned, null)
-	else // Only save these if not abandoned
-		if(welded)
-			TGM_MAP_BLOCK(map_string, /obj/effect/mapping_helpers/airlock/welded, null)
-		if(locked && !cycle_pump) // cycle pumps has funky bolt behavior that needs to be ignored
-			TGM_MAP_BLOCK(map_string, /obj/effect/mapping_helpers/airlock/locked, null)
+	// The abandoned helper rolls its outcome at mapload and leaves nothing on the airlock to read, so the
+	// concrete state it produced is saved instead. Writing the helper back would re-roll a saved door.
+	if(welded)
+		TGM_MAP_BLOCK(map_string, /obj/effect/mapping_helpers/airlock/welded, null)
+	if(locked && !cycle_pump) // cycle pumps has funky bolt behavior that needs to be ignored
+		TGM_MAP_BLOCK(map_string, /obj/effect/mapping_helpers/airlock/locked, null)
 	if(cyclelinkeddir)
 		var/obj/effect/mapping_helpers/airlock/cyclelink_helper/typepath = /obj/effect/mapping_helpers/airlock/cyclelink_helper
 		var/list/variables = list()

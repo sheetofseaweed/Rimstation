@@ -5,10 +5,16 @@
  * selection already work; the only thing missing for a raid is somewhere to go when nothing is shooting at
  * them. Without that they arrive and mill around at the map edge, which is exactly what happened.
  *
- * The inherited controllers do carry a travel subtree, but it is keyed on BB_BASIC_MOB_REINFORCEMENT_TARGET
- * and clears itself on arrival. These use BB_TRAVEL_DESTINATION and keep it, so attackers that get pushed off
- * the objective turn around and come back rather than wandering.
+ * The inherited trees do carry a travel subtree, but it is keyed on BB_BASIC_MOB_REINFORCEMENT_TARGET and
+ * clears itself on arrival. This one reads BB_TRAVEL_DESTINATION and keeps it, so attackers that get pushed
+ * off the objective turn around and come back rather than wandering.
+ *
+ * It sits where upstream's trooper trees put random_walk: below every combat branch, so a raider fights what
+ * is in front of it and only walks at the colony when nothing is.
  */
+/datum/bt_node/subtree/rimstation_raid_travel
+	behavior_tree_json = "modular_rimstation/code/modules/colony_campaign/raids/raid_travel.bt.json"
+
 /**
  * Raiders path rather than shove.
  *
@@ -20,23 +26,11 @@
 
 /datum/ai_controller/basic_controller/trooper/rimstation_raider
 	ai_movement = /datum/ai_movement/jps/rimstation_raider
-	planning_subtrees = list(
-		/datum/ai_planning_subtree/escape_captivity,
-		/datum/ai_planning_subtree/simple_find_target,
-		/datum/ai_planning_subtree/attack_obstacle_in_path/trooper,
-		/datum/ai_planning_subtree/basic_melee_attack_subtree/trooper,
-		/datum/ai_planning_subtree/travel_to_point,
-	)
+	behavior_tree_json = "modular_rimstation/code/modules/colony_campaign/raids/raider.bt.json"
 
 /datum/ai_controller/basic_controller/trooper/rimstation_raider/ranged
 	ai_movement = /datum/ai_movement/jps/rimstation_raider
-	planning_subtrees = list(
-		/datum/ai_planning_subtree/escape_captivity,
-		/datum/ai_planning_subtree/simple_find_target,
-		/datum/ai_planning_subtree/basic_ranged_attack_subtree/trooper,
-		/datum/ai_planning_subtree/attack_obstacle_in_path/trooper,
-		/datum/ai_planning_subtree/travel_to_point,
-	)
+	behavior_tree_json = "modular_rimstation/code/modules/colony_campaign/raids/raider_ranged.bt.json"
 
 /**
  * Raider mobs.

@@ -40,7 +40,7 @@
 
 	// Every design it offers is one the colony actually researched. This is the gate.
 	for(var/datum/design/design as anything in gated.cached_designs)
-		TEST_ASSERT(colony_web.researched_designs[design.id], "The colony fabricator offered '[design.id]', which the colony has not researched.")
+		TEST_ASSERT(colony_web.researched_designs[design.type], "The colony fabricator offered '[design.type]', which the colony has not researched.")
 
 	// And it offers strictly less than the ungated machine, or the gate is not doing anything.
 	TEST_ASSERT(length(gated.cached_designs) < ungated_count, "A campaign colony fabricator offered [length(gated.cached_designs)] designs against [ungated_count] ungated, so research gates nothing.")
@@ -48,14 +48,14 @@
 	// A design the colony has not researched is refused by the same list ui_act revalidates against, so it
 	// cannot be forged by sending a build request for it.
 	var/datum/design/unresearched
-	for(var/design_id in SSresearch.techweb_designs)
-		var/datum/design/candidate = SSresearch.techweb_designs[design_id]
-		if((candidate.build_type & COLONY_FABRICATOR) && !colony_web.researched_designs[design_id])
+	for(var/design_path in SSresearch.techweb_designs)
+		var/datum/design/candidate = SSresearch.techweb_designs[design_path]
+		if((candidate.build_type & COLONY_FABRICATOR) && !colony_web.researched_designs[design_path])
 			unresearched = candidate
 			break
 	TEST_ASSERT_NOTNULL(unresearched, "Every colony fabricator design is already researched, so the gate cannot be tested.")
 	TEST_ASSERT(!(unresearched in gated.cached_designs), "An unresearched design was listed by a campaign colony fabricator.")
-	TEST_ASSERT(!colony_web.researched_designs[unresearched.id], "An unresearched design was present in the list ui_act validates builds against.")
+	TEST_ASSERT(!colony_web.researched_designs[unresearched.type], "An unresearched design was present in the list ui_act validates builds against.")
 
 	SScampaign.campaign_state = saved_state
 	SScampaign.manifest = saved_manifest
@@ -96,27 +96,27 @@
 	// Find an unresearched node that unlocks something this machine could build.
 	var/datum/techweb_node/node
 	var/datum/design/target_design
-	for(var/node_id in SSresearch.techweb_nodes)
-		if(colony_web.researched_nodes[node_id])
+	for(var/node_path in SSresearch.techweb_nodes)
+		if(colony_web.researched_nodes[node_path])
 			continue
-		var/datum/techweb_node/candidate = SSresearch.techweb_nodes[node_id]
-		for(var/design_id in candidate.design_ids)
-			var/datum/design/design = SSresearch.techweb_designs[design_id]
-			if(design && (design.build_type & COLONY_FABRICATOR) && !colony_web.researched_designs[design_id])
+		var/datum/techweb_node/candidate = SSresearch.techweb_nodes[node_path]
+		for(var/design_path in candidate.unlocked_designs)
+			var/datum/design/design = SSresearch.techweb_designs[design_path]
+			if(design && (design.build_type & COLONY_FABRICATOR) && !colony_web.researched_designs[design_path])
 				node = candidate
 				target_design = design
 				break
 		if(node)
 			break
 	TEST_ASSERT_NOTNULL(node, "No unresearched node unlocks a colony fabricator design, so a live update cannot be tested.")
-	TEST_ASSERT(!(target_design in lathe.cached_designs), "The fabricator already offered '[target_design.id]' before it was researched.")
+	TEST_ASSERT(!(target_design in lathe.cached_designs), "The fabricator already offered '[target_design.type]' before it was researched.")
 
 	TEST_ASSERT(colony_web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE), "The node could not be researched.")
 	// The machine batches its updates behind a two-second timer. Reconnecting it to the same techweb is the
 	// public way to make it rebuild now - update_designs() itself is protected, and reaching past that from a
 	// test would only prove the test can break the rules.
 	lathe.connect_techweb(colony_web)
-	TEST_ASSERT(target_design in lathe.cached_designs, "Researching '[node.id]' did not make '[target_design.id]' buildable at the colony fabricator.")
+	TEST_ASSERT(target_design in lathe.cached_designs, "Researching '[node.type]' did not make '[target_design.type]' buildable at the colony fabricator.")
 
 	SScampaign.campaign_state = saved_state
 	SScampaign.manifest = saved_manifest

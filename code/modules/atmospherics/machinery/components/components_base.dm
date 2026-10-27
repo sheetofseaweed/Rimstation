@@ -18,6 +18,10 @@
 	var/list/datum/gas_mixture/airs
 	///Handles whether the custom reconcilation handling should be used
 	var/custom_reconcilation = FALSE
+	///The light mask for emissive effects while on
+	var/light_mask_on = FALSE
+	///The light mask for emissive effects while off (but still powered)
+	var/light_mask_off = FALSE
 
 /*
 /obj/machinery/atmospherics/components/get_save_vars()
@@ -51,6 +55,23 @@
  */
 /obj/machinery/atmospherics/components/proc/update_icon_nopipes()
 	return
+
+/obj/machinery/atmospherics/components/update_overlays()
+	. = ..()
+
+	if(istype(src, /obj/machinery/atmospherics/components/trinary))
+		var/on_state = on && nodes[1] && nodes[2] && nodes[3] && is_operational
+		// during Initialize() trinary devices will be technically "on" but their icon_state
+		// updates to off via update_icon_nopipes() before atmos nodes process which breaks their emissives
+		if(!on_state)
+			return
+
+	cut_overlays()
+	if(is_operational && ((on && light_mask_on) || (!on && light_mask_off)))
+		// this is cursed but both these emissive_appearance() are needed one gives emissives to
+		// mapload machinery that are already on the other gives emissives when updates happen (on/off/pressure change/etc.)
+		. += emissive_appearance(icon, "[icon_state]-emissive", src, alpha = src.alpha)
+		add_overlay(emissive_appearance(icon, "[icon_state]-emissive", src, alpha = src.alpha))
 
 /obj/machinery/atmospherics/components/on_hide(datum/source, underfloor_accessibility)
 	hide_pipe(underfloor_accessibility)
@@ -92,7 +113,7 @@
 		var/obj/machinery/atmospherics/node = nodes[i]
 		var/node_dir = get_dir(src, node)
 		var/mutable_appearance/pipe_appearance = mutable_appearance('icons/obj/pipes_n_cables/pipe_underlays.dmi', "intact_[node_dir]_[underlay_pipe_layer]", appearance_flags = RESET_COLOR|KEEP_APART)
-		pipe_appearance.color = (node.pipe_color == ATMOS_COLOR_OMNI || istype(node, /obj/machinery/atmospherics/pipe/color_adapter)) ? pipe_color : node.pipe_color
+		pipe_appearance.color = SELECT_ATMOS_NODE_COLOR(src, node)
 		if (underfloor_state == UNDERFLOOR_VISIBLE || uncovered_turf)
 			pipe_appearance.layer = BELOW_CATWALK_LAYER + get_pipe_layer_offset()
 			SET_PLANE_EXPLICIT(pipe_appearance, FLOOR_PLANE, src)
@@ -140,14 +161,12 @@
 	if(update_parents_after_rebuild)
 		update_parents()
 
-/obj/machinery/atmospherics/components/get_rebuild_targets()
-	var/list/to_return = list()
-	for(var/i in 1 to device_type)
-		if(parents[i])
+/obj/machinery/atmospherics/components/get_rebuild_target()
+	for(var/port in 1 to device_type)
+		if(parents[port])
 			continue
-		parents[i] = new /datum/pipeline()
-		to_return += parents[i]
-	return to_return
+		parents[port] = new /datum/pipeline()
+		return parents[port]
 
 /**
  * Called by nullify_node(), used to remove the pipeline the component is attached to
@@ -188,16 +207,20 @@
 			returned_air += airs[i]
 	return returned_air
 
-// RIMSTATION EDIT START:
+// Upstream now handles the missing-port case our edit used to guard, so this proc is theirs again.
 /obj/machinery/atmospherics/components/pipeline_expansion(datum/pipeline/reference)
-	if(reference)
-		// ORG: return list(nodes[parents.Find(reference)])
-		var/parent_index = parents.Find(reference)
-		if(!parent_index)
-			return list()
-		return list(nodes[parent_index])
-	return ..()
+	if(!reference)
+		return ..()
+	var/port = parents.Find(reference)
+	if(port)
+		return list(nodes[port])
+	// no port means another pipeline took our port while this one waited to expand somehow
+	reference.other_atmos_machines -= src
+	reference.require_custom_reconcilation -= src
+	reference.other_airs -= airs
+	return list()
 
+// RIMSTATION EDIT START:
 /obj/machinery/atmospherics/components/set_pipenet(datum/pipeline/reference, obj/machinery/atmospherics/target_component)
 	// ORG: parents[nodes.Find(target_component)] = reference
 	var/node_index = nodes.Find(target_component)

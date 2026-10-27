@@ -5,7 +5,7 @@
 
 /datum/unit_test/persistence_serialization_blacklist_metrics/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 2, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected blacklist test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected blacklist test turf to be an open turf")
 
 	var/obj/item/stack/sheet/iron/blacklisted_sheet = allocate(/obj/item/stack/sheet/iron, test_turf)
 	var/list/custom_blacklist = typecacheof(list(/obj/item/stack/sheet/iron))
@@ -21,7 +21,7 @@
 
 /datum/unit_test/persistence_serialization_abstract_item_metrics/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 3, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected abstract item test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected abstract item test turf to be an open turf")
 
 	var/obj/item/persistence_unit_test_abstract/abstract_item = allocate(/obj/item/persistence_unit_test_abstract, test_turf)
 
@@ -36,7 +36,7 @@
 
 /datum/unit_test/persistence_serialization_object_limit_metrics/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 4, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected object limit test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected object limit test turf to be an open turf")
 
 	var/old_object_limit = CONFIG_GET(number/persistent_max_object_limit_per_turf)
 	// RIMSTATION EDIT START - ORG: two /obj/item/stack/sheet/iron. Stacks merge into one object, so the turf
@@ -59,7 +59,7 @@
 /datum/unit_test/persistence_serialization_cancel_metrics/Run()
 	// RIMSTATION EDIT: ORG - x + 5, which is past the end of the test room and so never a floor.
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 4, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected cancel test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected cancel test turf to be an open turf")
 
 	allocate(/obj/item/stack/sheet/iron, test_turf)
 
@@ -81,7 +81,7 @@
 
 /datum/unit_test/persistence_serialization_sticker_saved/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected sticker test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected sticker test turf to be an open turf")
 
 	var/obj/item/wrench/labelled = allocate(/obj/item/wrench, test_turf)
 	var/obj/item/label/sticky = allocate(/obj/item/label, test_turf, TEST_LABEL_TEXT)
@@ -107,8 +107,8 @@
 /datum/unit_test/persistence_serialization_sticker_round_trip/Run()
 	var/turf/source_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
 	var/turf/dest_turf = locate(run_loc_floor_bottom_left.x + 2, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(source_turf), "Expected round trip source turf to be a floor")
-	TEST_ASSERT(isfloorturf(dest_turf), "Expected round trip destination turf to be a floor")
+	TEST_ASSERT(isopenturf(source_turf), "Expected round trip source turf to be an open turf")
+	TEST_ASSERT(isopenturf(dest_turf), "Expected round trip destination turf to be an open turf")
 
 	var/obj/item/wrench/labelled = allocate(/obj/item/wrench, source_turf)
 	var/obj/item/label/sticky = allocate(/obj/item/label, source_turf, TEST_LABEL_TEXT)
@@ -171,7 +171,7 @@
 
 /datum/unit_test/persistence_serialization_sticker_in_container/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected container sticker test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected container sticker test turf to be an open turf")
 
 	var/obj/item/storage/toolbox/toolbox = allocate(/obj/item/storage/toolbox, test_turf)
 	var/obj/item/wrench/labelled = allocate(/obj/item/wrench, test_turf)
@@ -201,7 +201,7 @@
 
 /datum/unit_test/persistence_serialization_id_card_saved/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected the ID card test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected the ID card test turf to be an open turf")
 
 	var/obj/item/card/id/card = allocate(/obj/item/card/id, test_turf)
 	card.registered_name = TEST_ID_OWNER
@@ -245,7 +245,7 @@
 
 /datum/unit_test/persistence_serialization_pda_contents_saved/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected the PDA test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected the PDA test turf to be an open turf")
 
 	var/obj/item/modular_computer/pda/pda = allocate(/obj/item/modular_computer/pda, test_turf)
 	var/obj/item/card/id/card = allocate(/obj/item/card/id, test_turf)
@@ -267,8 +267,8 @@
 /datum/unit_test/persistence_serialization_pda_round_trip/Run()
 	var/turf/source_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
 	var/turf/dest_turf = locate(run_loc_floor_bottom_left.x + 2, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(source_turf), "Expected the PDA round trip source turf to be a floor")
-	TEST_ASSERT(isfloorturf(dest_turf), "Expected the PDA round trip destination turf to be a floor")
+	TEST_ASSERT(isopenturf(source_turf), "Expected the PDA round trip source turf to be an open turf")
+	TEST_ASSERT(isopenturf(dest_turf), "Expected the PDA round trip destination turf to be an open turf")
 
 	var/obj/item/modular_computer/pda/pda = allocate(/obj/item/modular_computer/pda, source_turf)
 	var/obj/item/card/id/card = allocate(/obj/item/card/id, source_turf)
@@ -313,7 +313,7 @@
 
 /datum/unit_test/persistence_area_identity_saved/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected the area identity test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected the area identity test turf to be an open turf")
 
 	var/area/original = get_area(test_turf)
 	var/area/room = new /area(null)
@@ -345,8 +345,8 @@
 /datum/unit_test/persistence_area_identity_rebuilt/Run()
 	var/turf/first_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
 	var/turf/second_turf = locate(run_loc_floor_bottom_left.x + 2, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(first_turf), "Expected the first rebuild turf to be a floor")
-	TEST_ASSERT(isfloorturf(second_turf), "Expected the second rebuild turf to be a floor")
+	TEST_ASSERT(isopenturf(first_turf), "Expected the first rebuild turf to be an open turf")
+	TEST_ASSERT(isopenturf(second_turf), "Expected the second rebuild turf to be an open turf")
 
 	var/area/original = get_area(first_turf)
 	TEST_ASSERT_EQUAL(get_area(second_turf), original, "Expected both rebuild turfs to start in the same area")
@@ -394,7 +394,7 @@
 
 /datum/unit_test/persistence_shuttle_underlying_area_saved/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected the shuttle underlying area test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected the shuttle underlying area test turf to be an open turf")
 
 	var/area/ground = get_area(test_turf)
 	var/area/hull = new /area/shuttle/custom(null)
@@ -436,8 +436,8 @@
 /datum/unit_test/persistence_shuttle_restored_from_save/Run()
 	var/turf/first_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
 	var/turf/second_turf = locate(run_loc_floor_bottom_left.x + 2, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(first_turf), "Expected the first shuttle restore turf to be a floor")
-	TEST_ASSERT(isfloorturf(second_turf), "Expected the second shuttle restore turf to be a floor")
+	TEST_ASSERT(isopenturf(first_turf), "Expected the first shuttle restore turf to be an open turf")
+	TEST_ASSERT(isopenturf(second_turf), "Expected the second shuttle restore turf to be an open turf")
 
 	var/area/ground = get_area(first_turf)
 	// The default area is the one create_shuttle() named after the shuttle. The other is a room drawn inside it.
@@ -505,7 +505,7 @@
 
 /datum/unit_test/persistence_shuttle_blueprint_relinked/Run()
 	var/turf/test_turf = locate(run_loc_floor_bottom_left.x + 1, run_loc_floor_bottom_left.y, run_loc_floor_bottom_left.z)
-	TEST_ASSERT(isfloorturf(test_turf), "Expected the blueprint relink test turf to be a floor")
+	TEST_ASSERT(isopenturf(test_turf), "Expected the blueprint relink test turf to be an open turf")
 
 	var/area/ground = get_area(test_turf)
 	var/area/hull = new /area/shuttle/custom(null)

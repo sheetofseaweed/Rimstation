@@ -4,6 +4,13 @@
 	fire = 50
 	acid = 65
 
+/// Same suit, but jumpsuit armor must descend from clothing_under. The numbers are duplicated rather than
+/// inherited because gloves_and_shoes_armor rejects the wound value this parent adds.
+/datum/armor/clothing_under/quarian_envirosuit
+	bio = 100
+	fire = 50
+	acid = 65
+
 /obj/item/clothing/under/quarian
 	name = "quarian suit"
 	desc = "The standard quarian enviro-suit, sealed against the bacteria and viruses of the outside world."
@@ -16,7 +23,7 @@
 	// The sprite is drawn with backward-bent legs already, so it needs no separate digitigrade icon.
 	supports_variations_flags = CLOTHING_DIGITIGRADE_VARIATION_NO_NEW_ICON
 	clothing_flags = STOPSPRESSUREDAMAGE
-	armor_type = /datum/armor/quarian_envirosuit
+	armor_type = /datum/armor/clothing_under/quarian_envirosuit
 
 /obj/item/clothing/under/quarian/white
 	name = "white quarian suit"

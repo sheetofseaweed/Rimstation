@@ -1,6 +1,8 @@
 /mob/living/carbon/human/proc/adjust_pleasure(pleas = 0, mob/living/carbon/human/partner = null, datum/interaction/interaction = null, position = null)
+	#ifndef TESTING
 	if(stat >= DEAD || !client?.prefs?.read_preference(/datum/preference/toggle/erp))
 		return
+	#endif
 
 	var/lust_tolerance = dna?.features["lust_tolerance"] || 1
 	pleasure = clamp(pleasure + pleas, AROUSAL_MINIMUM, AROUSAL_LIMIT * lust_tolerance)

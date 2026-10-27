@@ -1,0 +1,1 @@
+{"type":"/datum/bt_node/decorator/bb_key_set","children":[{"type":"/datum/bt_node/ai_behavior/move_to_target","target_key":"BB_travel_destination","required_dist":0,"finish_on_arrival":false}],"observer_abort":2,"key":"BB_travel_destination"}

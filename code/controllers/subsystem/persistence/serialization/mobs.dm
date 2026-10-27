@@ -45,6 +45,8 @@
 
 /mob/living/basic/parrot/on_object_saved(map_string, turf/current_loc, list/obj_blacklist)
 	// we don't want poly to delete the object he is holding bc it could be valuable
+	// Parrots use real hands now, so this reads the hand rather than a held_item var.
+	var/obj/item/held_item = get_active_held_item()
 	if(!held_item)
 		return
 	if(!held_item.is_saveable(current_loc, obj_blacklist))

@@ -34,22 +34,19 @@
 /datum/unit_test/rimstation_firebox_generator_is_reachable
 
 /datum/unit_test/rimstation_firebox_generator_is_reachable/Run()
-	var/list/wanted = list("firebox_generator", "firebox_generator_coal")
+	var/list/wanted = list(/datum/design/board/firebox, /datum/design/board/firebox/coal)
+	var/list/colony_start = CAMPAIGN_STARTING_RESEARCH_NODES
 
-	for(var/design_id in wanted)
-		var/datum/design/design = SSresearch.techweb_design_by_id(design_id)
-		TEST_ASSERT_NOTNULL(design, "There is no design with the id '[design_id]', so nothing can ever build one.")
-		TEST_ASSERT(design.build_type & COLONY_FABRICATOR, "Design '[design_id]' cannot be printed at a colony fabricator.")
+	for(var/design_path in wanted)
+		var/datum/design/design = SSresearch.techweb_designs[design_path]
+		TEST_ASSERT_NOTNULL(design, "There is no design '[design_path]', so nothing can ever build one.")
+		TEST_ASSERT(design.build_type & COLONY_FABRICATOR, "Design '[design_path]' cannot be printed at a colony fabricator.")
 
-	// Instantiated rather than read off the type, because design_ids is added to in New().
-	var/list/starting_nodes_holding = list()
-	for(var/node_type as anything in subtypesof(/datum/techweb_node))
-		var/datum/techweb_node/node = new node_type()
-		if(node.starting_node)
-			for(var/design_id in wanted)
-				if(design_id in node.design_ids)
-					starting_nodes_holding[design_id] = node.id
-		qdel(node)
+		// unlocked_by is filled in by SSresearch from every node's unlocked_designs, so this reads the real graph.
+		var/reachable = FALSE
+		for(var/node_path in design.unlocked_by)
+			if(node_path in colony_start)
+				reachable = TRUE
+				break
 
-	for(var/design_id in wanted)
-		TEST_ASSERT(starting_nodes_holding[design_id], "Design '[design_id]' is in no starting techweb node, so a colony would have to research it before it could burn wood.")
+		TEST_ASSERT(reachable, "Design '[design_path]' is in no starting techweb node, so a colony would have to research it before it could burn wood.")

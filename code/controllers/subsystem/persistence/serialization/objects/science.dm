@@ -6,16 +6,10 @@
 	. = ..()
 	. += NAMEOF(src, read_only)
 
+// The disk holds node typepaths itself now, rather than a techweb to replay them into, so the list is written
+// straight out. Initialize() only fills stored_nodes when it is not already a list, so the saved value stands.
 /obj/item/disk/tech_disk/get_custom_save_vars(save_flags=ALL)
 	. = ..()
-	if(!length(stored_research.researched_nodes))
+	if(!length(stored_nodes))
 		return
-	.[NAMEOF(src, persistent_datum_data)] = assoc_to_keys(stored_research.researched_nodes)
-
-/obj/item/disk/tech_disk/PersistentInitialize()
-	. = ..()
-	if(!LAZYLEN(persistent_datum_data))
-		return
-	for(var/node in persistent_datum_data)
-		stored_research.research_node_id(node, TRUE, FALSE, FALSE)
-	persistent_datum_data = null
+	.[NAMEOF(src, stored_nodes)] = stored_nodes.Copy()

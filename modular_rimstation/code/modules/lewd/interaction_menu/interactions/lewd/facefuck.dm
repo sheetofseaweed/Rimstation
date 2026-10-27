@@ -76,7 +76,8 @@
 
 /datum/interaction/lewd/throatfuck/post_interaction(mob/living/user, mob/living/target)
 	. = ..()
-	var/stat_before = target.stat
+	// Being out cold is a trait now rather than a stat value, so this reads the trait on both sides.
+	var/was_awake = !IS_UNCONSCIOUS(target)
 	target.adjust_oxy_loss(3)
-	if(target.stat == UNCONSCIOUS && stat_before != UNCONSCIOUS)
+	if(was_awake && IS_UNCONSCIOUS_AND_ALIVE(target))
 		message = list("%TARGET% passes out on %USER%'s cock.")

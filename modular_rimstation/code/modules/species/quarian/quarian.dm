@@ -30,25 +30,6 @@
 	quarian.hair_color = "#bb9966"
 	quarian.update_body(TRUE)
 
-/datum/species/quarian/get_scream_sound(mob/living/carbon/human/human)
-	if(human.physique == MALE)
-		return pick(
-			'sound/mobs/humanoids/human/scream/malescream_1.ogg',
-			'sound/mobs/humanoids/human/scream/malescream_2.ogg',
-			'sound/mobs/humanoids/human/scream/malescream_3.ogg',
-			'sound/mobs/humanoids/human/scream/malescream_4.ogg',
-			'sound/mobs/humanoids/human/scream/malescream_5.ogg',
-			'sound/mobs/humanoids/human/scream/malescream_6.ogg',
-		)
-
-	return pick(
-		'sound/mobs/humanoids/human/scream/femalescream_1.ogg',
-		'sound/mobs/humanoids/human/scream/femalescream_2.ogg',
-		'sound/mobs/humanoids/human/scream/femalescream_3.ogg',
-		'sound/mobs/humanoids/human/scream/femalescream_4.ogg',
-		'sound/mobs/humanoids/human/scream/femalescream_5.ogg',
-	)
-
 // A list, not a string: this fork's character menu maps over the description. Upstream's doc comment
 // still says "Returns a string", and a string here crashes the menu with no runtime to show for it.
 /datum/species/quarian/get_species_description()

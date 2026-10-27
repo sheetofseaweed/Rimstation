@@ -13,13 +13,13 @@
 
 	// Exactly the configured prerequisites, and nothing else.
 	var/list/allowed = CAMPAIGN_STARTING_RESEARCH_NODES
-	for(var/node_id in allowed)
-		TEST_ASSERT(web.researched_nodes[node_id], "A colony did not start knowing '[node_id]', which it is meant to arrive with.")
-	for(var/node_id in web.researched_nodes)
-		TEST_ASSERT(node_id in allowed, "A colony started knowing '[node_id]', which is outside its starting set.")
-	TEST_ASSERT(web.researched_nodes[TECHWEB_NODE_MEDBAY_EQUIP], "The colony lost its medical starting prerequisite.")
-	TEST_ASSERT(!web.researched_nodes[TECHWEB_NODE_CHEM_SYNTHESIS], "The colony received Chemical Synthesis for free.")
-	TEST_ASSERT(web.available_nodes[TECHWEB_NODE_CHEM_SYNTHESIS], "The medical starting prerequisite did not make Chemical Synthesis available.")
+	for(var/node_path in allowed)
+		TEST_ASSERT(web.researched_nodes[node_path], "A colony did not start knowing '[node_path]', which it is meant to arrive with.")
+	for(var/node_path in web.researched_nodes)
+		TEST_ASSERT(node_path in allowed, "A colony started knowing '[node_path]', which is outside its starting set.")
+	TEST_ASSERT(web.researched_nodes[/datum/techweb_node/medbay_equip], "The colony lost its medical starting prerequisite.")
+	TEST_ASSERT(!web.researched_nodes[/datum/techweb_node/chem_synthesis], "The colony received Chemical Synthesis for free.")
+	TEST_ASSERT(web.available_nodes[/datum/techweb_node/chem_synthesis], "The medical starting prerequisite did not make Chemical Synthesis available.")
 
 	// The designs those nodes unlock came with them, so the colony can actually build something.
 	TEST_ASSERT(length(web.researched_designs), "A restricted colony techweb unlocked no designs at all.")
@@ -45,8 +45,8 @@
 
 	var/datum/techweb_node/priced_node
 	var/point_type
-	for(var/node_id in SSresearch.techweb_nodes)
-		var/datum/techweb_node/candidate = SSresearch.techweb_nodes[node_id]
+	for(var/node_path in SSresearch.techweb_nodes)
+		var/datum/techweb_node/candidate = SSresearch.techweb_nodes[node_path]
 		for(var/candidate_type in candidate.research_costs)
 			if(candidate.research_costs[candidate_type] > 0)
 				priced_node = candidate

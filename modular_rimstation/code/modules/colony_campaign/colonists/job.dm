@@ -29,6 +29,8 @@
 	department_for_prefs = /datum/job_department/assistant
 	job_flags = STATION_JOB_FLAGS
 	config_tag = "COLONIST"
+	// Any job on the crew manifest needs one, or job_icons fails on it.
+	tgui_icon = FA_ICON_PERSON_DIGGING
 	colony_role = TRUE
 
 /**

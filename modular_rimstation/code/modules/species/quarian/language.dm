@@ -3,7 +3,7 @@
 	desc = "A unified language the quarians were forced to form after their expulsion from their native system."
 	key = "q"
 	default_priority = 90
-	flags = TONGUELESS_SPEECH
+	flags = LANGUAGE_TONGUELESS_SPEECH
 	syllables = list(
 		"ai", "ao", "ba", "bi", "bo", "se", "su", "so", "si",
 		"li", "lo", "la", "vi", "vo", "te", "tu", "to", "ti",

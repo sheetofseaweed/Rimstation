@@ -51,7 +51,7 @@
 	if(!density || !voice_activated || radio_freq)
 		return
 	if(findtext(raw_message, password))
-		open()
+		open(opener = speaker)
 
 /obj/machinery/door/password/Bumped(atom/movable/AM)
 	return !density && ..()
@@ -62,7 +62,7 @@
 		return
 	if(density)
 		if(access_bypass || ask_for_pass(user))
-			open()
+			open(opener = user)
 		else
 			run_animation(DOOR_DENY_ANIMATION)
 

@@ -10,7 +10,7 @@ GLOBAL_LIST_INIT(save_object_blacklist, typecacheof(list(
 	/obj/item/paper/fluff/jobs/cargo/manifest, // spammed by cargo orders
 	/obj/item/paper/fluff, // spammed by cargo mail
 	/obj/item/mail, // spammed by cargo mail
-	/obj/item/relic/lavaland, // lots of relic spam
+	/obj/item/assembly/relic/lavaland, // lots of relic spam
 	/mob/living/carbon, // carbon mobs are very complex to save so skip
 	/mob/dead, // no dead ghosts
 	/mob/eye, // no eyes from cameras/blob/AI vision

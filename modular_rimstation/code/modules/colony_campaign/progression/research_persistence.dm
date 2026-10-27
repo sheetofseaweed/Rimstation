@@ -11,8 +11,8 @@
  */
 /datum/colony_research_record
 	var/schema_version = COLONY_RESEARCH_SCHEMA_VERSION
-	/// Ids of every node the colony has researched.
-	var/list/researched_node_ids
+	/// Typepaths of every node the colony has researched.
+	var/list/researched_node_paths
 	/// Unspent points, keyed by point type.
 	var/list/research_points
 	/**
@@ -27,7 +27,7 @@
 
 /datum/colony_research_record/New()
 	. = ..()
-	researched_node_ids = list()
+	researched_node_paths = list()
 	research_points = list()
 	completed_experiments = list()
 
@@ -36,9 +36,9 @@
 	if(!istype(web))
 		return FALSE
 
-	researched_node_ids = list()
-	for(var/node_id in web.researched_nodes)
-		researched_node_ids += node_id
+	researched_node_paths = list()
+	for(var/node_path in web.researched_nodes)
+		researched_node_paths += node_path
 
 	research_points = web.research_points?.Copy() || list()
 
@@ -56,7 +56,7 @@
  * returning colony's account, and requiring prerequisites in stored order would drop anything replayed early.
  * Points are set afterwards for the same reason: restoring must not be a transaction.
  *
- * A node id that no longer exists is skipped rather than refused. An upstream techweb change should cost a
+ * A node path that no longer exists is skipped rather than refused. An upstream techweb change should cost a
  * colony that node, not its whole campaign.
  */
 /datum/colony_research_record/proc/restore_into(datum/techweb/web)
@@ -64,12 +64,12 @@
 		return 0
 
 	var/restored = 0
-	for(var/node_id in researched_node_ids)
-		var/datum/techweb_node/node = SSresearch.techweb_node_by_id(node_id)
+	for(var/node_path in researched_node_paths)
+		var/datum/techweb_node/node = SSresearch.techweb_nodes[node_path]
 		if(!node)
-			log_game("Colony research skipped node '[node_id]', which this build no longer has.")
+			log_game("Colony research skipped node '[node_path]', which this build no longer has.")
 			continue
-		if(web.researched_nodes[node_id])
+		if(web.researched_nodes[node_path])
 			continue
 		if(web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE))
 			restored++
@@ -119,9 +119,13 @@
 	for(var/experiment_path in completed_experiments)
 		experiment_paths += "[experiment_path]"
 
+	var/list/node_paths = list()
+	for(var/node_path in researched_node_paths)
+		node_paths += "[node_path]"
+
 	return list(
 		"schema_version" = schema_version,
-		"researched_node_ids" = researched_node_ids.Copy(),
+		"researched_node_paths" = node_paths,
 		"research_points" = research_points.Copy(),
 		"completed_experiments" = experiment_paths,
 	)
@@ -135,11 +139,14 @@
 		log_game("Colony research record rejected: unsupported schema version '[incoming_version]'.")
 		return FALSE
 
+	// Written as text, so read back through text2path. A path that no longer resolves is dropped here rather
+	// than carried to restore_into(), which would only log it again.
 	var/list/incoming_nodes = list()
-	if(islist(data["researched_node_ids"]))
-		for(var/node_id in data["researched_node_ids"])
-			if(istext(node_id))
-				incoming_nodes += node_id
+	if(islist(data["researched_node_paths"]))
+		for(var/entry in data["researched_node_paths"])
+			var/node_path = istext(entry) ? text2path(entry) : entry
+			if(ispath(node_path, /datum/techweb_node))
+				incoming_nodes |= node_path
 
 	// Points come off disk, so a corrupted or edited record must not hand a colony a fortune or a debt.
 	var/list/incoming_points = list()
@@ -159,14 +166,14 @@
 			if(ispath(experiment_path, /datum/experiment))
 				incoming_experiments |= experiment_path
 
-	researched_node_ids = incoming_nodes
+	researched_node_paths = incoming_nodes
 	research_points = incoming_points
 	completed_experiments = incoming_experiments
 	return TRUE
 
 /// TRUE when this record describes a colony that has researched nothing and banked nothing.
 /datum/colony_research_record/proc/is_empty()
-	return !length(researched_node_ids) && !length(research_points)
+	return !length(researched_node_paths) && !length(research_points)
 
 
 /**
@@ -184,16 +191,16 @@
 
 	var/list/allowed = CAMPAIGN_STARTING_RESEARCH_NODES
 	var/removed = 0
-	for(var/node_id in web.researched_nodes.Copy())
-		if(node_id in allowed)
+	for(var/node_path in web.researched_nodes.Copy())
+		if(node_path in allowed)
 			continue
-		web.researched_nodes -= node_id
+		web.researched_nodes -= node_path
 		removed++
 
 	// The colony still has to actually know its starting set, even if the techweb never granted it.
-	for(var/node_id in allowed)
-		var/datum/techweb_node/node = SSresearch.techweb_node_by_id(node_id)
-		if(node && !web.researched_nodes[node_id])
+	for(var/node_path in allowed)
+		var/datum/techweb_node/node = SSresearch.techweb_nodes[node_path]
+		if(node && !web.researched_nodes[node_path])
 			web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE)
 
 	// Designs and availability are derived from researched nodes, so they are rebuilt rather than edited.

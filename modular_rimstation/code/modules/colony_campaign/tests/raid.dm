@@ -228,15 +228,24 @@
 	// Destinations are turfs, because waypoints along the approach route are turfs.
 	TEST_ASSERT_EQUAL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], get_turf(core), "The attacker was not pointed at the colony core.")
 
-	// The controller must actually consume that key, or setting it achieves nothing.
-	var/found_travel_subtree = FALSE
-	for(var/datum/ai_planning_subtree/subtree as anything in attacker.ai_controller.planning_subtrees)
-		if(istype(subtree, /datum/ai_planning_subtree/travel_to_point))
-			var/datum/ai_planning_subtree/travel_to_point/travel = subtree
-			if(travel.location_key == BB_TRAVEL_DESTINATION)
-				found_travel_subtree = TRUE
+	// The behaviour tree must actually consume that key, or setting it achieves nothing. Walked rather than
+	// read off the controller, because planning is a tree of nodes now and not a flat list of subtrees.
+	var/found_travel_move = FALSE
+	var/list/to_visit = attacker.ai_controller.behavior_nodes?.Copy() || list()
+	var/index = 1
+	while(index <= length(to_visit))
+		var/datum/bt_node/node = to_visit[index++]
+		if(istype(node, /datum/bt_node/ai_behavior/move_to_target))
+			var/datum/bt_node/ai_behavior/move_to_target/mover = node
+			if(mover.target_key == BB_TRAVEL_DESTINATION)
+				found_travel_move = TRUE
 				break
-	TEST_ASSERT(found_travel_subtree, "The raider AI has no travel subtree reading BB_TRAVEL_DESTINATION, so it would ignore its objective.")
+		// A leaf returns null here, and `list += null` appends a null entry rather than nothing.
+		var/list/children = node.get_children()
+		if(children)
+			to_visit += children
+
+	TEST_ASSERT(found_travel_move, "The raider AI never moves towards BB_TRAVEL_DESTINATION, so it would ignore its objective.")
 
 	// Retreat has to redirect them away from the objective rather than leaving them pressing it.
 	raid.set_state(COLONY_RAID_WARNING)
