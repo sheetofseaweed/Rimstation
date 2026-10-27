@@ -12,7 +12,9 @@
 	icon = 'modular_rimstation/icons/obj/clothing/quarian_helmets.dmi'
 	worn_icon = 'modular_rimstation/icons/mob/clothing/quarian_helmets.dmi'
 	icon_state = "helmet-0-0"
-	inhand_icon_state = "helmet-0-0"
+	// No quarian in-hand art exists, so naming a state here only picks the generic fallback. Subtypes
+	// inherit the null rather than naming their own colour.
+	inhand_icon_state = null
 	base_icon_state = "helmet"
 	// No HEADINTERNALS: a quarian still needs a breath mask under this, the same as in the source build.
 	clothing_flags = STOPSPRESSUREDAMAGE | THICKMATERIAL | SNUG_FIT | STACKABLE_HELMET_EXEMPT
@@ -150,52 +152,44 @@
 /obj/item/clothing/head/helmet/space/quarian/update_icon_state()
 	// Parent first: /helmet/space sets icon_state itself, so setting ours before it would be undone.
 	. = ..()
-	icon_state = inhand_icon_state = "[base_icon_state]-[up ? 0 : 1]-[light_on ? 1 : 0]"
+	icon_state = "[base_icon_state]-[up ? 0 : 1]-[light_on ? 1 : 0]"
 
 /obj/item/clothing/head/helmet/space/quarian/white
 	name = "white quarian helmet"
 	icon_state = "helmet-white-0-0"
-	inhand_icon_state = "helmet-white-0-0"
 	base_icon_state = "helmet-white"
 
 /obj/item/clothing/head/helmet/space/quarian/black
 	name = "black quarian helmet"
 	icon_state = "helmet-black-0-0"
-	inhand_icon_state = "helmet-black-0-0"
 	base_icon_state = "helmet-black"
 
 /obj/item/clothing/head/helmet/space/quarian/red
 	name = "red quarian helmet"
 	icon_state = "helmet-red-0-0"
-	inhand_icon_state = "helmet-red-0-0"
 	base_icon_state = "helmet-red"
 
 /obj/item/clothing/head/helmet/space/quarian/orange
 	name = "orange quarian helmet"
 	icon_state = "helmet-orange-0-0"
-	inhand_icon_state = "helmet-orange-0-0"
 	base_icon_state = "helmet-orange"
 
 /obj/item/clothing/head/helmet/space/quarian/yellow
 	name = "yellow quarian helmet"
 	icon_state = "helmet-yellow-0-0"
-	inhand_icon_state = "helmet-yellow-0-0"
 	base_icon_state = "helmet-yellow"
 
 /obj/item/clothing/head/helmet/space/quarian/green
 	name = "green quarian helmet"
 	icon_state = "helmet-green-0-0"
-	inhand_icon_state = "helmet-green-0-0"
 	base_icon_state = "helmet-green"
 
 /obj/item/clothing/head/helmet/space/quarian/blue
 	name = "blue quarian helmet"
 	icon_state = "helmet-blue-0-0"
-	inhand_icon_state = "helmet-blue-0-0"
 	base_icon_state = "helmet-blue"
 
 /obj/item/clothing/head/helmet/space/quarian/violet
 	name = "violet quarian helmet"
 	icon_state = "helmet-violet-0-0"
-	inhand_icon_state = "helmet-violet-0-0"
 	base_icon_state = "helmet-violet"

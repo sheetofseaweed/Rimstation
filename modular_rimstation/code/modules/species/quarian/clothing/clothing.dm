@@ -17,7 +17,9 @@
 	icon = 'modular_rimstation/icons/obj/clothing/quarian_under.dmi'
 	worn_icon = 'modular_rimstation/icons/mob/clothing/quarian_under.dmi'
 	icon_state = "suit"
-	inhand_icon_state = "suit"
+	// No quarian in-hand art exists, so naming a state here only picks the generic fallback. Subtypes
+	// inherit the null rather than naming their own colour.
+	inhand_icon_state = null
 	can_adjust = FALSE
 	female_sprite_flags = FEMALE_UNIFORM_NO_BREASTS
 	// The sprite is drawn with backward-bent legs already, so it needs no separate digitigrade icon.
@@ -28,42 +30,34 @@
 /obj/item/clothing/under/quarian/white
 	name = "white quarian suit"
 	icon_state = "suit-white"
-	inhand_icon_state = "suit-white"
 
 /obj/item/clothing/under/quarian/black
 	name = "black quarian suit"
 	icon_state = "suit-black"
-	inhand_icon_state = "suit-black"
 
 /obj/item/clothing/under/quarian/red
 	name = "red quarian suit"
 	icon_state = "suit-red"
-	inhand_icon_state = "suit-red"
 
 /obj/item/clothing/under/quarian/orange
 	name = "orange quarian suit"
 	icon_state = "suit-orange"
-	inhand_icon_state = "suit-orange"
 
 /obj/item/clothing/under/quarian/yellow
 	name = "yellow quarian suit"
 	icon_state = "suit-yellow"
-	inhand_icon_state = "suit-yellow"
 
 /obj/item/clothing/under/quarian/green
 	name = "green quarian suit"
 	icon_state = "suit-green"
-	inhand_icon_state = "suit-green"
 
 /obj/item/clothing/under/quarian/blue
 	name = "blue quarian suit"
 	icon_state = "suit-blue"
-	inhand_icon_state = "suit-blue"
 
 /obj/item/clothing/under/quarian/violet
 	name = "violet quarian suit"
 	icon_state = "suit-violet"
-	inhand_icon_state = "suit-violet"
 
 
 /obj/item/clothing/shoes/quarian
@@ -72,7 +66,7 @@
 	icon = 'modular_rimstation/icons/obj/clothing/quarian_shoes.dmi'
 	worn_icon = 'modular_rimstation/icons/mob/clothing/quarian_shoes.dmi'
 	icon_state = "shoes"
-	inhand_icon_state = "shoes"
+	inhand_icon_state = null
 	supports_variations_flags = CLOTHING_DIGITIGRADE_VARIATION_NO_NEW_ICON
 	clothing_flags = STOPSPRESSUREDAMAGE
 	armor_type = /datum/armor/quarian_envirosuit
@@ -91,7 +85,7 @@
 	icon = 'modular_rimstation/icons/obj/clothing/quarian_gloves.dmi'
 	worn_icon = 'modular_rimstation/icons/mob/clothing/quarian_gloves.dmi'
 	icon_state = "gloves"
-	inhand_icon_state = "gloves"
+	inhand_icon_state = null
 	base_icon_state = "gloves"
 	clothing_flags = STOPSPRESSUREDAMAGE
 	armor_type = /datum/armor/quarian_envirosuit
@@ -146,7 +140,7 @@
 	if(length(module.clothing_traits))
 		attach_clothing_traits(module.clothing_traits)
 	if(icon_exists(icon, module.icon_state))
-		icon_state = inhand_icon_state = module.icon_state
+		icon_state = module.icon_state
 	update_appearance()
 
 /// Puts us back to a bare pair of quarian gloves.
@@ -154,5 +148,5 @@
 	siemens_coefficient = initial(siemens_coefficient)
 	if(length(removed.clothing_traits))
 		detach_clothing_traits(removed.clothing_traits)
-	icon_state = inhand_icon_state = base_icon_state
+	icon_state = base_icon_state
 	update_appearance()
