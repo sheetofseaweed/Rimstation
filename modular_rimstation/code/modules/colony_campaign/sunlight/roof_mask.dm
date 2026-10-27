@@ -40,15 +40,19 @@
  *
  * Set on the parent type so the particle variant inherits it: both planes hold the same sprite and only one is
  * shown, so masking one and not the other would fix the weather for half the server's players.
+ *
+ * Whether the filter goes on at all is the viewer's to decide - see the roof_mask_weather preference. It is a
+ * second full-screen mask on top of the one upstream already runs, and a player who cannot afford it would
+ * rather have rain drawn through a roof than have rain cost them the round.
  */
 /atom/movable/screen/plane_master/weather/Initialize(mapload, datum/hud/hud_owner, datum/plane_master_group/home, offset = 0)
 	. = ..()
-	add_filter("roof_mask", 2, alpha_mask_filter(render_source = OFFSET_RENDER_TARGET(ROOF_MASK_RENDER_TARGET, offset), flags = MASK_INVERSE))
+	update_roof_mask_filter(wants_roof_mask(hud_owner?.mymob))
 
 /// And the falling particles, which are masked separately from the sprite behind them.
 /atom/movable/screen/plane_master/rendering_plate/particle_weather/Initialize(mapload, datum/hud/hud_owner, datum/plane_master_group/home, offset)
 	. = ..()
-	add_filter("roof_mask", 2, alpha_mask_filter(render_source = OFFSET_RENDER_TARGET(ROOF_MASK_RENDER_TARGET, offset), flags = MASK_INVERSE))
+	update_roof_mask_filter(wants_roof_mask(hud_owner?.mymob))
 
 
 /// Cached square per plane offset. These are identical for every tile on a level, so one is enough.

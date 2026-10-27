@@ -134,7 +134,9 @@
 	if(HAS_TRAIT(affected_mob, TRAIT_STASIS) || QDELETED(src) || (affected_mob.stat == DEAD && !process_dead))
 		return
 
-	stage_act(seconds_per_tick)
+	// RIMSTATION EDIT CHANGE START - Symptoms can make the host speak, which can sleep. Life must not block on that.
+	INVOKE_ASYNC(src, PROC_REF(stage_act), seconds_per_tick)
+	// RIMSTATION EDIT CHANGE END
 
 ///Proc to process the disease and decide on whether to advance, cure or make the symptoms appear. Returns a boolean on whether to continue acting on the symptoms or not.
 /datum/disease/proc/stage_act(seconds_per_tick)

@@ -377,6 +377,7 @@ SILICON_MAX_LAW_AMOUNT 12
 ROUNDSTART_RACES human
 
 ## Races that are strictly worse than humans that could probably be turned on without balance concerns
+ROUNDSTART_RACES asari
 ROUNDSTART_RACES felinid
 ROUNDSTART_RACES lizard
 ROUNDSTART_RACES felinid
@@ -389,6 +390,7 @@ ROUNDSTART_RACES snail
 
 ## Races that are better than humans in some ways, but worse in others
 ROUNDSTART_RACES ethereal
+ROUNDSTART_RACES quarian
 #ROUNDSTART_RACES jelly
 #ROUNDSTART_RACES abductor
 #ROUNDSTART_RACES snail

@@ -177,6 +177,61 @@
 	SSdaylight.advance_time_of_day()
 
 /**
+ * The day actually moves on, and does not then move on again every tick.
+ *
+ * `should_advance_time()` is a cached boundary rather than a recalculation, because it runs on every tick of
+ * the round. A cache like that has two failure modes and the test beside this one only catches the second:
+ * a boundary that never arrives freezes the sky at whatever it was, and a boundary that is not pushed forward
+ * on arrival re-advances for ever, rerolling the sky colour every tick. Both are pinned here.
+ */
+/datum/unit_test/rimstation_sunlight_clock_advances
+
+/datum/unit_test/rimstation_sunlight_clock_advances/Run()
+	TEST_ASSERT(length(SSdaylight.day_steps) > 1, "There is only one time of day, so advancing between them cannot be tested.")
+
+	var/original_offset = SSdaylight.clock_offset
+	SSdaylight.set_time_of_day(SSdaylight.day_steps[1])
+
+	var/datum/time_of_day/started_at = SSdaylight.current_step
+	var/boundary = SSdaylight.next_step_at
+	var/now = STATION_TIME_PASSED() + SSdaylight.clock_offset
+
+	TEST_ASSERT(boundary > now, "The next step was already due at [boundary] with the clock reading [now], so the sky would advance on every tick.")
+	TEST_ASSERT(!SSdaylight.should_advance_time(), "The clock asked to advance the moment it was set, so [started_at.name] would never be seen.")
+
+	// Walk the clock over the boundary rather than waiting for it. One decisecond past is enough.
+	SSdaylight.clock_offset += (boundary - now) + 1
+	TEST_ASSERT(SSdaylight.should_advance_time(), "The clock passed the start of the next step and did not ask to advance, so the day would never move on.")
+
+	SSdaylight.advance_time_of_day()
+	TEST_ASSERT(SSdaylight.current_step != started_at, "Advancing past a boundary left the sky on [started_at.name].")
+	TEST_ASSERT(!SSdaylight.should_advance_time(), "Advancing left the clock still asking to advance, so the sky would reroll its colour every tick.")
+	TEST_ASSERT(SSdaylight.next_step_at > (STATION_TIME_PASSED() + SSdaylight.clock_offset), "Advancing did not move the boundary forward, so it would fire again immediately.")
+
+	SSdaylight.clock_offset = original_offset
+	SSdaylight.advance_time_of_day()
+
+/**
+ * Every step is reachable, including the one that wraps past midnight.
+ *
+ * The wrap is the case the boundary arithmetic gets wrong: the first step of the day starts at fraction zero,
+ * which has already gone past by the time the last step is running, so a naive "when does the next step start"
+ * lands in the past and the clock advances on every tick for the rest of the day.
+ */
+/datum/unit_test/rimstation_sunlight_boundary_never_in_the_past
+
+/datum/unit_test/rimstation_sunlight_boundary_never_in_the_past/Run()
+	var/original_offset = SSdaylight.clock_offset
+
+	for(var/datum/time_of_day/step as anything in SSdaylight.day_steps)
+		SSdaylight.set_time_of_day(step)
+		var/now = STATION_TIME_PASSED() + SSdaylight.clock_offset
+		TEST_ASSERT(SSdaylight.next_step_at > now, "Standing in [step.name], the next step ([SSdaylight.next_step?.name]) was due at [SSdaylight.next_step_at] with the clock reading [now] - a boundary in the past means the sky advances every tick.")
+
+	SSdaylight.clock_offset = original_offset
+	SSdaylight.advance_time_of_day()
+
+/**
  * The fade never outlasts the step it belongs to.
  *
  * Ranges, not exact values - the clock is live and a test that pinned an exact length would only pass on a

@@ -161,7 +161,9 @@
 			target.take_damage(charge_damage)
 
 	INVOKE_ASYNC(src, PROC_REF(DestroySurroundings), source)
-	try_hit_target(source, target)
+	// RIMSTATION EDIT CHANGE START - Hitting can sleep (the lobstrosity grabs), and a signal handler must not.
+	INVOKE_ASYNC(src, PROC_REF(try_hit_target), source, target)
+	// RIMSTATION EDIT CHANGE END
 
 /// Attempt to hit someone with our charge
 /datum/action/cooldown/mob_cooldown/charge/proc/try_hit_target(atom/movable/source, atom/target)

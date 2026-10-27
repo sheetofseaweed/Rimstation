@@ -67,7 +67,8 @@
 /obj/item/gun/ballistic/toy/foamforce_implant/shoot_with_empty_chamber(mob/living/user)
 	if(chambered || !magazine || !length(magazine.contents))
 		return ..()
-	drop_bolt(user)
+	// Drawing the plunger is a do_after, and autofire calls this from a signal handler.
+	INVOKE_ASYNC(src, PROC_REF(drop_bolt), user)
 
 /obj/item/gun/ballistic/toy/foamforce_implant/examine(mob/user)
 	. = ..()

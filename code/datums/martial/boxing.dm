@@ -488,7 +488,8 @@
 	if(ishuman(attacker))
 		var/mob/living/carbon/human/human_attacker = attacker
 		human_attacker.force_say()
-		human_attacker.say("[first_word_pick][second_word_pick]!!!", forced = "hunter boxing enthusiastic battlecry")
+		// RIMSTATION EDIT CHANGE - say() can prompt the speaker, and the attack chain is a signal handler.
+		INVOKE_ASYNC(human_attacker, TYPE_PROC_REF(/atom/movable, say), "[first_word_pick][second_word_pick]!!!", forced = "hunter boxing enthusiastic battlecry")
 	defender.apply_status_effect(/datum/status_effect/rebuked)
 	defender.apply_damage(damage * 2, default_damage_type, BODY_ZONE_CHEST, armor_block) //deals double our damage AGAIN
 

@@ -5,6 +5,7 @@
 /datum/unit_test/modular_digitigrade_sprites
 	var/type_to_test = /obj/item/clothing/under
 	var/list/modular_folders = list(
+		"modular_rimstation",
 		"modular_skyrat",
 		"modular_zubbers",
 	)

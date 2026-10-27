@@ -44,10 +44,12 @@ If you make a derivative work from this code, you must include this notification
 	if(defender.check_block(attacker, 10, "[attacker]'s [streak]", UNARMED_ATTACK))
 		return FALSE
 
+	// RIMSTATION EDIT CHANGE START - These three sleep through their animation, and the caller is a signal
+	// handler. The procs already re-check their mobs after the sleep, so running them detached is safe.
 	switch(streak)
 		if("drop")
 			streak = ""
-			drop(attacker, defender)
+			INVOKE_ASYNC(src, PROC_REF(drop), attacker, defender)
 			return TRUE
 		if("strike")
 			streak = ""
@@ -59,12 +61,13 @@ If you make a derivative work from this code, you must include this notification
 			return TRUE
 		if("throw")
 			streak = ""
-			throw_wrassle(attacker, defender)
+			INVOKE_ASYNC(src, PROC_REF(throw_wrassle), attacker, defender)
 			return TRUE
 		if("slam")
 			streak = ""
-			slam(attacker, defender)
+			INVOKE_ASYNC(src, PROC_REF(slam), attacker, defender)
 			return TRUE
+	// RIMSTATION EDIT CHANGE END
 	return FALSE
 
 /datum/action/slam

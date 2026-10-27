@@ -50,7 +50,8 @@
 	if(!current_soulcatcher)
 		return FALSE
 
-	current_soulcatcher.ui_interact(linked_mob)
+	// Opening the window blocks on the client. Destroy() also calls activate(), and it must never sleep.
+	INVOKE_ASYNC(current_soulcatcher, TYPE_PROC_REF(/datum, ui_interact), linked_mob)
 	return TRUE
 
 /// If the linked soulcatcher is being deleted we want to set the current linked soulcatcher to `FALSE`

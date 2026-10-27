@@ -318,11 +318,13 @@
 
 	var/list/edited_cells = list()
 	for(var/cell_id in cell_overrides)
-		edited_cells[cell_id] = cell_overrides[cell_id].Copy()
+		var/list/edit = cell_overrides[cell_id]
+		edited_cells[cell_id] = edit.Copy()
 
 	var/list/placed_sites = list()
 	for(var/site_id in added_sites)
-		placed_sites[site_id] = added_sites[site_id].Copy()
+		var/list/placed = added_sites[site_id]
+		placed_sites[site_id] = placed.Copy()
 
 	return list(
 		"schema_version" = schema_version,

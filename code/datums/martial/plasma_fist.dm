@@ -40,7 +40,8 @@
 	return FALSE
 
 /datum/martial_art/plasma_fist/proc/Tornado(mob/living/attacker, mob/living/defender)
-	attacker.say("TORNADO SWEEP!", forced="plasma fist")
+	// RIMSTATION EDIT CHANGE - say() can prompt the speaker, and the attack chain is a signal handler.
+	INVOKE_ASYNC(attacker, TYPE_PROC_REF(/atom/movable, say), "TORNADO SWEEP!", forced = "plasma fist")
 	dance_rotate(attacker, CALLBACK(GLOBAL_PROC, GLOBAL_PROC_REF(playsound), attacker, 'sound/items/weapons/punch1.ogg', 15, TRUE, -1))
 	tornado_spell.cast(attacker)
 	log_combat(attacker, defender, "tornado sweeped (Plasma Fist)")
@@ -58,7 +59,8 @@
 	playsound(defender, 'sound/items/weapons/punch1.ogg', 50, TRUE, -1)
 	var/atom/throw_target = get_edge_target_turf(defender, get_dir(defender, get_step_away(defender, attacker)))
 	defender.throw_at(throw_target, 200, 4,attacker)
-	attacker.say("HYAH!", forced="plasma fist")
+	// RIMSTATION EDIT CHANGE - say() can prompt the speaker, and the attack chain is a signal handler.
+	INVOKE_ASYNC(attacker, TYPE_PROC_REF(/atom/movable, say), "HYAH!", forced = "plasma fist")
 	log_combat(attacker, defender, "threw back (Plasma Fist)")
 	return TRUE
 
@@ -67,7 +69,8 @@
 
 	attacker.do_attack_animation(defender, ATTACK_EFFECT_PUNCH)
 	playsound(defender, 'sound/items/weapons/punch1.ogg', 50, TRUE, -1)
-	attacker.say("PLASMA FIST!", forced="plasma fist")
+	// RIMSTATION EDIT CHANGE - say() can prompt the speaker, and the attack chain is a signal handler.
+	INVOKE_ASYNC(attacker, TYPE_PROC_REF(/atom/movable, say), "PLASMA FIST!", forced = "plasma fist")
 	defender.visible_message(
 		span_danger("[attacker] hits [defender] with THE PLASMA FIST TECHNIQUE!"),
 		span_userdanger("You're suddenly hit with THE PLASMA FIST TECHNIQUE by [attacker]!"),
@@ -103,7 +106,8 @@
 	return TRUE
 
 /datum/martial_art/plasma_fist/proc/Apotheosis(mob/living/user, mob/living/target)
-	user.say("APOTHEOSIS!!", forced="plasma fist")
+	// RIMSTATION EDIT CHANGE - say() can prompt the speaker, and the attack chain is a signal handler.
+	INVOKE_ASYNC(user, TYPE_PROC_REF(/atom/movable, say), "APOTHEOSIS!!", forced = "plasma fist")
 	if (ishuman(user))
 		var/mob/living/carbon/human/human_attacker = user
 		human_attacker.set_species(/datum/species/plasmaman)

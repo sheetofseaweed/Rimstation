@@ -168,7 +168,11 @@
 	if(!can_hit_with_hand(target, caster))
 		return NONE
 
-	return do_hand_hit(source, target, caster)
+	// RIMSTATION EDIT CHANGE START - Spells like flesh surgery prompt the caster and run a do_after, which a
+	// signal handler must not do. The hand is still only spent on success, inside do_hand_hit.
+	INVOKE_ASYNC(src, PROC_REF(do_hand_hit), source, target, caster)
+	return ITEM_INTERACT_BLOCKING
+	// RIMSTATION EDIT CHANGE END
 
 /**
  * Signal proc for [COMSIG_ITEM_INTERACTING_WITH_ATOM_SECONDARY] from our attached hand.
@@ -247,7 +251,8 @@
 
 		// Call normal will call the normal cast proc
 		if(SECONDARY_ATTACK_CALL_NORMAL)
-			do_hand_hit(hand, victim, caster)
+			// RIMSTATION EDIT CHANGE - Some casts prompt the caster. This return was already discarded.
+			INVOKE_ASYNC(src, PROC_REF(do_hand_hit), hand, victim, caster)
 
 		// Cancel chain will do nothing,
 		if(SECONDARY_ATTACK_CANCEL_ATTACK_CHAIN)

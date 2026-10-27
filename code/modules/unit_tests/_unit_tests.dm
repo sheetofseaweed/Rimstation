@@ -413,6 +413,12 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/telemetry.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/storyteller_recovery.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/asari.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/asari_physique.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/quarian.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/quarian_clothing.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/quarian_suit.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/species_ui_contract.dm"
 // RIMSTATION ADDITION END
 // SKYRAT EDIT START
 #include "~skyrat\automapper.dm"

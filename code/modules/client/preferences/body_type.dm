@@ -26,6 +26,11 @@
 		return FALSE
 
 	var/datum/species/species = preferences.read_preference(/datum/preference/choiced/species)
+	// RIMSTATION EDIT ADDITION - a species with one fixed physique has nothing to pick here, and the
+	// picker would silently do nothing: apply_supplementary_body_changes() overrides it afterwards.
+	if(!isnull(initial(species.forced_physique)))
+		return FALSE
+	// RIMSTATION EDIT ADDITION END
 	return initial(species.sexes)
 
 /proc/gender_has_physique(gender)

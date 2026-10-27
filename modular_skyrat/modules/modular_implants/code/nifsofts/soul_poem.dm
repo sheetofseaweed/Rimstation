@@ -95,7 +95,8 @@
 
 /datum/nifsoft/soul_poem/activate()
 	. = ..()
-	ui_interact(linked_mob)
+	// Opening the window blocks on the client. Destroy() also calls activate(), and it must never sleep.
+	INVOKE_ASYNC(src, PROC_REF(ui_interact), linked_mob)
 
 
 /datum/nifsoft/soul_poem/load_persistence_data()

@@ -94,9 +94,13 @@
 	clock_offset = (clock_offset + (target - now) + length) % length
 	advance_time_of_day()
 
-/// Has the day moved into a new step?
+/**
+ * Has the day moved into a new step?
+ *
+ * A comparison rather than a recalculation, because this runs on every tick of the round. See `next_step_at`.
+ */
 /datum/controller/subsystem/daylight/proc/should_advance_time()
-	return step_for_fraction(day_fraction()) != current_step
+	return (STATION_TIME_PASSED() + clock_offset) >= next_step_at
 
 /// Which step covers this point in the day. The last step wraps around past midnight.
 /datum/controller/subsystem/daylight/proc/step_for_fraction(fraction)
@@ -107,12 +111,23 @@
 	// Before the first step of the day means we are still in the last step of the one before.
 	return found || day_steps[length(day_steps)]
 
-/// Moves to whichever step the clock now says, and picks its colour.
+/// Moves to whichever step the clock now says, picks its colour, and works out when the next one starts.
 /datum/controller/subsystem/daylight/proc/advance_time_of_day()
 	current_step = step_for_fraction(day_fraction())
 	var/current_index = day_steps.Find(current_step)
 	next_step = current_index == length(day_steps) ? day_steps[1] : day_steps[current_index + 1]
 	picked_colour = pick(current_step.colours)
+
+	// The only place the boundary is worked out, so every route that moves the clock - the natural cycle and
+	// the admin verb alike - leaves should_advance_time() reading the truth. A day length changed in config
+	// mid-round is picked up here too, one step late, which is as often as anybody could notice.
+	var/day_ticks = day_length()
+	var/now = STATION_TIME_PASSED() + clock_offset
+	next_step_at = (now - (now % day_ticks)) + (next_step.start * day_ticks)
+	// The next step is tomorrow whenever its start has already gone past today - which includes the wrap from
+	// the last step of the day back to the first, whose start is zero.
+	if(next_step_at <= now)
+		next_step_at += day_ticks
 
 /**
  * How long the fade to the new colour should take.

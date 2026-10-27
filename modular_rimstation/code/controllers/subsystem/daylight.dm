@@ -31,6 +31,15 @@ SUBSYSTEM_DEF(daylight)
 	var/picked_colour
 	/// Manual shift applied to the day clock, in deciseconds. Kept in [0, day length).
 	var/clock_offset = 0
+	/**
+	 * Station time at which the next step begins.
+	 *
+	 * This subsystem is a ticker, so whatever decides "has the day moved on" runs every tick of the round -
+	 * 1.15 million times over a long one. Working it out from scratch each time meant reading the config,
+	 * two divisions and a loop over every step, to conclude nothing had changed on all but a handful of them.
+	 * Deciding it once per step and comparing against it costs one number.
+	 */
+	var/next_step_at = 0
 	/// Z-levels that get sunlight at all, keyed by z number as text for a cheap lookup on a hot path.
 	var/list/sunlit_z_levels = list()
 

@@ -585,7 +585,8 @@
 	set name = "Interact With"
 	set desc = "Perform an interaction with someone."
 	set category = "IC"
-	set src in view(usr.client)
+	// Verb src ranges must be a constant. 7 is the radius of world.view.
+	set src in view(7)
 
 	var/datum/component/interactable/menu = GetComponent(/datum/component/interactable)
 	if(!menu)
