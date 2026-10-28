@@ -15,7 +15,7 @@
 	// The settlement's own business can be decided at its own heart.
 	var/list/core_answerable = list(
 		/datum/colony_incident/refugee,
-		/datum/colony_incident/dispute,
+		///datum/colony_incident/dispute,
 		/datum/colony_incident/blight,
 	)
 	for(var/datum/colony_incident/incident_type as anything in core_answerable)

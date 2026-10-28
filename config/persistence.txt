@@ -118,8 +118,8 @@ PERSISTENT_SAVE_FLAGS areas_custom_shuttles
 ## RIMSTATION: carry the colony's research between chapters. Comment out to research from scratch each time.
 CAMPAIGN_RESEARCH_PERSISTENCE
 
-## RIMSTATION: start a campaign colony with only construction, stock parts, fundamental science and material
-## processing researched, rather than the full station starting set. Comment out to start with everything.
+## RIMSTATION: cut a campaign colony back to the station's starting research before saved research is restored.
+## Comment out to skip the cut-back.
 CAMPAIGN_RESTRICT_STARTING_RESEARCH
 
 ## RIMSTATION: how much of a colonist's skill experience is lost each chapter, as a proportion of what they

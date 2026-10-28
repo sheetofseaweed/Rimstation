@@ -40,6 +40,7 @@ type Data = {
   resource_site_count: number;
   ruin_site_count: number;
   fingerprint: string | null;
+  world_seed: string;
   can_confirm: boolean;
   blocked_reason: string | null;
 };
@@ -62,6 +63,7 @@ export const CampaignSetup = (props) => {
     known_sites,
     resource_site_count,
     ruin_site_count,
+    world_seed,
     can_confirm,
     blocked_reason,
   } = data;
@@ -149,13 +151,23 @@ export const CampaignSetup = (props) => {
               fill
               title="Regional preview"
               buttons={
-                <Button
-                  icon="rotate"
-                  disabled={preview_building}
-                  onClick={() => act('generate_preview')}
-                >
-                  {preview_building ? 'Generating…' : 'Generate preview'}
-                </Button>
+                <>
+                  <Button
+                    icon="dice"
+                    disabled={preview_building}
+                    tooltip="Rolls a different world. The campaign begins on whichever one is drawn here."
+                    onClick={() => act('roll_world')}
+                  >
+                    Roll new world
+                  </Button>
+                  <Button
+                    icon="rotate"
+                    disabled={preview_building}
+                    onClick={() => act('generate_preview')}
+                  >
+                    {preview_building ? 'Generating…' : 'Generate preview'}
+                  </Button>
+                </>
               }
             >
               {!radius ? (
@@ -175,7 +187,7 @@ export const CampaignSetup = (props) => {
                   )}
                   <Stack.Item>
                     <Box color="label">
-                      {`${cells.length} hexes · ${resource_site_count} deposits · ${ruin_site_count} ruins`}
+                      {`world ${world_seed} · ${cells.length} hexes · ${resource_site_count} deposits · ${ruin_site_count} ruins`}
                     </Box>
                   </Stack.Item>
                   <Stack.Item grow>

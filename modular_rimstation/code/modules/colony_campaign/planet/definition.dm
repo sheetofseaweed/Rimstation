@@ -139,14 +139,30 @@
 	return TRUE
 
 /**
+ * A root seed for a world nobody has chosen yet.
+ *
+ * Deliberately the one place in planet generation that touches rand(). Every seed *derived* from a root has to
+ * be pure, or a colony would not rebuild between chapters - but choosing the root in the first place is the
+ * opposite job, and a root that can be predicted is how every campaign ends up on the same ground.
+ *
+ * The sequence number is what keeps two roots taken in the same tick apart, since world.realtime does not move
+ * within one.
+ */
+/proc/random_planet_root_seed()
+	var/static/sequence = 0
+	sequence++
+	return rustg_hash_string(RUSTG_HASH_SHA256, "[world.realtime]:[rand(1, 16777216)]:[sequence]")
+
+/**
  * The planet the colony map is currently generated from.
  *
  * A running campaign builds on the world its own manifest recorded. That is what makes a generation keep its
  * terrain between chapters, and what makes the generation after a defeat genuinely a different world rather
  * than the same ground with the buildings cleared off it.
  *
- * Servers not running a campaign fall back to one fixed development world, which is reproducible but the same
- * every time.
+ * A server running no campaign has nothing recording which world it was on, so it gets a new one every boot.
+ * Set `COLONY_WORLD_SEED` in config to have one world come back instead, which is what makes a report about
+ * generated terrain something another boot can reproduce.
  */
 GLOBAL_DATUM(rimstation_active_planet, /datum/planet_definition)
 
@@ -162,7 +178,10 @@ GLOBAL_DATUM(rimstation_active_planet, /datum/planet_definition)
 		return from_campaign
 	qdel(from_campaign)
 
-	GLOB.rimstation_active_planet = new /datum/planet_definition(RIMSTATION_DEVELOPMENT_PLANET_SEED, "rimstation-development")
+	var/pinned_seed = CONFIG_GET(string/colony_world_seed)
+	var/root_seed = length(pinned_seed) ? pinned_seed : random_planet_root_seed()
+	GLOB.rimstation_active_planet = new /datum/planet_definition(root_seed, RIMSTATION_DEVELOPMENT_PLANET_ID)
+	log_world("No campaign is running; colony terrain will be generated from [length(pinned_seed) ? "the pinned" : "a fresh random"] world seed '[root_seed]'.")
 	return GLOB.rimstation_active_planet
 
 /// TRUE when both records would generate the same world and carry the same campaign metadata.

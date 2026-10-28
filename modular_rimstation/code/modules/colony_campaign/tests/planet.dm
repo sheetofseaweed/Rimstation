@@ -35,6 +35,51 @@
 	// That is deliberately not asserted here: exercising it would raise the runtime it is meant to raise.
 
 
+/**
+ * A world nobody recorded has to be a new world, and has to be pinnable when the same one is wanted back.
+ *
+ * This is the half of the seed contract that is not about reproducibility. Rebuilding a recorded world
+ * identically and choosing an unrecorded one at random are opposite requirements, and the bug they produce
+ * looks the same from the outside: the colony map never changes.
+ */
+/datum/unit_test/rimstation_planet_world_selection
+
+/datum/unit_test/rimstation_planet_world_selection/Run()
+	var/first_roll = random_planet_root_seed()
+	TEST_ASSERT(istext(first_roll) && length(first_roll), "Rolling a world root seed produced nothing a planet could use.")
+	// Two rolls inside one tick, which is the case a timestamp alone does not separate.
+	TEST_ASSERT_NOTEQUAL(first_roll, random_planet_root_seed(), "Two rolled world seeds came out identical, so every world would be the same world.")
+
+	// A fixed seed is honoured exactly, since that is what makes generated terrain reproducible on request.
+	// The manifest is cleared alongside the cached planet: a campaign left running by an earlier test owns a
+	// recorded world, and the no-campaign path is what is under test here.
+	var/datum/planet_definition/saved_planet = GLOB.rimstation_active_planet
+	var/datum/campaign_manifest/saved_manifest = SScampaign.manifest
+	var/saved_pin = CONFIG_GET(string/colony_world_seed)
+	GLOB.rimstation_active_planet = null
+	SScampaign.manifest = null
+	CONFIG_SET(string/colony_world_seed, PLANET_TEST_SEED)
+	var/datum/planet_definition/pinned = get_active_colony_planet()
+	var/pinned_seed = pinned?.root_seed
+	var/pinned_id = pinned?.planet_id
+
+	GLOB.rimstation_active_planet = null
+	CONFIG_SET(string/colony_world_seed, saved_pin)
+	var/datum/planet_definition/unpinned = get_active_colony_planet()
+	var/unpinned_seed = unpinned?.root_seed
+
+	// Restored before anything is asserted. A test that leaves these set hands the next test its planet.
+	GLOB.rimstation_active_planet = saved_planet
+	SScampaign.manifest = saved_manifest
+	allocated += pinned
+	allocated += unpinned
+
+	TEST_ASSERT_EQUAL(pinned_seed, PLANET_TEST_SEED, "A pinned colony world seed was ignored, so terrain could not be reproduced on request.")
+	TEST_ASSERT_EQUAL(pinned_id, RIMSTATION_DEVELOPMENT_PLANET_ID, "The world a server with no campaign generates lost its planet id.")
+	TEST_ASSERT_NOTEQUAL(unpinned_seed, PLANET_TEST_SEED, "An unpinned colony world reused the pinned seed.")
+	TEST_ASSERT(length(unpinned_seed), "A server with no campaign was given no world to generate from at all.")
+
+
 /// A planet record is campaign-critical state, so a bad record must be refused rather than quietly regenerated.
 /datum/unit_test/rimstation_planet_definition_serialization
 
@@ -173,6 +218,86 @@
 	TEST_ASSERT_EQUAL(fingerprint, same_generator.terrain_fingerprint(), "An identical planet record produced a different landscape.")
 	TEST_ASSERT_NOTEQUAL(fingerprint, other_generator.terrain_fingerprint(), "Two different root seeds produced the same landscape.")
 	TEST_ASSERT_NOTEQUAL(fingerprint, generator.terrain_fingerprint(cell_identity = "overmap:12,7"), "Adding a chosen overmap cell did not namespace the landscape plan.")
+
+
+/**
+ * A landscape has to open a few ways down into the underground, and every one of them has to be a two-way route.
+ *
+ * The failure this guards is a hole nobody can climb out of. Stairs lift a climber to the tile past them, so an
+ * exit facing the wrong way puts the top of the climb over open air and drops them straight back in - and the
+ * only sign of that in play is a colonist who went down and could not come back.
+ */
+/datum/unit_test/rimstation_planet_sinkholes
+
+/datum/unit_test/rimstation_planet_sinkholes/Run()
+	var/datum/planet_definition/planet = new(PLANET_TEST_SEED)
+	allocated += planet
+	// Large enough that the minimum spacing lets every sinkhole the cap allows fit on it.
+	var/datum/rimstation_colony_generation_context/context = new(planet, 1, 1, 160, 160, 2)
+	allocated += context
+	TEST_ASSERT(context.build_plan(), "The landscape plan could not be built.")
+
+	var/list/collapsed = list()
+	for(var/index in 1 to length(context.terrain_plan))
+		if(context.terrain_plan[index] == RIMSTATION_TERRAIN_SINKHOLE)
+			collapsed += index
+	TEST_ASSERT(length(collapsed), "A whole generated landscape collapsed nowhere, so the underground can only be reached by digging for it.")
+
+	var/list/exits = list()
+	for(var/index in 1 to length(context.sinkhole_exit_directions))
+		if(context.sinkhole_exit_directions[index])
+			exits += index
+	TEST_ASSERT(length(exits) <= RIMSTATION_MAX_SINKHOLES, "[length(exits)] sinkholes were opened, over the cap of [RIMSTATION_MAX_SINKHOLES].")
+
+	for(var/index in exits)
+		var/direction = context.sinkhole_exit_directions[index]
+		TEST_ASSERT_EQUAL(context.terrain_plan[index], RIMSTATION_TERRAIN_SINKHOLE, "A sinkhole's climb out does not stand in the sinkhole, so there is no open mouth above it.")
+		var/outside_index = context.coordinate_index(context.offset_x(context.index_x(index), direction), context.offset_y(context.index_y(index), direction))
+		TEST_ASSERT_NOTNULL(outside_index, "A sinkhole's climb out faces off the edge of the map.")
+		TEST_ASSERT_NOTEQUAL(context.terrain_plan[outside_index], RIMSTATION_TERRAIN_SINKHOLE, "A sinkhole's climb out faces more open air, so anything using it falls straight back in.")
+
+	for(var/index in collapsed)
+		TEST_ASSERT_EQUAL(context.get_lowland_turf_type(context.index_x(index), context.index_y(index)), /turf/open/openspace/rimstation, "A collapsed tile did not become open air, so the sinkhole is not a hole.")
+		TEST_ASSERT(!context.is_plan_walkable(index), "A sinkhole counts as walkable, so a raid route would be planned straight across it.")
+		TEST_ASSERT((index in context.sinkhole_chamber_indices), "A collapsed tile has no excavated floor beneath it, so the fall lands in solid rock.")
+		// The clearance ring is what keeps a mouth off a cliff edge, a riverbank and a plateau stair.
+		for(var/direction in GLOB.alldirs)
+			var/neighbour_index = context.coordinate_index(context.offset_x(context.index_x(index), direction), context.offset_y(context.index_y(index), direction))
+			TEST_ASSERT_NOTNULL(neighbour_index, "A sinkhole opened against the edge of the map.")
+			var/neighbour_terrain = context.terrain_plan[neighbour_index]
+			TEST_ASSERT((neighbour_terrain == RIMSTATION_TERRAIN_LOWLAND || neighbour_terrain == RIMSTATION_TERRAIN_SINKHOLE), "A sinkhole opened directly against terrain class [neighbour_terrain], which its clearance ring exists to prevent.")
+
+	// Measured per mouth rather than averaged: an average would hide one collapse that came out a single tile
+	// wide, which is the shape that stops reading as a hole at all.
+	var/list/ungrouped = collapsed.Copy()
+	var/mouth_count = 0
+	while(length(ungrouped))
+		var/list/frontier = list(ungrouped[1])
+		ungrouped -= ungrouped[1]
+		var/low_x = INFINITY
+		var/high_x = -INFINITY
+		var/low_y = INFINITY
+		var/high_y = -INFINITY
+		var/position = 1
+		while(position <= length(frontier))
+			var/current_index = frontier[position++]
+			var/x = context.index_x(current_index)
+			var/y = context.index_y(current_index)
+			low_x = min(low_x, x)
+			high_x = max(high_x, x)
+			low_y = min(low_y, y)
+			high_y = max(high_y, y)
+			for(var/direction in GLOB.alldirs)
+				var/neighbour_index = context.coordinate_index(context.offset_x(x, direction), context.offset_y(y, direction))
+				if(isnull(neighbour_index) || !(neighbour_index in ungrouped))
+					continue
+				ungrouped -= neighbour_index
+				frontier += neighbour_index
+		mouth_count++
+		var/span = max(high_x - low_x + 1, high_y - low_y + 1)
+		TEST_ASSERT(span >= 4 && span <= 5, "A sinkhole came out [span] tiles across rather than the four or five a collapse is meant to be.")
+
+	TEST_ASSERT_EQUAL(mouth_count, length(exits), "[mouth_count] sinkhole(s) were opened but [length(exits)] carry a climb out, so one of them is a one-way drop.")
 
 
 #undef PLANET_TEST_SEED

@@ -90,6 +90,34 @@
 	initial_gas_mix = OPENTURF_DEFAULT_ATMOS
 	defer_change = TRUE
 	exposure_based = TRUE
+	/**
+	 * How much rarer gibtonite is here than in the inherited table.
+	 *
+	 * A station mines for one round; a colony mines the same rock all campaign, and at the inherited weight
+	 * gibtonite is roughly one deposit in six. That is a detonation every few minutes of digging, which stops
+	 * being a hazard to respect and becomes a tax on expanding underground at all.
+	 */
+	var/gibtonite_rarity = 10
+
+/turf/closed/mineral/random/rimstation/mineral_chances()
+	return thin_mineral_weight(..(), /turf/closed/mineral/gibtonite, gibtonite_rarity)
+
+/**
+ * Makes one entry of a mineral table `factor` times rarer than the rest of it.
+ *
+ * Scales every other weight up rather than dividing the named one down. A mineral table is relative, so both
+ * read the same to `pick()` - but `randomize_ore()` floors each weight to a whole number, and a weight that
+ * started at four and was divided is floored to zero, which retires the mineral instead of thinning it.
+ */
+/proc/thin_mineral_weight(list/chances, thinned_path, factor)
+	RETURN_TYPE(/list)
+	if(factor <= 1)
+		return chances
+	var/thinned_weight = chances[thinned_path]
+	for(var/spawn_path in chances)
+		chances[spawn_path] *= factor
+	chances[thinned_path] = thinned_weight
+	return chances
 
 /// Native soil for the main, middle colony layer.
 /turf/open/misc/dirt/planet/rimstation

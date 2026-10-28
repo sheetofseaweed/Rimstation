@@ -14,6 +14,13 @@
 	var/campaign_id = CAMPAIGN_DEFAULT_ID
 	/// The three region options, always a valid set.
 	var/list/options
+	/**
+	 * The world this screen is currently offering.
+	 *
+	 * Held here rather than rolled at creation, because the preview has to be of the world that gets made. The
+	 * region options are a preference and may be changed over the same world; rolling a new one is its own act.
+	 */
+	var/world_seed
 	/// The region last previewed, or null if none has been built yet.
 	var/datum/overworld_region/preview
 	/// TRUE when the options have moved since the preview was drawn.
@@ -29,6 +36,7 @@
 	. = ..()
 	src.opened_by = opened_by
 	options = default_overworld_options()
+	world_seed = random_planet_root_seed()
 
 /datum/campaign_setup/Destroy(force)
 	QDEL_NULL(preview)
@@ -88,6 +96,8 @@
 	// Preview mode reveals everything: somebody choosing a world should see the world.
 	data["radius"] = preview?.radius || 0
 	data["fingerprint"] = preview?.fingerprint
+	// Short enough to read out, long enough to tell two worlds apart. The full seed goes in the manifest.
+	data["world_seed"] = copytext(world_seed, 1, 13)
 
 	var/list/cells = list()
 	var/list/known = list()
@@ -162,6 +172,14 @@
 			INVOKE_ASYNC(src, PROC_REF(build_preview))
 			return TRUE
 
+		if("roll_world")
+			if(preview_building)
+				return TRUE
+			world_seed = random_planet_root_seed()
+			preview_building = TRUE
+			INVOKE_ASYNC(src, PROC_REF(build_preview))
+			return TRUE
+
 		if("confirm")
 			return confirm_campaign(usr)
 
@@ -199,12 +217,11 @@
 /**
  * Builds the region this campaign would begin on.
  *
- * Uses `build_generation_planet_record()` with generation 1 - the same call `create_campaign()` makes - so the
- * preview and the campaign cannot diverge. Changing the campaign name therefore changes the world, which is
- * true of creation as well and is worth seeing before committing to it.
+ * Reads the seed this screen is holding rather than rolling one, and creation is handed the same seed, so the
+ * preview and the campaign cannot diverge. A preview that merely resembled the result would be worse than none.
  */
 /datum/campaign_setup/proc/build_preview()
-	var/list/planet_record = SScampaign.build_generation_planet_record(campaign_id, 1)
+	var/list/planet_record = SScampaign.build_generation_planet_record(campaign_id, 1, world_seed)
 	var/datum/planet_definition/planet = new
 	if(!planet.deserialize(planet_record))
 		qdel(planet)
@@ -241,7 +258,7 @@
 		return TRUE
 
 	consumed = TRUE
-	if(!SScampaign.create_campaign(campaign_id, key_name(user), options))
+	if(!SScampaign.create_campaign(campaign_id, key_name(user), options, world_seed))
 		to_chat(user, span_warning("The campaign could not be started. It may already exist on disk - check the game log."))
 		// Released rather than left consumed: nothing was created, so the screen is still usable.
 		consumed = FALSE

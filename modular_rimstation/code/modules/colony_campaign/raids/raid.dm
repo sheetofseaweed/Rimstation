@@ -305,6 +305,10 @@ GLOBAL_LIST_EMPTY(colony_raids)
 /datum/colony_raid/proc/is_walkable_turf(turf/candidate)
 	if(!candidate || candidate.density)
 		return FALSE
+	// Open space is not dense, but nothing walks over it. A route across a sinkhole drops the attackers onto
+	// the level below, where they are out of the raid for good and cannot be found.
+	if(isopenspaceturf(candidate))
+		return FALSE
 	for(var/obj/blocker in candidate)
 		if(blocker.density)
 			return FALSE

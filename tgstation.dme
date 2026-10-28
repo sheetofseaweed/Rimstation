@@ -10911,6 +10911,7 @@
 #include "modular_zubbers\modules\wood_walls\code\new_floors.dm"
 #include "code\_globalvars\serialization.dm"
 #include "code\controllers\configuration\entries\persistence.dm"
+#include "modular_rimstation\code\controllers\configuration\entries\colony_world.dm"
 #include "modular_rimstation\code\controllers\configuration\entries\sunlight.dm"
 #include "code\controllers\subsystem\persistence\world_save.dm"
 #include "code\controllers\subsystem\persistence\serialization\_procs.dm"

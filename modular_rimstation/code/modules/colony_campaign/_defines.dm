@@ -38,7 +38,7 @@
  * Bump this only when a generator change should deliberately produce different worlds from the same root
  * seed. Existing campaigns keep the version stored in their own record, so they stay reproducible.
  */
-#define PLANET_GENERATION_VERSION 2
+#define PLANET_GENERATION_VERSION 3
 
 /// Length of a derived stream seed in hex characters.
 #define PLANET_STREAM_SEED_LENGTH 16
@@ -52,8 +52,8 @@
 #define BIOME_DRIFT_AXIS_X "x"
 #define BIOME_DRIFT_AXIS_Y "y"
 
-/// Root seed for the development colony world, used until a campaign manifest chooses one.
-#define RIMSTATION_DEVELOPMENT_PLANET_SEED "rimstation-development-world"
+/// Planet id worn by the world a server generates while it is running no campaign.
+#define RIMSTATION_DEVELOPMENT_PLANET_ID "rimstation-development"
 
 /// Planned terrain classes shared by the lowland and highland materialization passes.
 #define RIMSTATION_TERRAIN_LOWLAND 1
@@ -62,6 +62,7 @@
 #define RIMSTATION_TERRAIN_RIVER_DEEP 4
 #define RIMSTATION_TERRAIN_MOUNTAIN 5
 #define RIMSTATION_TERRAIN_CAVE 6
+#define RIMSTATION_TERRAIN_SINKHOLE 7
 
 /// Temperate ecology bands. These decide density as well as which flora table is used.
 #define RIMSTATION_BIOME_GRASSLAND 1
@@ -77,6 +78,38 @@
 #define RIMSTATION_MAX_ASCENTS 12
 /// Independent, entrance-connected cave systems attempted across the mountain footprint.
 #define RIMSTATION_MAX_CAVE_SYSTEMS 8
+
+/**
+ * Collapsed ground that drops from the surface into the underground level.
+ *
+ * Deliberately few. A sinkhole is the one way down that nobody had to dig, so finding the nearest one should
+ * be worth a walk; a surface littered with them would make the underground an extension of the lowlands.
+ */
+#define RIMSTATION_MAX_SINKHOLES 4
+/**
+ * The part of a collapse that always gives way, measured from its centre in tiles.
+ *
+ * Two, which spans five tiles across both axes. A mouth has to be wide enough that walking into one is a
+ * decision rather than a misstep, and narrow enough that a handful of them are not a second route everywhere.
+ */
+#define RIMSTATION_SINKHOLE_CORE_RADIUS 2
+/// How far past the core the rim may reach, rolled per site. Shapes the mouth without changing its span.
+#define RIMSTATION_SINKHOLE_MIN_RADIUS 2.2
+#define RIMSTATION_SINKHOLE_MAX_RADIUS 2.8
+/// How often a tile in a sinkhole's outer ring collapses, in percent. Below 100 so no mouth is a circle.
+#define RIMSTATION_SINKHOLE_RIM_CHANCE 70
+/// Tiles of underground excavated beyond the mouth, so the drop lands somewhere there is room to stand.
+#define RIMSTATION_SINKHOLE_CHAMBER_MARGIN 2
+/**
+ * Plain lowland a sinkhole needs on every side of it.
+ *
+ * Two tiles, which is what keeps a collapse clear of the features placed before it: a cave mouth, a plateau
+ * stair and a riverbank all sit directly against the terrain they belong to, and a hole opening into any of
+ * them would either swallow the route or drain the river into the rock.
+ */
+#define RIMSTATION_SINKHOLE_CLEARANCE 2
+/// Tiles between two sinkholes, so the few there are end up spread over the map rather than clustered.
+#define RIMSTATION_SINKHOLE_MIN_SPACING 60
 
 /// Faction shared by colonists and their animals. Anything outside it can contest the core.
 #define RIMSTATION_COLONY_FACTION "rimstation_colony"
@@ -818,12 +851,10 @@
 #define COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE 3
 
 /**
- * What a colony arrives already knowing.
- *
- * Temporarily retain the station's public starting prerequisites so medical and other branches remain usable.
- * Advanced research still has to be earned. Keep the colony's original four basics explicitly as well.
+ * What a colony arrives already knowing: every station starter, hidden ones included.
+ * The four basics stay explicit, so an upstream change to their flags cannot take them away.
  */
-#define CAMPAIGN_STARTING_RESEARCH_NODES ((SSresearch.techweb_nodes_starting - SSresearch.techweb_nodes_hidden) | list( \
+#define CAMPAIGN_STARTING_RESEARCH_NODES (SSresearch.techweb_nodes_starting | list( \
 	/datum/techweb_node/construction, \
 	/datum/techweb_node/parts, \
 	/datum/techweb_node/fundamental_sci, \

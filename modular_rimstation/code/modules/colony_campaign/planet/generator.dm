@@ -56,10 +56,16 @@
 	var/list/biome_plan
 	/// Mountain footprint before caves open inside it; retained for generation diagnostics and balancing.
 	var/mountain_tile_count = 0
+	/// Collapses the plan found room for. Below the cap means the terrain, not the rolls, ran out of sites.
+	var/sinkhole_count = 0
 	/// Numeric rust-g seeds folded to this context, cached because coordinate placement reads them heavily.
 	var/list/resolved_seeds
 	/// Indexed by the highland coordinate. The value points from the lowland stair toward its plateau exit.
 	var/list/ascent_directions
+	/// Indexed by the collapsed coordinate a sinkhole's climb out stands on. The value points out of the hole.
+	var/list/sinkhole_exit_directions
+	/// Coordinates to excavate on the underground level, under and around each collapse.
+	var/list/sinkhole_chamber_indices
 	/// Walkable, landing-connected map-edge coordinates where raids may be proposed after ecology placement.
 	var/list/raid_insertion_indices
 	var/plan_built = FALSE
@@ -105,6 +111,8 @@
 	landing_distance_field = null
 	resolved_seeds = null
 	ascent_directions = null
+	sinkhole_exit_directions = null
+	sinkhole_chamber_indices = null
 	raid_insertion_indices = null
 	return ..()
 
@@ -303,6 +311,9 @@
 	route_river()
 	carve_caves()
 	select_ascents()
+	// After the ascents, so a collapse can be refused where one would swallow a plateau stair, and before the
+	// raid markers, so their route is flood-filled around the holes rather than through them.
+	select_sinkholes()
 	select_raid_insertions()
 	plan_built = TRUE
 	return TRUE
@@ -519,6 +530,158 @@
 	if(!length(selected) && !isnull(fallback_index))
 		ascent_directions[fallback_index] = fallback_direction
 
+/// The lowland coordinate a plateau stair stands on, given the mountain edge it climbs to.
+/datum/rimstation_colony_generation_context/proc/get_ascent_stair_index(ascent_index)
+	var/outward = REVERSE_DIR(ascent_directions[ascent_index])
+	return coordinate_index(offset_x(index_x(ascent_index), outward), offset_y(index_y(ascent_index), outward))
+
+/// Lowland coordinates a plateau stair will be built on. Nothing else may be planned over one.
+/datum/rimstation_colony_generation_context/proc/get_ascent_stair_indices()
+	RETURN_TYPE(/list)
+	var/list/stairs = list()
+	for(var/ascent_index in 1 to length(ascent_directions))
+		if(!ascent_directions[ascent_index])
+			continue
+		var/stair_index = get_ascent_stair_index(ascent_index)
+		if(!isnull(stair_index))
+			stairs += stair_index
+	return stairs
+
+/// How wide one collapse opens. Rolled per site, so the few on a map are not identical discs.
+/datum/rimstation_colony_generation_context/proc/sinkhole_radius(x, y)
+	var/spread = RIMSTATION_SINKHOLE_MAX_RADIUS - RIMSTATION_SINKHOLE_MIN_RADIUS
+	var/roll = coordinate_roll(PLANET_STREAM_TERRAIN, x, y, "sinkhole_radius", 1000) / 1000
+	return RIMSTATION_SINKHOLE_MIN_RADIUS + (roll * spread)
+
+/**
+ * TRUE when a collapse centred here would sit in open country.
+ *
+ * Sweeps the mouth plus its clearance ring and requires every tile of it to be plain lowland. Mountains,
+ * rivers, cave mouths, plateau stairs and the landing clearing all sit directly against the ground they belong
+ * to, so a hole reaching any of them would either swallow a route terrain had already placed or drain a river
+ * into the rock. Checking the whole footprint here is also what lets `open_sinkhole()` index without bounds
+ * checks.
+ */
+/datum/rimstation_colony_generation_context/proc/is_sinkhole_site(x, y, radius, list/reserved_indices)
+	var/reach = ceil(radius) + RIMSTATION_SINKHOLE_CLEARANCE
+	for(var/x_offset in -reach to reach)
+		for(var/y_offset in -reach to reach)
+			var/nearby_x = x + x_offset
+			var/nearby_y = y + y_offset
+			var/index = coordinate_index(nearby_x, nearby_y)
+			if(isnull(index) || terrain_plan[index] != RIMSTATION_TERRAIN_LOWLAND)
+				return FALSE
+			if(is_landing_protected(nearby_x, nearby_y, RIMSTATION_LANDING_BLEND_RADIUS))
+				return FALSE
+			if(index in reserved_indices)
+				return FALSE
+	return TRUE
+
+/**
+ * Chooses the few places the surface has fallen into the level below it.
+ *
+ * Two passes over the plan. The first takes only the sites a roll picks out, which is what scatters them
+ * instead of filling whichever corner the scan reaches first; the second runs only when that came up short and
+ * takes any site that fits, so a map whose rolls were unkind still has a way down rather than none.
+ *
+ * Both passes do the cheap tests before `is_sinkhole_site()`, which sweeps fifty-odd tiles per candidate and
+ * would otherwise run on every coordinate of the map.
+ */
+/datum/rimstation_colony_generation_context/proc/select_sinkholes()
+	sinkhole_exit_directions = new /list(width * height)
+	sinkhole_chamber_indices = list()
+	var/list/reserved_indices = get_ascent_stair_indices()
+	var/list/centres = list()
+	for(var/rolled_only in list(TRUE, FALSE))
+		if(length(centres) >= RIMSTATION_MAX_SINKHOLES)
+			break
+		for(var/index in 1 to length(terrain_plan))
+			CHECK_TICK
+			if(length(centres) >= RIMSTATION_MAX_SINKHOLES)
+				break
+			if(terrain_plan[index] != RIMSTATION_TERRAIN_LOWLAND)
+				continue
+			var/x = index_x(index)
+			var/y = index_y(index)
+			if(rolled_only && coordinate_roll(PLANET_STREAM_TERRAIN, x, y, "sinkhole", 1000) >= 12)
+				continue
+			if(!is_far_from_selected(index, centres, RIMSTATION_SINKHOLE_MIN_SPACING))
+				continue
+			if(!is_sinkhole_site(x, y, sinkhole_radius(x, y), reserved_indices))
+				continue
+			centres += index
+
+	sinkhole_count = length(centres)
+	for(var/index in centres)
+		var/x = index_x(index)
+		var/y = index_y(index)
+		open_sinkhole(x, y, sinkhole_radius(x, y))
+
+/**
+ * Collapses one disc of lowland and excavates the underground under it.
+ *
+ * The core always goes, so every mouth spans the same five tiles; the ring past it is rolled per tile, so no
+ * two are the same shape and none of them is a circle. The chamber below reaches wider than the mouth on
+ * purpose - a drop into a hole exactly the width of the hole lands in sealed rock, which is a trap rather than
+ * a route down.
+ */
+/datum/rimstation_colony_generation_context/proc/open_sinkhole(centre_x, centre_y, radius)
+	var/list/collapsed = list()
+	for(var/x_offset in -ceil(radius) to ceil(radius))
+		for(var/y_offset in -ceil(radius) to ceil(radius))
+			var/distance = sqrt((x_offset * x_offset) + (y_offset * y_offset))
+			if(distance > radius)
+				continue
+			var/x = centre_x + x_offset
+			var/y = centre_y + y_offset
+			if(distance > RIMSTATION_SINKHOLE_CORE_RADIUS && coordinate_roll(PLANET_STREAM_TERRAIN, x, y, "sinkhole_rim", 100) >= RIMSTATION_SINKHOLE_RIM_CHANCE)
+				continue
+			var/index = coordinate_index(x, y)
+			terrain_plan[index] = RIMSTATION_TERRAIN_SINKHOLE
+			biome_plan[index] = RIMSTATION_BIOME_CAVE
+			collapsed += index
+
+	var/chamber_radius = radius + RIMSTATION_SINKHOLE_CHAMBER_MARGIN
+	for(var/x_offset in -ceil(chamber_radius) to ceil(chamber_radius))
+		for(var/y_offset in -ceil(chamber_radius) to ceil(chamber_radius))
+			if(sqrt((x_offset * x_offset) + (y_offset * y_offset)) > chamber_radius)
+				continue
+			var/index = coordinate_index(centre_x + x_offset, centre_y + y_offset)
+			if(!isnull(index))
+				sinkhole_chamber_indices += index
+
+	select_sinkhole_exit(collapsed)
+
+/**
+ * Picks the one tile of a collapse that can be climbed back out of.
+ *
+ * Stairs lift a climber to the tile one step past them, so the climb has to start on the rim and face out of
+ * the hole: begun anywhere else, the top of the stair is more open air and the climber drops straight back in.
+ * Without this a sinkhole is a one-way fall, which is a hazard rather than the route down it is meant to be.
+ */
+/datum/rimstation_colony_generation_context/proc/select_sinkhole_exit(list/collapsed)
+	var/best_index
+	var/best_direction
+	var/best_score = INFINITY
+	for(var/index in collapsed)
+		var/x = index_x(index)
+		var/y = index_y(index)
+		for(var/direction in GLOB.cardinals)
+			var/outside_index = coordinate_index(offset_x(x, direction), offset_y(y, direction))
+			if(isnull(outside_index) || terrain_plan[outside_index] == RIMSTATION_TERRAIN_SINKHOLE)
+				continue
+			var/score = coordinate_roll(PLANET_STREAM_TERRAIN, x, y, "sinkhole_exit", 1000)
+			if(score >= best_score)
+				continue
+			best_score = score
+			best_index = index
+			best_direction = direction
+
+	if(isnull(best_index))
+		return null
+	sinkhole_exit_directions[best_index] = best_direction
+	return best_index
+
 /// Authored landing turf closest to the centre of the authored shape.
 /datum/rimstation_colony_generation_context/proc/get_landing_anchor_index()
 	if(isnull(landing_min_x) || !length(landing_mask))
@@ -544,7 +707,8 @@
 	if(isnull(index))
 		return FALSE
 	var/terrain = terrain_plan[index]
-	return terrain != RIMSTATION_TERRAIN_MOUNTAIN && terrain != RIMSTATION_TERRAIN_RIVER_DEEP
+	// A sinkhole is open, not passable. A route planned across one drops whatever followed it a level.
+	return terrain != RIMSTATION_TERRAIN_MOUNTAIN && terrain != RIMSTATION_TERRAIN_RIVER_DEEP && terrain != RIMSTATION_TERRAIN_SINKHOLE
 
 /// All plan coordinates connected to the landing clearing without crossing solid mountains or deep water.
 /datum/rimstation_colony_generation_context/proc/build_landing_reachability()
@@ -645,6 +809,8 @@
 			return /turf/closed/mineral/random/rimstation
 		if(RIMSTATION_TERRAIN_CAVE)
 			return /turf/open/misc/asteroid/rimstation
+		if(RIMSTATION_TERRAIN_SINKHOLE)
+			return /turf/open/openspace/rimstation
 		if(RIMSTATION_TERRAIN_RIVER_BANK)
 			return /turf/open/misc/dirt/planet/rimstation/wet
 		if(RIMSTATION_TERRAIN_RIVER_SHALLOW)
@@ -735,8 +901,9 @@
 		CHECK_TICK
 
 	place_ascents()
+	place_sinkholes()
 	var/mountain_percentage = round((generation_context.mountain_tile_count / (generation_context.width * generation_context.height)) * 100, 0.1)
-	var/message = "Rimstation colony terrain generation finished in [(REALTIMEOFDAY - start_time) / 10]s ([mountain_percentage]% mountain footprint)."
+	var/message = "Rimstation colony terrain generation finished in [(REALTIMEOFDAY - start_time) / 10]s ([mountain_percentage]% mountain footprint, [generation_context.sinkhole_count] sinkhole(s))."
 	add_startup_message(message)
 	log_world(message)
 
@@ -753,15 +920,50 @@
 		var/stair_direction = generation_context.ascent_directions[index]
 		if(!stair_direction)
 			continue
-		var/highland_x = generation_context.index_x(index)
-		var/highland_y = generation_context.index_y(index)
-		var/stair_x = generation_context.offset_x(highland_x, REVERSE_DIR(stair_direction))
-		var/stair_y = generation_context.offset_y(highland_y, REVERSE_DIR(stair_direction))
-		var/turf/stair_turf = locate(stair_x, stair_y, generation_context.surface_z)
+		var/stair_index = generation_context.get_ascent_stair_index(index)
+		if(isnull(stair_index))
+			continue
+		var/turf/stair_turf = locate(
+			generation_context.index_x(stair_index),
+			generation_context.index_y(stair_index),
+			generation_context.surface_z,
+		)
 		if(!stair_turf || istype(get_area(stair_turf), /area/rimstation_colony/surface/landing))
 			continue
 		var/obj/structure/stairs/stone/stairs = new(stair_turf)
 		stairs.dir = stair_direction
+
+/**
+ * Hollows the underground beneath each collapse and builds the way back up.
+ *
+ * The only pass that writes to the deep level. Everything else about the underground is the mapped rock the
+ * colony has to dig through, and that is the point: a sinkhole is the one place the digging has been done.
+ */
+/datum/map_generator/rimstation_colony/proc/place_sinkholes()
+	for(var/index in generation_context.sinkhole_chamber_indices)
+		var/turf/chamber = locate(
+			generation_context.index_x(index),
+			generation_context.index_y(index),
+			generation_context.deep_z,
+		)
+		if(chamber)
+			replace_uninitialized_turf(chamber, /turf/open/misc/asteroid/rimstation)
+		CHECK_TICK
+
+	for(var/index in 1 to length(generation_context.sinkhole_exit_directions))
+		var/exit_direction = generation_context.sinkhole_exit_directions[index]
+		if(!exit_direction)
+			continue
+		// The climb stands on the excavated floor, under the open mouth, facing the solid ground outside it.
+		var/turf/footing = locate(
+			generation_context.index_x(index),
+			generation_context.index_y(index),
+			generation_context.deep_z,
+		)
+		if(!footing)
+			continue
+		var/obj/structure/stairs/stone/climb = new(footing)
+		climb.dir = exit_direction
 
 /datum/map_generator/rimstation_colony/populate_terrain(list/turf/turfs, area/generate_in)
 	if(!generation_context?.plan_built || generate_in.z != generation_context.surface_z)
@@ -807,6 +1009,9 @@
 
 /datum/map_generator/rimstation_colony/proc/populate_coordinate(turf/target, x, y, terrain, biome, layer_namespace)
 	if(terrain == RIMSTATION_TERRAIN_RIVER_SHALLOW || terrain == RIMSTATION_TERRAIN_RIVER_DEEP || terrain == RIMSTATION_TERRAIN_MOUNTAIN)
+		return
+	// Nothing stands in a sinkhole. Anything placed here would be hanging in the open air over the hole.
+	if(terrain == RIMSTATION_TERRAIN_SINKHOLE)
 		return
 	var/index = generation_context.coordinate_index(x, y)
 	if(layer_namespace == "lowland" && (index in generation_context.raid_insertion_indices))

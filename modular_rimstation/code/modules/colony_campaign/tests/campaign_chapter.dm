@@ -72,8 +72,12 @@
 	// The recorded planet is the one terrain would actually be built from, not just a field in a file.
 	var/datum/planet_definition/campaign_world = new
 	allocated += campaign_world
-	TEST_ASSERT(campaign_world.deserialize(SScampaign.manifest.planet_record), "A campaign's recorded planet could not be loaded, so terrain would fall back to the fixed development world.")
-	TEST_ASSERT_NOTEQUAL(campaign_world.root_seed, RIMSTATION_DEVELOPMENT_PLANET_SEED, "A campaign was recorded as being on the shared development world, so every campaign would generate identical terrain.")
+	TEST_ASSERT(campaign_world.deserialize(SScampaign.manifest.planet_record), "A campaign's recorded planet could not be loaded, so terrain would fall back to a world nothing recorded.")
+
+	// And it is this campaign's own world. The seed used to be derived from the campaign's name, which put every
+	// campaign anyone named the same thing on identical ground.
+	var/list/another_world = SScampaign.build_generation_planet_record(test_campaign_id, 1)
+	TEST_ASSERT_NOTEQUAL(campaign_world.root_seed, another_world["root_seed"], "Two campaigns with the same name were placed on the same world, so every campaign would generate identical terrain.")
 
 	// A pointer naming something unusable must not be honoured.
 	rustg_file_write(json_encode(list("campaign_id" = "../escape")), active_campaign_pointer_path())

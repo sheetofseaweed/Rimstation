@@ -206,6 +206,9 @@
 	// A colony that survived its first chapter and lost its second.
 	var/datum/campaign_manifest/manifest = new(test_campaign_id, "generation-1")
 	allocated += manifest
+	// Given a world explicitly, because the one the new generation gets has to be compared against the one that
+	// was actually lost. Worlds are rolled rather than derived, so there is nothing to re-derive later.
+	manifest.planet_record = SScampaign.build_generation_planet_record(test_campaign_id, 1)
 	TEST_ASSERT(commit_one_chapter(manifest), "The setup chapter could not be committed.")
 	TEST_ASSERT(SScampaign.begin_load(manifest), "The campaign refused to load for a second chapter.")
 	TEST_ASSERT(SScampaign.begin_chapter(), "The campaign refused to begin a second chapter.")
@@ -229,9 +232,8 @@
 	TEST_ASSERT_NULL(SScampaign.select_checkpoint_for_boot(), "A new generation selected a checkpoint belonging to a lost one.")
 
 	// It is a different world, not the same one with the buildings knocked down.
-	var/list/lost_world = SScampaign.build_generation_planet_record(test_campaign_id, 1)
 	TEST_ASSERT(length(fresh.planet_record), "A new generation was created without a planet to build on.")
-	TEST_ASSERT_NOTEQUAL(fresh.planet_record["root_seed"], lost_world["root_seed"], "A new generation was placed on the world the campaign had just lost.")
+	TEST_ASSERT_NOTEQUAL(fresh.planet_record["root_seed"], manifest.planet_record["root_seed"], "A new generation was placed on the world the campaign had just lost.")
 
 	// The lost generation's checkpoints are not reachable from the new one, by any route.
 	var/list/snapshots = SScampaign.list_recovery_snapshots()

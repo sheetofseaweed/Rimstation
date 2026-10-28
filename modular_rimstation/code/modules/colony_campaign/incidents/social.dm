@@ -8,7 +8,7 @@
  * Refusing to rule is a third answer in practice: the decision expires, both parties stay aggrieved, and the
  * settlement carries the pressure.
  */
-/datum/colony_incident/dispute
+/*/datum/colony_incident/dispute
 	name = "settlement dispute"
 	category = COLONY_INCIDENT_CATEGORY_SOCIAL
 	tags = list(INCIDENT_TAG_UNREST)
@@ -135,4 +135,4 @@
 /datum/mood_event/colony_dispute_unsettled
 	description = "Nobody would settle it. It is still eating at me."
 	mood_change = -2
-	timeout = 10 MINUTES
+	timeout = 10 MINUTES*/

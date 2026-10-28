@@ -203,6 +203,9 @@
 		if(node && !web.researched_nodes[node_path])
 			web.research_node(node, force = TRUE, auto_adjust_cost = FALSE, get_that_dosh = FALSE)
 
+	// Recalculation drops every hidden node from researched, so a starter the colony knows must not stay hidden.
+	web.hidden_nodes -= allowed
+
 	// Designs and availability are derived from researched nodes, so they are rebuilt rather than edited.
 	web.recalculate_nodes(recalculate_designs = TRUE)
 	return removed

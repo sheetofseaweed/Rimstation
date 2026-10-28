@@ -96,7 +96,7 @@ SUBSYSTEM_DEF(campaign)
  * Refuses to start on top of anything already on disk. A campaign is the only copy of its colony, so "start a
  * campaign" must never be a command that can quietly replace one.
  */
-/datum/controller/subsystem/campaign/proc/create_campaign(campaign_id, started_by, list/region_options)
+/datum/controller/subsystem/campaign/proc/create_campaign(campaign_id, started_by, list/region_options, root_seed)
 	if(!is_safe_campaign_id(campaign_id))
 		return FALSE
 	if(is_campaign_active())
@@ -110,7 +110,7 @@ SUBSYSTEM_DEF(campaign)
 		return FALSE
 
 	var/datum/campaign_manifest/fresh = new(campaign_id, "generation-1")
-	fresh.planet_record = build_generation_planet_record(campaign_id, 1)
+	fresh.planet_record = build_generation_planet_record(campaign_id, 1, root_seed)
 
 	// Written at creation because the region is derived from these: a campaign without them would generate a
 	// different world on its next boot than the one whoever started it was shown.
@@ -481,11 +481,21 @@ SUBSYSTEM_DEF(campaign)
 	manifest = fresh
 	return begin_load(fresh)
 
-/// The world a given generation is built on. Derived from campaign identity, so it is stable if rebuilt.
-/datum/controller/subsystem/campaign/proc/build_generation_planet_record(campaign_id, generation_number)
+/**
+ * The world a given generation is built on.
+ *
+ * `root_seed` is for a caller that has already chosen the world and needs the record to match it - the setup
+ * screen rolls one, draws it, and hands the same seed to creation. Without one a fresh random world is rolled
+ * here.
+ *
+ * This used to derive the seed from the campaign's name and generation number, which made the world a function
+ * of identity rather than a choice: every campaign called the same thing began on the same ground. Nothing
+ * needs that derivation, because the record written here is what the manifest stores and generation reads back,
+ * so a rebuilt generation is reproducible from its own file either way.
+ */
+/datum/controller/subsystem/campaign/proc/build_generation_planet_record(campaign_id, generation_number, root_seed)
 	RETURN_TYPE(/list)
-	var/root_seed = rustg_hash_string(RUSTG_HASH_SHA256, "[campaign_id]:generation:[generation_number]")
-	var/datum/planet_definition/planet = new(root_seed, "[campaign_id]-generation-[generation_number]")
+	var/datum/planet_definition/planet = new(root_seed || random_planet_root_seed(), "[campaign_id]-generation-[generation_number]")
 	var/list/record = planet.serialize()
 	qdel(planet)
 	return record
