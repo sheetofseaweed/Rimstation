@@ -42,9 +42,33 @@
 		loop.movement_path = null
 	return ..()
 
+/// A trooper's targeting that leaves wildlife alone. Colonists and wildlife are both `neutral`, so faction cannot tell them apart.
+/datum/targeting_strategy/basic/rimstation_raider
+
+/datum/targeting_strategy/basic/rimstation_raider/is_valid_target(mob/living/living_mob, atom/the_target, vision_range, datum/ai_controller/controller = null)
+	if(is_ignored_wildlife(living_mob, the_target))
+		return FALSE
+	return ..()
+
+/// TRUE for an AI-run animal that is not fighting the raid. One that attacks a raider is fought like anything else.
+/datum/targeting_strategy/basic/rimstation_raider/proc/is_ignored_wildlife(mob/living/raider, atom/target)
+	if(!isliving(target))
+		return FALSE
+	var/mob/living/animal = target
+	if(!(animal.mob_biotypes & MOB_BEAST) || animal.client)
+		return FALSE
+	var/mob/living/animal_target = animal.ai_controller?.blackboard[BB_CURRENT_TARGET]
+	return !(isliving(animal_target) && raider.faction_check_atom(animal_target))
+
 /datum/ai_controller/basic_controller/trooper/rimstation_raider
 	ai_movement = /datum/ai_movement/jps/rimstation_raider
 	behavior_tree_json = "modular_rimstation/code/modules/colony_campaign/raids/raider.bt.json"
+	// The trooper blackboard, with wildlife left alone.
+	blackboard = list(
+		BB_TARGETING_STRATEGY = /datum/targeting_strategy/basic/rimstation_raider,
+		BB_TARGET_MINIMUM_STAT = HARD_CRIT,
+		BB_REINFORCEMENTS_SAY = "411 in progress, requesting backup!",
+	)
 
 /datum/ai_controller/basic_controller/trooper/rimstation_raider/ranged
 	ai_movement = /datum/ai_movement/jps/rimstation_raider

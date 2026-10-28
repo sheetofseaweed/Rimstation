@@ -1248,6 +1248,7 @@
 #include "code\datums\ai\generic_behaviors\agile_melee_movement.dm"
 #include "code\datums\ai\generic_behaviors\ai_interact.dm"
 #include "code\datums\ai\generic_behaviors\attack_obstacles.dm"
+#include "modular_rimstation\code\datums\ai\attack_obstructions.dm"
 #include "code\datums\ai\generic_behaviors\battle_screech.dm"
 #include "code\datums\ai\generic_behaviors\break_out_of_object.dm"
 #include "code\datums\ai\generic_behaviors\break_spine.dm"

@@ -41,8 +41,20 @@
 /datum/ai_movement/jps/update_movement_target(datum/ai_controller/controller, atom/new_target)
 	. = ..()
 	var/datum/move_loop/has_target/jps/loop = GLOB.move_manager.processing_on(controller.pawn, SSai_movement)
-	if(loop)
-		INVOKE_ASYNC(loop, TYPE_PROC_REF(/datum/move_loop/has_target/jps, recalculate_path))
+	// RIMSTATION EDIT START - Point the loop at the new target; a repath alone walks to the old one.
+	// ORG: if(loop)
+	// Other behaviours run other loop types on SSai_movement.
+	if(!istype(loop))
+		return
+	if(loop.target != new_target)
+		if(!isturf(loop.target))
+			loop.UnregisterSignal(loop.target, COMSIG_QDELETING)
+		loop.target = new_target
+		if(!isturf(new_target))
+			loop.RegisterSignal(new_target, COMSIG_QDELETING, TYPE_PROC_REF(/datum/move_loop/has_target, handle_no_target))
+		loop.movement_path = null
+	INVOKE_ASYNC(loop, TYPE_PROC_REF(/datum/move_loop/has_target/jps, recalculate_path))
+	// RIMSTATION EDIT END
 
 /datum/ai_movement/jps/proc/repath_incoming(datum/move_loop/has_target/jps/source)
 	SIGNAL_HANDLER

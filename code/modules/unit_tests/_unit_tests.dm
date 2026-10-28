@@ -421,6 +421,7 @@
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/research_start.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/sunlight.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid.dm"
+#include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_combat.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_navigation.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_scheduling.dm"
 #include "../../../modular_rimstation/code/modules/colony_campaign/tests/raid_theft.dm"
@@ -434,6 +435,7 @@
 #include "../../../modular_rimstation/code/modules/species/tests/quarian_clothing.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/quarian_suit.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/species_ui_contract.dm"
+#include "../../../modular_rimstation/code/datums/ai/tests/jps_retarget.dm"
 // RIMSTATION ADDITION END
 // SKYRAT EDIT START
 #include "~skyrat\automapper.dm"
