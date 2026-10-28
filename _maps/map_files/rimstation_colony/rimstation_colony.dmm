@@ -185,7 +185,7 @@
 /turf/open/floor/mineral/plastitanium,
 /area/rimstation_colony/surface/landing)
 "fXW" = (
-/turf/closed/wall/mineral/titanium/spaceship,
+/turf/closed/wall/mineral/plastitanium/darkpod,
 /area/rimstation_colony/surface/landing)
 "gqC" = (
 /obj/item/circuitboard/computer/rdservercontrol{
@@ -484,7 +484,7 @@
 /area/rimstation_colony/surface/landing)
 "xOZ" = (
 /obj/effect/decal/cleanable/dirt/dust,
-/turf/closed/wall/mineral/titanium/spaceship,
+/turf/closed/wall/mineral/plastitanium/darkpod,
 /area/rimstation_colony/surface/landing)
 "xYs" = (
 /obj/item/stack/rods/two,
