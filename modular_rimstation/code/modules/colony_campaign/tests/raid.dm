@@ -135,34 +135,28 @@
 /datum/unit_test/rimstation_raid_reachability/Run()
 	var/datum/colony_raid/raid = new
 	allocated += raid
+	var/datum/colony_raid_navigator/navigator = raid.navigator
 
 	// Nothing here may replace a turf: run_loc_floor_bottom_left is shared with every later test, and turfs
 	// are not restored on teardown the way allocated objects are. Swapping one in poisons the whole suite.
 	var/turf/origin = run_loc_floor_bottom_left
-	var/list/reachable = raid.build_route_map(origin)
-	TEST_ASSERT(length(reachable), "The flood fill found nothing walkable next to an open floor turf.")
-	TEST_ASSERT_NULL(reachable[origin], "A walkable retreat destination acquired a parent, creating a route cycle.")
+	TEST_ASSERT_NOTNULL(navigator.get_map_now(origin), "No route map could be built from an open floor turf.")
 
-	// Neighbours of an open floor are reachable; the origin's own ring seeds the fill.
+	// Neighbours of an open floor are reachable, and a raider next to its goal is sent straight to it.
 	var/turf/open/neighbour = get_step(origin, EAST)
-	if(istype(neighbour) && !neighbour.density)
-		TEST_ASSERT(reachable[neighbour], "An adjacent open floor turf was not considered reachable.")
-		// Parent links have to lead home, or waypoint chains would be built from nothing.
-		TEST_ASSERT_EQUAL(reachable[neighbour], origin, "A turf adjacent to the origin did not record the origin as its route parent.")
-		var/list/turf/retreat_chain = raid.build_waypoint_chain(neighbour, reachable, origin)
-		TEST_ASSERT_EQUAL(length(retreat_chain), 1, "An adjacent retreat should need only its destination waypoint.")
-		TEST_ASSERT_EQUAL(retreat_chain[1], origin, "The retreat chain did not finish at its walkable destination.")
+	TEST_ASSERT(navigator.is_reachable(neighbour, origin), "An adjacent open floor turf was not considered reachable.")
+	TEST_ASSERT_EQUAL(navigator.next_leg(neighbour, origin), origin, "A raider next to its goal was not sent straight to it.")
 
 	// A dense object makes a turf unwalkable, which is the same rejection generated rock relies on.
-	var/turf/blocked_turf = get_step(origin, WEST)
-	TEST_ASSERT_NOTNULL(blocked_turf, "The test room had no turf west of the origin to block.")
+	var/turf/blocked_turf = get_step(origin, NORTH)
+	TEST_ASSERT(navigator.is_reachable(blocked_turf, origin), "The turf this test blocks was never reachable, so this proves nothing.")
 	var/obj/structure/blocker = allocate(/obj/structure/girder, blocked_turf)
 	TEST_ASSERT(blocker.density, "The structure used to block a turf was not dense, so this proves nothing.")
-	TEST_ASSERT(!raid.is_walkable_turf(blocked_turf), "A turf holding a dense structure was treated as walkable.")
 
-	// And a fresh fill must now route around it rather than through it.
-	var/list/reachable_after = raid.build_route_map(origin)
-	TEST_ASSERT(!reachable_after[blocked_turf], "The flood fill walked through a turf blocked by a dense structure.")
+	// The old map predates the girder. A fresh one must route around it rather than through it.
+	TEST_ASSERT(navigator.request(origin), "A fresh route map could not be requested.")
+	navigator.get_map_now(origin)
+	TEST_ASSERT(!navigator.is_reachable(blocked_turf, origin), "A route map walked through a turf blocked by a dense structure.")
 
 
 /**
@@ -183,28 +177,26 @@
 	var/obj/structure/colony_core/core = allocate(/obj/structure/colony_core)
 	raid.objective_ref = WEAKREF(core)
 
-	// With no route map there is nothing to sample, so the chain must still end somewhere usable.
-	var/list/turf/chain = raid.build_waypoint_chain(run_loc_floor_bottom_left)
-	TEST_ASSERT(length(chain), "A waypoint chain came back empty, leaving attackers with nowhere to go.")
-	TEST_ASSERT_EQUAL(chain[length(chain)], get_turf(core), "A waypoint chain did not end at the objective.")
-
-	// Malformed parent links must fail safely instead of growing a list until the server locks up.
-	var/turf/first = run_loc_floor_bottom_left
-	var/turf/second = get_step(first, EAST)
-	var/list/cyclic_map = list()
-	cyclic_map[first] = second
-	cyclic_map[second] = first
-	var/list/turf/cycle_fallback = raid.build_waypoint_chain(first, cyclic_map, core)
-	TEST_ASSERT_EQUAL(length(cycle_fallback), 1, "A cyclic route did not fall back to the destination alone.")
-	TEST_ASSERT_EQUAL(cycle_fallback[1], get_turf(core), "A cyclic route lost its destination.")
-	cyclic_map[first] = first
-	cycle_fallback = raid.build_waypoint_chain(first, cyclic_map, core)
-	TEST_ASSERT_EQUAL(length(cycle_fallback), 1, "A self-referencing route did not terminate safely.")
-
-	// Attackers with no route still have to be pointed at something.
+	// With no route map there is nothing to read, so attackers must still be pointed at something.
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/attacker = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
-	TEST_ASSERT(raid.assign_objective(attacker, null), "An attacker with no precomputed route was left without a destination.")
+	TEST_ASSERT(raid.assign_objective(attacker), "An attacker with no route map was left without a destination.")
 	TEST_ASSERT_NOTNULL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], "An attacker was given no travel destination at all.")
+
+	// A straight route, built by hand so the leg rule is checked exactly: one spacing ahead, then the goal itself.
+	var/z = run_loc_floor_bottom_left.z
+	var/turf/goal = locate(100, 100, z)
+	var/datum/path_map/line = new
+	line.start = goal
+	line.next_closest[goal] = FLOW_PATH_END
+	for(var/x in 101 to 140)
+		line.next_closest[locate(x, 100, z)] = locate(x - 1, 100, z)
+	LAZYSET(raid.navigator.maps, goal, line)
+
+	var/turf/far = locate(140, 100, z)
+	var/turf/leg = raid.navigator.next_leg(far, goal)
+	TEST_ASSERT_EQUAL(get_dist(far, leg), COLONY_RAID_WAYPOINT_SPACING, "A leg read from a route map was not one waypoint spacing ahead.")
+	TEST_ASSERT_EQUAL(raid.navigator.next_leg(locate(110, 100, z), goal), goal, "A raider within one leg of its goal was not sent straight to it.")
+	TEST_ASSERT_NULL(raid.navigator.next_leg(locate(140, 101, z), goal), "A raider with no route on the map was given a leg anyway.")
 
 
 /**
@@ -224,7 +216,7 @@
 	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/attacker = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider)
 	TEST_ASSERT_NOTNULL(attacker.ai_controller, "A raider spawned with no AI controller, so it could never be given an objective.")
 
-	TEST_ASSERT(raid.assign_objective(attacker, null), "The raid failed to assign its objective to an attacker.")
+	TEST_ASSERT(raid.assign_objective(attacker), "The raid failed to assign its objective to an attacker.")
 	// Destinations are turfs, because waypoints along the approach route are turfs.
 	TEST_ASSERT_EQUAL(attacker.ai_controller.blackboard[BB_TRAVEL_DESTINATION], get_turf(core), "The attacker was not pointed at the colony core.")
 

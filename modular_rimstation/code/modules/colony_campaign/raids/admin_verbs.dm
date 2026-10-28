@@ -92,6 +92,8 @@ ADMIN_VERB(rimstation_inspect_colony_raid, R_ADMIN, "Inspect Colony Raid", "Repo
 
 	var/list/lines = list()
 	lines += "Raid [raid.raid_id]: [raid.state][raid.outcome ? " ([raid.outcome]: [raid.outcome_reason])" : ""]"
+	lines += "In this state for [DisplayTimeText(world.time - raid.state_changed_at)]. Routes rebuilt: [raid.reroute_count]."
+	lines += "Route maps: [length(raid.navigator?.maps)] ready, [length(raid.navigator?.builds)] building, [raid.navigator?.maps_built || 0] built so far."
 	lines += "Goal: [raid.goal]. Faction: [raid.faction]."
 	lines += "Budget [raid.threat_budget], deployed strength [raid.deployed_strength], live cap [raid.live_cap]."
 	lines += "Attackers alive: [raid.living_attacker_count()] of [length(raid.roster)] spawned."

@@ -3519,6 +3519,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\raids\loot.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\admin_verbs.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\ai_objective.dm"
+#include "modular_rimstation\code\modules\colony_campaign\raids\navigation.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\raid.dm"
 #include "modular_rimstation\code\modules\colony_campaign\raids\telemetry.dm"
 #include "modular_rimstation\code\modules\colony_campaign\sunlight\sunlight_corner.dm"

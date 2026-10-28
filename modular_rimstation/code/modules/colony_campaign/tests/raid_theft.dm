@@ -165,6 +165,8 @@
 
 	var/obj/structure/closet/colonist_storage/stash/target = allocate(/obj/structure/closet/colonist_storage/stash, run_loc_floor_top_right)
 
+	// A raid queues its stash maps at deploy. This one never deployed, so it builds the map here.
+	TEST_ASSERT_NOTNULL(raid.navigator.get_map_now(get_turf(target)), "No route map could be built toward the stash.")
 	TEST_ASSERT(raid.route_attacker_to(walker, target), "A raider could not be routed to a destination on the same map.")
 
 	var/destination = walker.ai_controller.blackboard[BB_TRAVEL_DESTINATION]

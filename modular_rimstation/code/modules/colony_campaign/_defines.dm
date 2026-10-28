@@ -838,8 +838,12 @@
 #define COLONY_RAID_EDGE_BAND 6
 /// How close to the settlement centre a raid may never arrive.
 #define COLONY_RAID_EXCLUSION_RADIUS 24
-/// Ceiling on the walkable-region flood fill, so a pathological map cannot stall a raid indefinitely.
-#define COLONY_RAID_REACHABILITY_LIMIT 70000
+/// Furthest a raid route map reaches from its destination, in steps. Edge-to-core paths measure 121-154.
+#define COLONY_RAID_NAVIGATION_RANGE 400
+/// Share of one tick, in percent, that one slice of a route map build may use.
+#define COLONY_RAID_NAVIGATION_TICK_SHARE 10
+/// How old a route map must be before a stuck raider may ask for a fresh one.
+#define COLONY_RAID_NAVIGATION_REFRESH_DELAY (30 SECONDS)
 /**
  * Tiles between waypoints on a raid's approach route.
  *
@@ -849,6 +853,12 @@
 #define COLONY_RAID_WAYPOINT_SPACING 15
 /// How close an attacker must get to a waypoint before it is handed the next one.
 #define COLONY_RAID_WAYPOINT_ARRIVAL_DISTANCE 3
+/// How long an attacker may go without closing on its waypoint before it gets a fresh route.
+#define COLONY_RAID_REROUTE_DELAY (8 SECONDS)
+/// Longest an assault runs before the survivors are called off. Never while the core is being taken.
+#define COLONY_RAID_ASSAULT_TIME_LIMIT (12 MINUTES)
+/// Longest a retreat runs before the raid ends with whoever is still on the map.
+#define COLONY_RAID_RETREAT_TIME_LIMIT (3 MINUTES)
 
 /**
  * What a colony arrives already knowing: every station starter, hidden ones included.

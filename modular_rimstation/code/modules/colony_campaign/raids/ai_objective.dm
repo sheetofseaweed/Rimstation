@@ -11,6 +11,8 @@
  *
  * It sits where upstream's trooper trees put random_walk: below every combat branch, so a raider fights what
  * is in front of it and only walks at the colony when nothing is.
+ *
+ * It stops one tile short. JPS cannot end a path on a dense tile, and the core and every stash are dense.
  */
 /datum/bt_node/subtree/rimstation_raid_travel
 	behavior_tree_json = "modular_rimstation/code/modules/colony_campaign/raids/raid_travel.bt.json"
@@ -23,6 +25,22 @@
  * cave surface, where a raider is separated from the colony by rock almost immediately.
  */
 /datum/ai_movement/jps/rimstation_raider
+
+/**
+ * Points the running move loop at the new target. The parent JPS mover only repaths, toward the loop's old target.
+ * A raider then shuffled at its first leg for good, because a one-tile stop never fails and never restarts the loop.
+ */
+/datum/ai_movement/jps/rimstation_raider/update_movement_target(datum/ai_controller/controller, atom/new_target)
+	var/datum/move_loop/has_target/jps/loop = GLOB.move_manager.processing_on(controller.pawn, SSai_movement)
+	// Other behaviours run their own loop types on the same subsystem.
+	if(istype(loop) && loop.target != new_target)
+		if(!isturf(loop.target))
+			loop.UnregisterSignal(loop.target, COMSIG_QDELETING)
+		loop.target = new_target
+		if(!isturf(new_target))
+			loop.RegisterSignal(new_target, COMSIG_QDELETING, TYPE_PROC_REF(/datum/move_loop/has_target, handle_no_target))
+		loop.movement_path = null
+	return ..()
 
 /datum/ai_controller/basic_controller/trooper/rimstation_raider
 	ai_movement = /datum/ai_movement/jps/rimstation_raider
