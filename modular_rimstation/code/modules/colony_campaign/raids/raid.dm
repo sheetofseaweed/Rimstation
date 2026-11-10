@@ -48,6 +48,18 @@
 	var/state_changed_at = 0
 	/// How many times an attacker was given a fresh route from where it stood.
 	var/reroute_count = 0
+	/// The way in being broken open, or null. One at a time.
+	var/datum/colony_raid_breach/breach
+	/// Breaches that failed. The raid withdraws after COLONY_RAID_MAX_BREACH_ATTEMPTS.
+	var/failed_breaches = 0
+	/// TRUE while a breach is being planned in the background.
+	var/planning_breach = FALSE
+	/// When the next breach may be planned.
+	var/next_breach_plan_at = 0
+	/// Lane node the attackers gather at before the push, or null for no rally.
+	var/turf/rally_turf
+	/// When the rally ends whether or not everyone arrived. Zero while there is no rally.
+	var/rally_ends_at = 0
 
 	/// Seconds of warning before the assault begins.
 	var/warning_duration = 2 MINUTES
@@ -96,6 +108,8 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	STOP_PROCESSING(SSprocessing, src)
 	QDEL_NULL(telemetry)
 	QDEL_NULL(navigator)
+	breach = null
+	rally_turf = null
 	shared_exit = null
 	attacker_routes = null
 	roster = null
@@ -197,6 +211,7 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	if(!core_map)
 		return valid
 	var/rejected_unreachable = 0
+	var/list/turf/candidates = list()
 
 	for(var/obj/effect/landmark/rimstation_raid_insertion/candidate as anything in GLOB.rimstation_raid_insertion_points)
 		var/turf/candidate_turf = get_turf(candidate)
@@ -207,14 +222,18 @@ GLOBAL_LIST_EMPTY(colony_raids)
 			continue
 		if(!is_edge_band_turf(candidate_turf))
 			continue
+		candidates += candidate_turf
 		if(!core_map.next_closest[candidate_turf])
 			rejected_unreachable++
 			continue
 		valid += candidate_turf
 
-	if(rejected_unreachable)
-		log_game("Colony raid [raid_id] discarded [rejected_unreachable] insertion point(s) with no walkable route to the core.")
-	return pick_entry_edge(valid)
+	if(length(valid))
+		if(rejected_unreachable)
+			log_game("Colony raid [raid_id] discarded [rejected_unreachable] insertion point(s) with no walkable route to the core.")
+		return pick_entry_edge(valid)
+	// The colony is closed to every edge. Break in rather than cancel, if there is anything to break.
+	return plan_entry_breach(core_turf, candidates)
 
 /// TRUE when the turf sits in the band along the map edge where arrivals are permitted.
 /datum/colony_raid/proc/is_edge_band_turf(turf/candidate)
@@ -289,6 +308,7 @@ GLOBAL_LIST_EMPTY(colony_raids)
 		resolve_raid(COLONY_RAID_OUTCOME_CANCELLED, "no validated insertion points existed")
 		return FALSE
 
+	choose_rally()
 	set_state(COLONY_RAID_WARNING)
 	// A raid is the serious threat pacing measures everything else against, so it is recorded the moment it is
 	// committed to rather than at its outcome - a raid survived is still a chapter that was not a rest.
@@ -316,6 +336,8 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	var/intent = "They are moving on the colony core."
 	if(goal == COLONY_RAID_GOAL_THEFT)
 		intent = "They appear to be moving on the settlement's stores."
+	if(breach)
+		intent += " The way in is closed to them, so expect them to break through."
 	priority_announce(
 		"Hostile movement detected approaching from [direction]. Estimated contact in [DisplayTimeText(warning_duration)]. [intent]",
 		"Colony Perimeter Alert",
@@ -330,6 +352,7 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	deploy_attackers()
 	set_state(COLONY_RAID_ASSAULTING)
 	deployed_strength = length(roster)
+	start_rally()
 	// Only now can anything take the core, and only this raid's faction.
 	var/obj/structure/colony_core/core = objective_ref?.resolve()
 	core?.register_contesting_faction(faction)
@@ -362,10 +385,14 @@ GLOBAL_LIST_EMPTY(colony_raids)
 		resolve_raid(COLONY_RAID_OUTCOME_REPELLED, "every attacker was killed")
 		return PROCESS_KILL
 
-	if(state == COLONY_RAID_ASSAULTING && goal == COLONY_RAID_GOAL_THEFT)
+	if(rally_turf)
+		update_rally()
+	if(state == COLONY_RAID_ASSAULTING && goal == COLONY_RAID_GOAL_THEFT && !rally_turf)
 		work_the_theft()
 	else if(state == COLONY_RAID_RETREATING)
 		withdraw_survivors()
+	if(state == COLONY_RAID_ASSAULTING)
+		update_breach()
 	// Retreats walk in legs too. Without this, a retreat stops at its first waypoint and never ends.
 	update_attacker_routes()
 
@@ -448,6 +475,8 @@ GLOBAL_LIST_EMPTY(colony_raids)
 	var/turf/goal
 	/// The waypoint the attacker is walking to now. The goal itself on the last leg.
 	var/turf/leg
+	/// While breaching, the staging turf the current leg leads to. Null on an ordinary route.
+	var/turf/toward
 	/// Closest the attacker has come to its current leg.
 	var/best_distance = INFINITY
 	/// When the attacker last came closer to its current leg.
@@ -502,11 +531,14 @@ GLOBAL_LIST_EMPTY(colony_raids)
 		if(!controller)
 			continue
 		controller.clear_blackboard_key(BB_TRAVEL_DESTINATION)
+		controller.clear_blackboard_key(BB_RAID_BREACH_TARGET)
 		// Survivors are no longer a raid, so they sleep like any other mob when nobody is near.
 		if(!(initial(controller.ai_traits) & RUN_WHILE_UNWATCHED))
 			controller.ai_traits &= ~RUN_WHILE_UNWATCHED
 			controller.reset_ai_status()
 	attacker_routes = null
+	breach = null
+	rally_turf = null
 
 /**
  * Keeps an attacker's AI running when no player is near it.
@@ -553,9 +585,17 @@ GLOBAL_LIST_EMPTY(colony_raids)
 /// Points an attacker at the next leg of its route. Returns TRUE if it now has somewhere to go.
 /datum/colony_raid/proc/advance_waypoint(mob/living/attacker, datum/weakref/attacker_ref)
 	var/datum/colony_raid_route/route = attacker_routes?[attacker_ref]
-	if(!route?.leg)
+	var/datum/ai_controller/controller = attacker.ai_controller
+	if(!route?.leg || !controller)
 		return FALSE
-	attacker.ai_controller?.set_blackboard_key(BB_TRAVEL_DESTINATION, route.leg)
+	// A leg JPS will not path to is worse than none: the travel step fails, and the tree settles on idling.
+	if(get_dist(attacker, route.leg) > AI_MAX_PATH_LENGTH)
+		controller.clear_blackboard_key(BB_TRAVEL_DESTINATION)
+		return FALSE
+	controller.set_blackboard_key(BB_TRAVEL_DESTINATION, route.leg)
+	// Seen live: after a failed travel step, a new leg alone did not restart travel. Replanning is a cheap safeguard.
+	if(!controller.ai_movement.moving_controllers[controller] && !controller.blackboard[BB_CURRENT_TARGET] && !controller.blackboard[BB_RAID_BREACH_TARGET])
+		controller.cancel_current_plan()
 	return TRUE
 
 /**
@@ -570,6 +610,9 @@ GLOBAL_LIST_EMPTY(colony_raids)
 		var/datum/colony_raid_route/route = attacker_routes[attacker_ref]
 		var/turf/here = get_turf(attacker)
 		if(!route?.leg || !here || here.z != route.goal?.z)
+			continue
+		if(breach && route.goal == breach.goal && state == COLONY_RAID_ASSAULTING)
+			follow_breach(attacker, attacker_ref, route, here)
 			continue
 
 		var/distance = get_dist(here, route.leg)
@@ -591,8 +634,12 @@ GLOBAL_LIST_EMPTY(colony_raids)
 
 		var/turf/next = navigator.next_leg(here, route.goal)
 		if(!next)
-			// No route from here on the current map. JPS can still try the goal itself if it is in range.
+			// No route from here on a map new enough to trust: the way in is closed, so plan to break it open.
+			if(state == COLONY_RAID_ASSAULTING && route.goal != rally_turf && route.goal != shared_exit && navigator.is_fresh(route.goal))
+				request_breach(route.goal)
+			// JPS can still try the goal itself if it is in range.
 			next = get_dist(here, route.goal) <= AI_MAX_PATH_LENGTH ? route.goal : route.leg
+		route.toward = null
 		route.leg = next
 		route.note_progress(INFINITY)
 		advance_waypoint(attacker, attacker_ref)
@@ -601,6 +648,11 @@ GLOBAL_LIST_EMPTY(colony_raids)
 /datum/colony_raid/proc/order_retreat()
 	if(!set_state(COLONY_RAID_RETREATING))
 		return FALSE
+	// Nobody breaks in or gathers while pulling out.
+	if(breach)
+		clear_breach_orders()
+		breach = null
+	rally_turf = null
 	// Routed rather than pointed at: the way out is usually further than AI_MAX_PATH_LENGTH, and an attacker
 	// handed a destination that far away stands still instead of retreating.
 	for(var/datum/weakref/attacker_ref as anything in roster)

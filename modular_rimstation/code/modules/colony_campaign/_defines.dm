@@ -841,7 +841,7 @@
 /// Furthest a raid route map reaches from its destination, in steps. Edge-to-core paths measure 121-154.
 #define COLONY_RAID_NAVIGATION_RANGE 400
 /// Share of one tick, in percent, that one slice of a route map build may use.
-#define COLONY_RAID_NAVIGATION_TICK_SHARE 10
+#define COLONY_RAID_NAVIGATION_TICK_SHARE 20
 /// How old a route map must be before a stuck raider may ask for a fresh one.
 #define COLONY_RAID_NAVIGATION_REFRESH_DELAY (30 SECONDS)
 /**
@@ -859,6 +859,28 @@
 #define COLONY_RAID_ASSAULT_TIME_LIMIT (12 MINUTES)
 /// Longest a retreat runs before the raid ends with whoever is still on the map.
 #define COLONY_RAID_RETREAT_TIME_LIMIT (3 MINUTES)
+/// Damage per hit assumed when judging how long something takes to break. Real raider hits are often harder.
+#define COLONY_RAID_BREACH_HIT_DAMAGE 10
+/// What breaking into one tile costs a breach search, on top of the hits it takes. Keeps raiders on open ground.
+#define COLONY_RAID_BREACH_BASE_COST 8
+/// Most one tile can cost a breach search. Bounds the search's bucket ring.
+#define COLONY_RAID_BREACH_MAX_STEP_COST 60
+/// Most tiles one breach search may expand, so a sealed map cannot stall a raid.
+#define COLONY_RAID_BREACH_SEARCH_LIMIT 30000
+/// How long raiders get to break one obstacle, counted from the first raider reaching it.
+#define COLONY_RAID_BREACH_STAGE_TIME_LIMIT (2 MINUTES)
+/// Failed breaches before the raid gives up and withdraws.
+#define COLONY_RAID_MAX_BREACH_ATTEMPTS 3
+/// Least time between two breach plans. Planning searches real tiles, so it is rate limited.
+#define COLONY_RAID_BREACH_REPLAN_DELAY (20 SECONDS)
+/// How close to an obstacle a raider must be before it is told to break it. The breach behaviour walks the rest.
+#define COLONY_RAID_BREACH_ORDER_RANGE 2
+/// Which lane node raiders gather at, counted from the map edge. Node 2 is about 30 tiles in.
+#define COLONY_RAID_RALLY_LANE_ORDER 2
+/// How close every raider must be to the rally before the push starts.
+#define COLONY_RAID_RALLY_RADIUS 5
+/// Longest the raiders wait at the rally before they push anyway.
+#define COLONY_RAID_RALLY_TIME_LIMIT (75 SECONDS)
 
 /**
  * What a colony arrives already knowing: every station starter, hidden ones included.

@@ -10,6 +10,14 @@
 #define RIMSTATION_GENERATION_ROLL_MAX 10000
 #define RIMSTATION_RAID_MARKERS_PER_EDGE 2
 #define RIMSTATION_RAID_MARKER_MIN_SPACING 20
+/// What one tile of rock costs a raid pass, against one for open ground. High, so a pass prefers any open detour.
+#define RIMSTATION_RAID_PASS_ROCK_COST 12
+/// What turning one deep pool into a ford costs a raid pass.
+#define RIMSTATION_RAID_PASS_FORD_COST 3
+/// Tiles over which a raid lane's wander turns. Larger is gentler.
+#define RIMSTATION_LANE_MEANDER_ZOOM 28
+/// How far, in tiles, a raid lane may wander to either side of its straight line, in total.
+#define RIMSTATION_LANE_MEANDER_WIDTH 10
 
 /**
  * The deterministic plan behind one generated colony landscape.
@@ -68,6 +76,16 @@
 	var/list/sinkhole_chamber_indices
 	/// Walkable, landing-connected map-edge coordinates where raids may be proposed after ecology placement.
 	var/list/raid_insertion_indices
+	/// Coordinates on a raid lane or beside one, indexed like every generated field. Nothing dense is placed there.
+	var/list/raid_lane_mask
+	/// The lanes themselves, without the tiles beside them. Open ground there becomes a visible trail.
+	var/list/raid_trail_mask
+	/// One list per raid marker, in marker order: lane node coordinates from the marker toward the landing.
+	var/list/raid_lane_nodes
+	/// One list per raid marker, in marker order: every lane coordinate from the marker to the landing.
+	var/list/raid_lane_paths
+	/// How many passes were cut so that a map edge with raid ground could be reached from the landing.
+	var/raid_pass_count = 0
 	var/plan_built = FALSE
 
 /datum/rimstation_colony_generation_context/New(
@@ -114,6 +132,10 @@
 	sinkhole_exit_directions = null
 	sinkhole_chamber_indices = null
 	raid_insertion_indices = null
+	raid_lane_mask = null
+	raid_trail_mask = null
+	raid_lane_nodes = null
+	raid_lane_paths = null
 	return ..()
 
 /// Finds the exact authored clearing shape without making it part of generated terrain.
@@ -314,6 +336,8 @@
 	// After the ascents, so a collapse can be refused where one would swallow a plateau stair, and before the
 	// raid markers, so their route is flood-filled around the holes rather than through them.
 	select_sinkholes()
+	// Before the markers, so no seed can seal the landing off from every edge and leave raids nowhere to start.
+	open_raid_passes()
 	select_raid_insertions()
 	plan_built = TRUE
 	return TRUE
@@ -710,15 +734,20 @@
 	// A sinkhole is open, not passable. A route planned across one drops whatever followed it a level.
 	return terrain != RIMSTATION_TERRAIN_MOUNTAIN && terrain != RIMSTATION_TERRAIN_RIVER_DEEP && terrain != RIMSTATION_TERRAIN_SINKHOLE
 
-/// All plan coordinates connected to the landing clearing without crossing solid mountains or deep water.
-/datum/rimstation_colony_generation_context/proc/build_landing_reachability()
+/**
+ * All plan coordinates connected to the landing clearing without crossing solid mountains or deep water.
+ * Each value is the coordinate it was reached from; the anchor points at itself. Fills `distances` when given.
+ */
+/datum/rimstation_colony_generation_context/proc/build_landing_reachability(list/distances)
 	var/list/reachable = new /list(length(terrain_plan))
 	var/anchor_index = get_landing_anchor_index()
 	if(isnull(anchor_index) || !is_plan_walkable(anchor_index))
 		return reachable
 
 	var/list/frontier = list(anchor_index)
-	reachable[anchor_index] = TRUE
+	reachable[anchor_index] = anchor_index
+	if(distances)
+		distances[anchor_index] = 0
 	var/frontier_position = 1
 	while(frontier_position <= length(frontier))
 		var/current_index = frontier[frontier_position++]
@@ -728,7 +757,9 @@
 			var/neighbor_index = coordinate_index(offset_x(current_x, direction), offset_y(current_y, direction))
 			if(isnull(neighbor_index) || reachable[neighbor_index] || !is_plan_walkable(neighbor_index))
 				continue
-			reachable[neighbor_index] = TRUE
+			reachable[neighbor_index] = current_index
+			if(distances)
+				distances[neighbor_index] = distances[current_index] + 1
 			frontier += neighbor_index
 		CHECK_TICK
 	return reachable
@@ -750,6 +781,116 @@
 			return x <= min_x + COLONY_RAID_EDGE_BAND - 1
 	return FALSE
 
+/// TRUE when some raid candidate on `edge` is in `reachable`.
+/datum/rimstation_colony_generation_context/proc/is_edge_reachable(edge, list/reachable)
+	for(var/index in 1 to length(terrain_plan))
+		if(reachable[index] && is_raid_edge_candidate(index, edge))
+			return TRUE
+	return FALSE
+
+/**
+ * Cuts a pass from the landing to every map edge that has raid ground but no route to it.
+ *
+ * A mountain ring beyond the landing's protected radius sealed about one seed in twenty-four, and every raid on
+ * such a map cancels. The pass tunnels through rock as cave and fords deep pools, and never crosses a sinkhole.
+ */
+/datum/rimstation_colony_generation_context/proc/open_raid_passes()
+	raid_pass_count = 0
+	var/list/reachable = build_landing_reachability()
+	for(var/edge in GLOB.cardinals)
+		if(is_edge_reachable(edge, reachable))
+			continue
+		var/list/pass = find_raid_pass(edge)
+		if(!length(pass))
+			continue
+		carve_raid_pass(pass)
+		raid_pass_count++
+		reachable = build_landing_reachability()
+
+/// What crossing this coordinate costs a raid pass, or null when a pass may never cross it.
+/datum/rimstation_colony_generation_context/proc/raid_pass_step_cost(index)
+	switch(terrain_plan[index])
+		if(RIMSTATION_TERRAIN_SINKHOLE)
+			return null
+		if(RIMSTATION_TERRAIN_MOUNTAIN)
+			return RIMSTATION_RAID_PASS_ROCK_COST
+		if(RIMSTATION_TERRAIN_RIVER_DEEP)
+			return RIMSTATION_RAID_PASS_FORD_COST
+	return 1
+
+/**
+ * The cheapest route from the landing to a raid candidate on `edge`, through rock if it has to be.
+ * Dial's algorithm: step costs are small integers, so a ring of buckets replaces a heap. Returns coordinates.
+ */
+/datum/rimstation_colony_generation_context/proc/find_raid_pass(edge)
+	RETURN_TYPE(/list)
+	var/anchor_index = get_landing_anchor_index()
+	if(isnull(anchor_index))
+		return null
+	var/list/cost_to = new /list(length(terrain_plan))
+	var/list/came_from = new /list(length(terrain_plan))
+	var/bucket_count = max(RIMSTATION_RAID_PASS_ROCK_COST, RIMSTATION_RAID_PASS_FORD_COST) + 1
+	var/list/buckets = new /list(bucket_count)
+	for(var/bucket_index in 1 to bucket_count)
+		buckets[bucket_index] = list()
+
+	cost_to[anchor_index] = 0
+	buckets[1] += anchor_index
+	var/pending = 1
+	var/current_cost = 0
+	while(pending)
+		var/list/bucket = buckets[(current_cost % bucket_count) + 1]
+		while(length(bucket))
+			var/index = bucket[length(bucket)]
+			bucket.len--
+			pending--
+			// A coordinate re-queued at a lower cost leaves its older entry behind.
+			if(cost_to[index] != current_cost)
+				continue
+			if(is_raid_edge_candidate(index, edge))
+				var/list/pass = list()
+				while(index != anchor_index)
+					pass += index
+					index = came_from[index]
+				return pass
+			var/x = index_x(index)
+			var/y = index_y(index)
+			for(var/direction in GLOB.cardinals)
+				var/neighbor_index = coordinate_index(offset_x(x, direction), offset_y(y, direction))
+				if(isnull(neighbor_index))
+					continue
+				var/step_cost = raid_pass_step_cost(neighbor_index)
+				if(isnull(step_cost))
+					continue
+				var/new_cost = current_cost + step_cost
+				if(!isnull(cost_to[neighbor_index]) && cost_to[neighbor_index] <= new_cost)
+					continue
+				cost_to[neighbor_index] = new_cost
+				came_from[neighbor_index] = index
+				buckets[(new_cost % bucket_count) + 1] += neighbor_index
+				pending++
+		current_cost++
+		CHECK_TICK
+	return null
+
+/// Opens a pass: rock on it and beside it becomes cave, and deep pools on it become fords.
+/datum/rimstation_colony_generation_context/proc/carve_raid_pass(list/pass)
+	for(var/index in pass)
+		switch(terrain_plan[index])
+			if(RIMSTATION_TERRAIN_RIVER_DEEP)
+				terrain_plan[index] = RIMSTATION_TERRAIN_RIVER_SHALLOW
+			if(RIMSTATION_TERRAIN_MOUNTAIN)
+				terrain_plan[index] = RIMSTATION_TERRAIN_CAVE
+				biome_plan[index] = RIMSTATION_BIOME_CAVE
+				// Three wide, so one fallen rock cannot close it again.
+				var/x = index_x(index)
+				var/y = index_y(index)
+				for(var/direction in GLOB.cardinals)
+					var/side_index = coordinate_index(offset_x(x, direction), offset_y(y, direction))
+					if(!isnull(side_index) && terrain_plan[side_index] == RIMSTATION_TERRAIN_MOUNTAIN)
+						terrain_plan[side_index] = RIMSTATION_TERRAIN_CAVE
+						biome_plan[side_index] = RIMSTATION_BIOME_CAVE
+
 /**
  * Picks two reachable proposals along each edge.
  *
@@ -759,7 +900,8 @@
  */
 /datum/rimstation_colony_generation_context/proc/select_raid_insertions()
 	raid_insertion_indices = list()
-	var/list/reachable = build_landing_reachability()
+	var/list/distances = new /list(length(terrain_plan))
+	var/list/reachable = build_landing_reachability(distances)
 	for(var/edge in GLOB.cardinals)
 		for(var/slot in 1 to RIMSTATION_RAID_MARKERS_PER_EDGE)
 			var/fraction = slot / (RIMSTATION_RAID_MARKERS_PER_EDGE + 1)
@@ -790,7 +932,90 @@
 				best_index = index
 			if(!isnull(best_index))
 				raid_insertion_indices += best_index
+	build_raid_lanes(distances)
 	return raid_insertion_indices
+
+/**
+ * Records each marker's lane: a shortest route home, a node every waypoint spacing along it, and the tiles kept clear.
+ * Each step keeps near the straight line to the landing, with a slow seeded wander, so the trail reads as a path.
+ */
+/datum/rimstation_colony_generation_context/proc/build_raid_lanes(list/distances)
+	raid_lane_mask = new /list(length(terrain_plan))
+	raid_trail_mask = new /list(length(terrain_plan))
+	raid_lane_nodes = list()
+	raid_lane_paths = list()
+	var/anchor_index = get_landing_anchor_index()
+	if(isnull(anchor_index))
+		return
+	var/meander_seed = resolve_seed(PLANET_STREAM_ECOLOGY)
+	for(var/marker_index in raid_insertion_indices)
+		var/list/nodes = list()
+		var/list/lane = list()
+		var/index = marker_index
+		while(!isnull(index) && index != anchor_index)
+			var/x = index_x(index)
+			var/y = index_y(index)
+			lane += index
+			raid_lane_mask[index] = TRUE
+			raid_trail_mask[index] = TRUE
+			for(var/direction in GLOB.cardinals)
+				var/side_index = coordinate_index(offset_x(x, direction), offset_y(y, direction))
+				if(!isnull(side_index))
+					raid_lane_mask[side_index] = TRUE
+			// The landing is authored ground, and the raid already knows its way across it.
+			if(length(lane) % COLONY_RAID_WAYPOINT_SPACING == 0 && !is_landing_protected(x, y))
+				nodes += index
+			index = next_lane_step(index, marker_index, anchor_index, distances, meander_seed)
+		raid_lane_nodes += list(nodes)
+		raid_lane_paths += list(lane)
+		fill_trail_corners(lane, anchor_index)
+
+/// Widens every turn of a lane's trail to a 2x2 block, so a diagonal reads as a band rather than single steps.
+/datum/rimstation_colony_generation_context/proc/fill_trail_corners(list/lane, anchor_index)
+	var/list/steps = lane + anchor_index
+	for(var/position in 2 to length(steps) - 1)
+		var/before = steps[position - 1]
+		var/bend = steps[position]
+		var/after = steps[position + 1]
+		var/in_x = index_x(bend) - index_x(before)
+		var/in_y = index_y(bend) - index_y(before)
+		var/out_x = index_x(after) - index_x(bend)
+		var/out_y = index_y(after) - index_y(bend)
+		if(in_x == out_x && in_y == out_y)
+			continue
+		// The tile inside the turn: one step from `before` the way the lane turned.
+		var/corner = coordinate_index(index_x(before) + out_x, index_y(before) + out_y)
+		if(!isnull(corner))
+			raid_trail_mask[corner] = TRUE
+
+/**
+ * The neighbour one step nearer the landing that keeps the lane closest to its wandering line, or null if none.
+ * Only neighbours one step closer qualify, so the lane stays a shortest route and always ends.
+ */
+/datum/rimstation_colony_generation_context/proc/next_lane_step(index, marker_index, anchor_index, list/distances, meander_seed)
+	var/start_x = index_x(marker_index)
+	var/start_y = index_y(marker_index)
+	var/line_x = index_x(anchor_index) - start_x
+	var/line_y = index_y(anchor_index) - start_y
+	var/line_length = max(1, sqrt((line_x * line_x) + (line_y * line_y)))
+	var/x = index_x(index)
+	var/y = index_y(index)
+	var/best_index
+	var/best_score = INFINITY
+	for(var/direction in GLOB.cardinals)
+		var/neighbor_index = coordinate_index(offset_x(x, direction), offset_y(y, direction))
+		if(isnull(neighbor_index) || distances[neighbor_index] != distances[index] - 1)
+			continue
+		var/neighbor_x = index_x(neighbor_index)
+		var/neighbor_y = index_y(neighbor_index)
+		// Signed distance from the straight line, measured against a target that drifts slowly to either side.
+		var/off_line = (((neighbor_x - start_x) * line_y) - ((neighbor_y - start_y) * line_x)) / line_length
+		var/wander = isnull(meander_seed) ? 0 : (sample_noise(meander_seed, neighbor_x, neighbor_y, RIMSTATION_LANE_MEANDER_ZOOM) - 0.5) * RIMSTATION_LANE_MEANDER_WIDTH
+		var/score = abs(off_line - wander)
+		if(score < best_score)
+			best_score = score
+			best_index = neighbor_index
+	return best_index
 
 /datum/rimstation_colony_generation_context/proc/is_plateau_edge(x, y)
 	var/index = coordinate_index(x, y)
@@ -804,6 +1029,8 @@
 
 /datum/rimstation_colony_generation_context/proc/get_lowland_turf_type(x, y)
 	var/index = coordinate_index(x, y)
+	if(is_trail(index))
+		return /turf/open/misc/dirt/planet/rimstation/trail
 	switch(terrain_plan[index])
 		if(RIMSTATION_TERRAIN_MOUNTAIN)
 			return /turf/closed/mineral/random/rimstation
@@ -822,6 +1049,13 @@
 	if(biome_plan[index] == RIMSTATION_BIOME_WETLAND)
 		return /turf/open/misc/dirt/planet/rimstation/wet
 	return /turf/open/misc/dirt/planet/rimstation
+
+/// TRUE when this coordinate is open ground on a raid lane. Fords stay water and tunnels stay cave floor.
+/datum/rimstation_colony_generation_context/proc/is_trail(index)
+	if(!raid_trail_mask?[index])
+		return FALSE
+	var/terrain = terrain_plan[index]
+	return terrain == RIMSTATION_TERRAIN_LOWLAND || terrain == RIMSTATION_TERRAIN_RIVER_BANK
 
 /datum/rimstation_colony_generation_context/proc/get_highland_turf_type(x, y)
 	var/index = coordinate_index(x, y)
@@ -903,7 +1137,7 @@
 	place_ascents()
 	place_sinkholes()
 	var/mountain_percentage = round((generation_context.mountain_tile_count / (generation_context.width * generation_context.height)) * 100, 0.1)
-	var/message = "Rimstation colony terrain generation finished in [(REALTIMEOFDAY - start_time) / 10]s ([mountain_percentage]% mountain footprint, [generation_context.sinkhole_count] sinkhole(s))."
+	var/message = "Rimstation colony terrain generation finished in [(REALTIMEOFDAY - start_time) / 10]s ([mountain_percentage]% mountain footprint, [generation_context.sinkhole_count] sinkhole(s), [length(generation_context.raid_insertion_indices)] raid marker(s), [generation_context.raid_pass_count] raid pass(es) cut)."
 	add_startup_message(message)
 	log_world(message)
 
@@ -998,14 +1232,37 @@
 		if(return_turf)
 			new /obj/effect/landmark/rimstation_caravan_return(return_turf)
 
-	for(var/index in generation_context.raid_insertion_indices)
+	for(var/lane_number in 1 to length(generation_context.raid_insertion_indices))
+		var/index = generation_context.raid_insertion_indices[lane_number]
 		var/turf/insertion_turf = locate(
 			generation_context.index_x(index),
 			generation_context.index_y(index),
 			generation_context.surface_z,
 		)
-		if(insertion_turf)
-			new /obj/effect/landmark/rimstation_raid_insertion(insertion_turf)
+		if(!insertion_turf)
+			continue
+		var/lane_id = "lane-[lane_number]"
+		var/obj/effect/landmark/rimstation_raid_insertion/marker = new(insertion_turf)
+		marker.lane_id = lane_id
+		var/list/nodes = lane_number <= length(generation_context.raid_lane_nodes) ? generation_context.raid_lane_nodes[lane_number] : list()
+		for(var/order in 1 to length(nodes))
+			var/turf/node_turf = locate(
+				generation_context.index_x(nodes[order]),
+				generation_context.index_y(nodes[order]),
+				generation_context.surface_z,
+			)
+			if(!node_turf)
+				continue
+			var/obj/effect/landmark/rimstation_raid_lane_node/node = new(node_turf)
+			node.lane_id = lane_id
+			node.lane_order = order
+
+/// TRUE when an object of `obj_type` may be placed at `index`. Nothing dense goes on a raid lane or beside one.
+/datum/map_generator/rimstation_colony/proc/can_place(index, obj_type, layer_namespace)
+	if(layer_namespace != "lowland" || !generation_context.raid_lane_mask?[index])
+		return TRUE
+	var/atom/movable/prototype = obj_type
+	return !initial(prototype.density)
 
 /datum/map_generator/rimstation_colony/proc/populate_coordinate(turf/target, x, y, terrain, biome, layer_namespace)
 	if(terrain == RIMSTATION_TERRAIN_RIVER_SHALLOW || terrain == RIMSTATION_TERRAIN_RIVER_DEEP || terrain == RIMSTATION_TERRAIN_MOUNTAIN)
@@ -1016,6 +1273,9 @@
 	var/index = generation_context.coordinate_index(x, y)
 	if(layer_namespace == "lowland" && (index in generation_context.raid_insertion_indices))
 		return
+	// A trail is worn bare, so nothing grows on it.
+	if(layer_namespace == "lowland" && generation_context.is_trail(index))
+		return
 	var/blend = generation_context.landing_blend(x, y)
 	if(blend <= 0.25)
 		return
@@ -1023,9 +1283,11 @@
 	if(terrain == RIMSTATION_TERRAIN_CAVE)
 		if(generation_context.coordinate_roll(PLANET_STREAM_RESOURCES, x, y, "[layer_namespace]_resource_outcrop") < 12)
 			var/outcrop_type = generation_context.coordinate_roll(PLANET_STREAM_RESOURCES, x, y, "[layer_namespace]_outcrop_type", 2) ? /obj/structure/flora/rock/pile/siderite : /obj/structure/flora/rock/pile/shale
-			new outcrop_type(target)
+			if(can_place(index, outcrop_type, layer_namespace))
+				new outcrop_type(target)
 		else if(generation_context.coordinate_roll(PLANET_STREAM_RESOURCES, x, y, "[layer_namespace]_cave_rock") < 180)
-			new /obj/structure/flora/rock(target)
+			if(can_place(index, /obj/structure/flora/rock, layer_namespace))
+				new /obj/structure/flora/rock(target)
 		return
 
 	var/flora_threshold
@@ -1042,7 +1304,7 @@
 			flora_threshold = 400
 	flora_threshold *= (0.5 + generation_context.ecology_field[index]) * blend
 	if(generation_context.coordinate_roll(PLANET_STREAM_ECOLOGY, x, y, "[layer_namespace]_flora") < flora_threshold)
-		spawn_flora(target, x, y, biome, layer_namespace)
+		spawn_flora(target, x, y, biome, layer_namespace, index)
 
 	var/feature_threshold = 55
 	if(biome == RIMSTATION_BIOME_FOREST)
@@ -1056,12 +1318,13 @@
 		if(biome == RIMSTATION_BIOME_FOREST || biome == RIMSTATION_BIOME_WETLAND)
 			if(generation_context.coordinate_roll(PLANET_STREAM_RESOURCES, x, y, "[layer_namespace]_fallen_log", 100) < 45)
 				feature_type = /obj/structure/flora/rimstation_fallen_log
-		new feature_type(target)
+		if(can_place(index, feature_type, layer_namespace))
+			new feature_type(target)
 
 	if(generation_context.coordinate_roll(PLANET_STREAM_ECOLOGY, x, y, "[layer_namespace]_fauna") < 5)
 		spawn_fauna(target, x, y, layer_namespace)
 
-/datum/map_generator/rimstation_colony/proc/spawn_flora(turf/target, x, y, biome, layer_namespace)
+/datum/map_generator/rimstation_colony/proc/spawn_flora(turf/target, x, y, biome, layer_namespace, index)
 	var/static/list/deciduous_types = list(
 		/obj/structure/flora/tree/rimstation_deciduous,
 		/obj/structure/flora/tree/rimstation_deciduous/style_2,
@@ -1146,6 +1409,8 @@
 				flora_type = /obj/structure/flora/bush/flowers_br
 			else
 				flora_type = /obj/structure/flora/bush/grassy
+	if(!can_place(index, flora_type, layer_namespace))
+		return
 	var/obj/structure/flora/spawned = new flora_type(target)
 	spawned.dir = GLOB.cardinals[(generation_context.coordinate_roll(PLANET_STREAM_ECOLOGY, x, y, "[layer_namespace]_flora_dir", 4)) + 1]
 
@@ -1202,6 +1467,10 @@
 #undef RIMSTATION_MOUNTAIN_THRESHOLD
 #undef RIMSTATION_RAID_MARKERS_PER_EDGE
 #undef RIMSTATION_RAID_MARKER_MIN_SPACING
+#undef RIMSTATION_RAID_PASS_FORD_COST
+#undef RIMSTATION_LANE_MEANDER_WIDTH
+#undef RIMSTATION_LANE_MEANDER_ZOOM
+#undef RIMSTATION_RAID_PASS_ROCK_COST
 #undef RIMSTATION_RIDGE_ZOOM
 #undef RIMSTATION_RIVER_HALF_WIDTH
 #undef RIMSTATION_RIVER_POOL_CHANCE

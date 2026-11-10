@@ -38,6 +38,10 @@
 /datum/colony_raid_navigator/proc/has_map(turf/goal)
 	return !isnull(maps?[goal])
 
+/// TRUE when a map toward `goal` exists and is recent enough to trust a missing route on it.
+/datum/colony_raid_navigator/proc/is_fresh(turf/goal)
+	return has_map(goal) && world.time - requested_at[goal] < COLONY_RAID_NAVIGATION_REFRESH_DELAY
+
 /// TRUE when the current map toward `goal` has a route from `from`.
 /datum/colony_raid_navigator/proc/is_reachable(turf/from, turf/goal)
 	var/datum/path_map/flow = maps?[goal]

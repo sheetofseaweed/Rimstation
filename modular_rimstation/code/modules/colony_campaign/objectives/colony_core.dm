@@ -146,12 +146,41 @@ GLOBAL_LIST_EMPTY(rimstation_colony_cores)
 /obj/structure/colony_core/proc/has_hostiles_present()
 	if(!length(contesting_factions))
 		return FALSE
-	for(var/mob/living/nearby in range(capture_radius, src))
-		if(nearby.stat == DEAD)
-			continue
-		if(faction_check(nearby.get_faction(), contesting_factions))
-			return TRUE
+	for(var/turf/standing as anything in get_capture_turfs())
+		for(var/mob/living/nearby in standing)
+			if(nearby.stat == DEAD)
+				continue
+			if(faction_check(nearby.get_faction(), contesting_factions))
+				return TRUE
 	return FALSE
+
+/**
+ * The core's tile and every tile within capture_radius steps of it through open ground, diagonals included.
+ * range() ignored walls, so raiders outside a small enclosure took the core through its wall.
+ */
+/obj/structure/colony_core/proc/get_capture_turfs()
+	RETURN_TYPE(/list)
+	// No requester, so open space reads as a drop rather than ground.
+	var/static/datum/can_pass_info/capture_pass_info = new(null, list())
+	var/turf/core_turf = get_turf(src)
+	if(!core_turf)
+		return list()
+	var/list/steps_to = list()
+	steps_to[core_turf] = 0
+	var/list/frontier = list(core_turf)
+	var/position = 1
+	while(position <= length(frontier))
+		var/turf/reached = frontier[position++]
+		var/steps = steps_to[reached] + 1
+		if(steps > capture_radius)
+			continue
+		for(var/direction in GLOB.alldirs)
+			var/turf/beside = get_step(reached, direction)
+			if(!beside || !isnull(steps_to[beside]) || !CAN_STEP(reached, beside, TRUE, capture_pass_info, null))
+				continue
+			steps_to[beside] = steps
+			frontier += beside
+	return frontier
 
 /// Lets a faction start taking this core. Called by a raid when its attackers arrive.
 /obj/structure/colony_core/proc/register_contesting_faction(faction)

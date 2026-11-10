@@ -123,6 +123,11 @@
 	raid.update_attacker_routes()
 	TEST_ASSERT_EQUAL(raid.reroute_count, 2, "A raider that stopped closing on its leg was never given a new one.")
 
+	// A leg out of path range is never handed out: travel to it fails, and on the colony map the raider then idled.
+	route.leg = far_leg
+	TEST_ASSERT(!raid.advance_waypoint(raider, WEAKREF(raider)), "A leg out of path range was handed to a raider.")
+	TEST_ASSERT_NULL(raider.ai_controller.blackboard[BB_TRAVEL_DESTINATION], "A raider kept a travel destination it could never path to.")
+
 /// A retreat has to hand out its later legs, or it stops at the first waypoint and the raid never ends.
 /datum/unit_test/rimstation_raid_retreat_keeps_walking
 

@@ -77,6 +77,23 @@ ADMIN_VERB(rimstation_end_colony_raid, R_ADMIN, "End Colony Raid", "Ends the run
 	log_admin("[key_name(user)] ended colony raid [raid.raid_id] as [ending].")
 
 
+/// Marks the generated raid lanes for the calling admin only, for a minute: markers by lane, nodes by order.
+ADMIN_VERB(rimstation_show_raid_lanes, R_ADMIN, "Show Raid Lanes", "Marks the generated raid lanes on the map for you, for a minute.", ADMIN_CATEGORY_COLONY_DEBUG)
+	if(!length(GLOB.rimstation_raid_insertion_points))
+		to_chat(user, span_warning("This map has no raid markers, so it has no raid lanes."))
+		return
+	var/list/show_to = list(user)
+	for(var/obj/effect/landmark/rimstation_raid_insertion/marker as anything in GLOB.rimstation_raid_insertion_points)
+		var/image/mark = image('icons/effects/landmarks_static.dmi', get_turf(marker), "x3")
+		mark.maptext = MAPTEXT("[marker.lane_id || "no lane"]")
+		flick_overlay_global(mark, show_to, 1 MINUTES)
+	for(var/obj/effect/landmark/rimstation_raid_lane_node/node as anything in GLOB.rimstation_raid_lane_nodes)
+		var/image/mark = image('icons/effects/landmarks_static.dmi', get_turf(node), "x4")
+		mark.maptext = MAPTEXT("[node.lane_id]:[node.lane_order]")
+		flick_overlay_global(mark, show_to, 1 MINUTES)
+	to_chat(user, span_notice("Marked [length(GLOB.rimstation_raid_insertion_points)] raid marker(s) and [length(GLOB.rimstation_raid_lane_nodes)] lane node(s) for one minute."))
+
+
 /**
  * Reports what the running raid is actually doing.
  *
@@ -94,6 +111,11 @@ ADMIN_VERB(rimstation_inspect_colony_raid, R_ADMIN, "Inspect Colony Raid", "Repo
 	lines += "Raid [raid.raid_id]: [raid.state][raid.outcome ? " ([raid.outcome]: [raid.outcome_reason])" : ""]"
 	lines += "In this state for [DisplayTimeText(world.time - raid.state_changed_at)]. Routes rebuilt: [raid.reroute_count]."
 	lines += "Route maps: [length(raid.navigator?.maps)] ready, [length(raid.navigator?.builds)] building, [raid.navigator?.maps_built || 0] built so far."
+	if(raid.rally_turf)
+		lines += "Rallying at [AREACOORD(raid.rally_turf)] for up to [DisplayTimeText(max(0, raid.rally_ends_at - world.time))] more."
+	if(raid.breach)
+		lines += "Breaching: obstacle [raid.breach.stage] of [length(raid.breach.obstacles)] at [AREACOORD(raid.breach.current_obstacle())]."
+	lines += "Failed breaches: [raid.failed_breaches] of [COLONY_RAID_MAX_BREACH_ATTEMPTS]."
 	lines += "Goal: [raid.goal]. Faction: [raid.faction]."
 	lines += "Budget [raid.threat_budget], deployed strength [raid.deployed_strength], live cap [raid.live_cap]."
 	lines += "Attackers alive: [raid.living_attacker_count()] of [length(raid.roster)] spawned."

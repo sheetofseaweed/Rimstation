@@ -74,6 +74,32 @@
 	TEST_ASSERT(!core.has_hostiles_present(), "The core was still contested after its raid deregistered.")
 
 
+/**
+ * A raider behind a wall is not on the core, however close it stands.
+ * range() ignored walls, so raiders outside a small enclosure captured the core through it.
+ */
+/datum/unit_test/rimstation_colony_core_capture_needs_a_way_in
+
+/datum/unit_test/rimstation_colony_core_capture_needs_a_way_in/Run()
+	var/turf/corner = run_loc_floor_bottom_left
+	var/turf/core_turf = locate(corner.x + 2, corner.y + 2, corner.z)
+	var/obj/structure/colony_core/core = allocate(/obj/structure/colony_core, core_turf)
+	core.register_contesting_faction("test_raiders")
+	for(var/turf/around in orange(1, core_turf))
+		var/obj/structure/barricade/wooden/wall_piece = allocate(/obj/structure/barricade/wooden, around)
+		wall_piece.resistance_flags |= INDESTRUCTIBLE
+
+	var/mob/living/basic/trooper/pirate/melee/rimstation_raider/raider = allocate(/mob/living/basic/trooper/pirate/melee/rimstation_raider, corner)
+	raider.ai_controller.force_ai_off()
+	raider.set_faction(list("test_raiders"))
+	TEST_ASSERT(get_dist(raider, core) <= core.capture_radius, "The raider stands outside the capture radius, so this proves nothing.")
+	TEST_ASSERT(!core.has_hostiles_present(), "A raider behind a wall took the core.")
+
+	var/obj/structure/barricade/wooden/gap = locate() in locate(core_turf.x, core_turf.y - 1, core_turf.z)
+	qdel(gap)
+	TEST_ASSERT(core.has_hostiles_present(), "A raider with an open way in did not contest the core.")
+
+
 /// Losing the core is an explicit event. Nothing about an ordinary round ending may imply it.
 /datum/unit_test/rimstation_colony_outcome
 

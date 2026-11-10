@@ -133,6 +133,13 @@
 	icon_state = "greenerdirt"
 	base_icon_state = "greenerdirt"
 
+/// Bare ground along a generated raid lane. It shows the colony the ways an attack can come from.
+/turf/open/misc/dirt/planet/rimstation/trail
+	name = "worn trail"
+	desc = "A track of packed, bare earth, worn down by many feet. It leads toward the colony."
+	icon_state = "sand"
+	base_icon_state = "sand"
+
 /// Temperate ground used for grasslands, forests, and mountain plateaus.
 /turf/open/misc/grass/rimstation
 	name = "colony grass"
