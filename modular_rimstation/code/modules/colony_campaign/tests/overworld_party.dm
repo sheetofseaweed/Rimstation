@@ -358,3 +358,22 @@
 		if(length(region.plan_route(party.current_cell, cell_id, OVERWORLD_ROUTE_FASTEST, seen)) >= 2)
 			return site
 	return null
+
+/**
+ * A cell `distance` hexes from the colony that a party can walk to, preferring one reached in a straight line.
+ * Tests use this instead of a fixed id such as "3,0": which ground is open depends on the generator.
+ */
+/proc/overworld_test_target(datum/overworld_region/region, distance)
+	if(!region)
+		return null
+	var/fallback = null
+	for(var/cell_id in sort_list(region.cells.Copy()))
+		var/datum/overworld_cell/cell = region.cells[cell_id]
+		if(overworld_axial_distance(0, 0, cell.q, cell.r) != distance)
+			continue
+		var/list/route = region.plan_route(OVERWORLD_HOME_CELL, cell_id, OVERWORLD_ROUTE_FASTEST)
+		if(length(route) == distance + 1)
+			return cell_id
+		if(!fallback && length(route))
+			fallback = cell_id
+	return fallback

@@ -68,6 +68,8 @@
 	var/terrain = OVERWORLD_TERRAIN_GRASSLAND
 	/// 0-3. How dangerous crossing here is, before anything the party is carrying.
 	var/danger = 0
+	/// 0-99. How high the ground stands, for drawing relief. Water is lowest. Derived, never stored.
+	var/height = 0
 
 /datum/overworld_cell/New(q, r)
 	. = ..()
@@ -141,18 +143,33 @@
 	var/list/sites
 	/// Identifies this exact region. Two builds that agree here are the same place.
 	var/fingerprint
+	/// How many peaks were cut down to open a pass. Version 2 only; for the admin readout.
+	var/passes_opened = 0
+	/// What the client needs to draw this region's planet: list("seed", "temperature_c", "moisture"). Derived, not stored.
+	var/list/planet_climate
 
-/datum/overworld_region/New(datum/planet_definition/planet, list/build_options)
+/datum/overworld_region/New(datum/planet_definition/planet, list/build_options, version = OVERWORLD_GENERATION_VERSION)
 	. = ..()
 	cells = list()
 	sites = list()
 	options = (is_valid_overworld_options(build_options) ? build_options.Copy() : default_overworld_options())
+	// A stored campaign names the generator that built its world. Its cell and site ids mean nothing on another.
+	if(isnum(version) && version >= OVERWORLD_OLDEST_GENERATION_VERSION && version <= OVERWORLD_GENERATION_VERSION)
+		generation_version = version
 
 	var/list/radii = OVERWORLD_EXTENT_RADII
 	radius = radii[options["extent"]]
 
-	generate_cells(planet)
+	if(generation_version == 1)
+		generate_cells_v1(planet)
+	else
+		generate_cells_v2(planet)
 	generate_sites(planet)
+	planet_climate = list(
+		"seed" = hex2num(copytext(rustg_hash_string(RUSTG_HASH_SHA256, "globe:[planet?.root_seed]"), 1, 7)) % 1000000,
+		"temperature_c" = round((isnum(planet?.mean_temperature) ? planet.mean_temperature : T20C) - T0C, 0.1),
+		"moisture" = isnum(planet?.moisture) ? planet.moisture : 50,
+	)
 	fingerprint = compute_fingerprint()
 
 /datum/overworld_region/Destroy(force)
@@ -161,6 +178,7 @@
 	cells = null
 	sites = null
 	options = null
+	planet_climate = null
 	return ..()
 
 /datum/overworld_cell/proc/is_origin()
@@ -198,12 +216,12 @@
 	return hex2num(hash) % 100
 
 /**
- * Builds every cell in the field.
+ * Builds every cell in the field, one independent roll per hex. Generator version 1.
  *
- * Topology, terrain and danger are each derived from a different stream, so changing how dangerous a planet is
- * does not silently redraw its geography.
+ * Kept unchanged for campaigns made with it: their discoveries and sites are recorded against this output.
+ * Topology, terrain and danger each come from a different stream.
  */
-/datum/overworld_region/proc/generate_cells(datum/planet_definition/planet)
+/datum/overworld_region/proc/generate_cells_v1(datum/planet_definition/planet)
 	var/list/weights = OVERWORLD_TOPOLOGY_WEIGHTS
 	var/list/split = weights[options["roughness"]]
 	var/list/danger_bias = OVERWORLD_ROUGHNESS_DANGER_BIAS
@@ -222,7 +240,19 @@
 				cell.danger = clamp(round((hash_percentile(cell_hash(planet, PLANET_STREAM_ECOLOGY, q, r)) + bias) / 25), 0, 3)
 
 			cell.terrain = pick_terrain(planet, q, r)
+			cell.height = topology_height(cell.topology)
 			cells[cell.cell_id()] = cell
+
+/// A stand-in height for a version 1 cell, which has no elevation of its own.
+/datum/overworld_region/proc/topology_height(topology)
+	switch(topology)
+		if(OVERWORLD_TOPOLOGY_NORMAL)
+			return 45
+		if(OVERWORLD_TOPOLOGY_DIFFICULT)
+			return 70
+		if(OVERWORLD_TOPOLOGY_IMPASSABLE)
+			return 90
+	return 25
 
 /// Turns a percentile into a topology using the roughness split, which is ordered easy/normal/difficult/impassable.
 /datum/overworld_region/proc/pick_topology(percentile, list/split)
@@ -262,6 +292,297 @@
 		return 2
 	return 3
 
+
+/**
+ * Builds every cell from smooth fields, so the land comes in regions: basins hold water, ridges make
+ * ranges, and climate changes slowly across the map. Version 2 of the generator.
+ *
+ * Each field is ranked across the region before it is used. Ranks give exact shares (the roughness split,
+ * the water share), whatever shape the noise happens to have on this planet.
+ */
+/datum/overworld_region/proc/generate_cells_v2(datum/planet_definition/planet)
+	var/elevation_seed = noise_seed(planet, PLANET_STREAM_ELEVATION)
+	var/fine_seed = (elevation_seed + 7) % OVERWORLD_NOISE_SEED_MODULUS
+	var/ridge_seed = noise_seed(planet, PLANET_STREAM_RIDGES)
+	var/heat_seed = noise_seed(planet, PLANET_STREAM_BIOME_HEAT)
+	var/humidity_seed = noise_seed(planet, PLANET_STREAM_BIOME_HUMIDITY)
+	var/wild_seed = noise_seed(planet, PLANET_STREAM_ECOLOGY)
+
+	var/list/elevation = list()
+	var/list/ruggedness = list()
+	var/list/heat_raw = list()
+	var/list/humidity_raw = list()
+	var/list/wild_raw = list()
+
+	for(var/q in -radius to radius)
+		for(var/r in max(-radius, -q - radius) to min(radius, -q + radius))
+			var/datum/overworld_cell/cell = new(q, r)
+			var/cell_id = cell.cell_id()
+			cells[cell_id] = cell
+
+			var/x = OVERWORLD_HEX_X(q, r)
+			var/y = OVERWORLD_HEX_Y(r)
+			elevation[cell_id] = (sample_field(elevation_seed, x, y, OVERWORLD_ELEVATION_ZOOM) * 0.7) + (sample_field(fine_seed, x, y, OVERWORLD_ELEVATION_ZOOM / 2) * 0.3)
+			// High along a line rather than at a point, so the peaks form ranges.
+			var/ridge = 1 - abs((sample_field(ridge_seed, x, y, OVERWORLD_RIDGE_ZOOM) * 2) - 1)
+			ruggedness[cell_id] = ridge * ridge
+			heat_raw[cell_id] = sample_field(heat_seed, x, y, OVERWORLD_CLIMATE_ZOOM)
+			humidity_raw[cell_id] = sample_field(humidity_seed, x, y, OVERWORLD_CLIMATE_ZOOM)
+			wild_raw[cell_id] = sample_field(wild_seed, x, y, OVERWORLD_WILDNESS_ZOOM)
+
+	place_water(planet, elevation)
+	place_relief(elevation, ruggedness)
+	open_passes()
+	place_climate(planet, heat_raw, humidity_raw)
+	place_danger(wild_raw)
+
+/// A deterministic noise seed for one planet stream. Numeric, because that is what the noise library reads.
+/datum/overworld_region/proc/noise_seed(datum/planet_definition/planet, stream)
+	return hex2num(cell_hash(planet, stream, "noise", 0)) % OVERWORLD_NOISE_SEED_MODULUS
+
+/// Smooth noise from 0 to 1 at a point, with features about `zoom` hexes across.
+/datum/overworld_region/proc/sample_field(seed, x, y, zoom)
+	// The offset keeps samples off the lattice, where this noise is always exactly one half.
+	var/value = text2num(rustg_noise_get_at_coordinates("[seed]", "[(x / zoom) + 0.371]", "[(y / zoom) + 0.529]"))
+	return isnum(value) ? clamp(value, 0, 1) : 0.5
+
+/**
+ * Turns values into ranks from 0 to 99, lowest value first. Ties are broken on cell id.
+ *
+ * `values` is cell id to number. Only the ids in `only`, if given, are ranked.
+ */
+/datum/overworld_region/proc/rank_percentiles(list/values, list/only)
+	RETURN_TYPE(/list)
+	var/list/entries = list()
+	for(var/cell_id in values)
+		if(only && !only[cell_id])
+			continue
+		var/padded = num2text(round(clamp(values[cell_id], 0, 1) * 999999), 7)
+		while(length(padded) < 6)
+			padded = "0[padded]"
+		entries += "[padded]|[cell_id]"
+
+	var/list/ranks = list()
+	var/count = length(entries)
+	var/index = 0
+	for(var/entry in sort_list(entries))
+		ranks[copytext(entry, findtext(entry, "|") + 1)] = floor(index * 100 / count)
+		index++
+	return ranks
+
+/// TRUE when this cell belongs to the open ground around the colony.
+/datum/overworld_region/proc/in_home_valley(datum/overworld_cell/cell)
+	return overworld_axial_distance(0, 0, cell.q, cell.r) <= OVERWORLD_HOME_VALLEY_RADIUS
+
+/// Floods the lowest ground. The share under water follows the planet's moisture.
+/datum/overworld_region/proc/place_water(datum/planet_definition/planet, list/elevation)
+	var/moisture = clamp(isnum(planet?.moisture) ? planet.moisture : 50, 0, 100)
+	var/water_percent = round(OVERWORLD_WATER_PERCENT_MIN + ((moisture / 100) * (OVERWORLD_WATER_PERCENT_MAX - OVERWORLD_WATER_PERCENT_MIN)))
+
+	var/list/candidates = list()
+	for(var/cell_id in cells)
+		if(!in_home_valley(cells[cell_id]))
+			candidates[cell_id] = TRUE
+
+	var/list/ranks = rank_percentiles(elevation, candidates)
+	for(var/cell_id in ranks)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		if(ranks[cell_id] < water_percent)
+			cell.terrain = OVERWORLD_TERRAIN_WATER
+			cell.topology = OVERWORLD_TOPOLOGY_IMPASSABLE
+			cell.height = round(ranks[cell_id] * OVERWORLD_WATER_HEIGHT_MAX / max(1, water_percent))
+
+/**
+ * Gives the land its going: peaks, foothills, broken ground and plains.
+ *
+ * Land is ranked by height and ridge together, then split by the roughness option. The ground near the
+ * colony is pressed down, so a colony starts in a valley and not against a cliff.
+ */
+/datum/overworld_region/proc/place_relief(list/elevation, list/ruggedness)
+	var/list/elevation_ranks = rank_percentiles(elevation)
+	var/list/score = list()
+	for(var/cell_id in cells)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		if(cell.terrain == OVERWORLD_TERRAIN_WATER)
+			continue
+		var/distance = overworld_axial_distance(0, 0, cell.q, cell.r)
+		var/near_home = max(0, 1 - (distance / (OVERWORLD_HOME_VALLEY_RADIUS + 3)))
+		score[cell_id] = clamp((elevation_ranks[cell_id] / 99) * 0.55 + (ruggedness[cell_id] * 0.45) - (near_home * 0.3), 0, 1)
+
+	var/list/weights = OVERWORLD_TOPOLOGY_WEIGHTS
+	var/list/split = weights[options["roughness"]]
+	var/list/ranks = rank_percentiles(score)
+	for(var/cell_id in ranks)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		// Rank 99 is the highest ground, so the split is read from the top down.
+		var/from_top = 99 - ranks[cell_id]
+		if(from_top < split[4])
+			cell.topology = OVERWORLD_TOPOLOGY_IMPASSABLE
+		else if(from_top < split[4] + split[3])
+			cell.topology = OVERWORLD_TOPOLOGY_DIFFICULT
+		else if(from_top < split[4] + split[3] + split[2])
+			cell.topology = OVERWORLD_TOPOLOGY_NORMAL
+		else
+			cell.topology = OVERWORLD_TOPOLOGY_EASY
+
+		if(in_home_valley(cell) && (cell.topology == OVERWORLD_TOPOLOGY_IMPASSABLE || cell.topology == OVERWORLD_TOPOLOGY_DIFFICULT))
+			cell.topology = OVERWORLD_TOPOLOGY_NORMAL
+		if(cell.is_origin())
+			cell.topology = OVERWORLD_TOPOLOGY_EASY
+		cell.height = OVERWORLD_WATER_HEIGHT_MAX + 1 + round(ranks[cell_id] * (98 - OVERWORLD_WATER_HEIGHT_MAX) / 99)
+
+/**
+ * Cuts a pass through any range that walls land off from the colony.
+ *
+ * The cheapest way in is found with a peak costing many ordinary cells, so a pass goes through the
+ * thinnest part of the wall. Peaks on it become hard going. Water is never crossed: an island stays one.
+ */
+/datum/overworld_region/proc/open_passes()
+	// The full search below is the costliest step of generation, so it runs only when land is walled off.
+	var/list/already = reachable_cell_ids()
+	var/walled_off = FALSE
+	for(var/cell_id in cells)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		if(cell.is_passable() && !already[cell_id])
+			walled_off = TRUE
+			break
+	if(!walled_off)
+		return
+
+	var/origin_id = OVERWORLD_HOME_CELL
+	var/list/best = list()
+	var/list/came_from = list()
+	var/list/settled = list()
+	best[origin_id] = 0
+
+	var/list/directions = OVERWORLD_AXIAL_DIRECTIONS
+	while(TRUE)
+		var/current_id = null
+		var/current_cost = null
+		for(var/candidate_id in best)
+			if(settled[candidate_id])
+				continue
+			var/candidate_cost = best[candidate_id]
+			if(isnull(current_cost) || candidate_cost < current_cost || (candidate_cost == current_cost && candidate_id < current_id))
+				current_id = candidate_id
+				current_cost = candidate_cost
+		if(isnull(current_id))
+			break
+
+		settled[current_id] = TRUE
+		var/datum/overworld_cell/current = cells[current_id]
+		for(var/list/step as anything in directions)
+			var/datum/overworld_cell/neighbour = get_cell(current.q + step[1], current.r + step[2])
+			if(!neighbour || neighbour.terrain == OVERWORLD_TERRAIN_WATER)
+				continue
+			var/neighbour_id = neighbour.cell_id()
+			if(settled[neighbour_id])
+				continue
+			var/through = current_cost + (neighbour.is_passable() ? 1 : OVERWORLD_PASS_PEAK_COST)
+			var/known = best[neighbour_id]
+			if(isnull(known) || through < known || (through == known && current_id < came_from[neighbour_id]))
+				best[neighbour_id] = through
+				came_from[neighbour_id] = current_id
+
+	var/list/reachable = reachable_cell_ids()
+	for(var/cell_id in sort_list(cells.Copy()))
+		var/datum/overworld_cell/cell = cells[cell_id]
+		if(reachable[cell_id] || !cell.is_passable() || isnull(best[cell_id]))
+			continue
+		var/walk_id = cell_id
+		while(walk_id && walk_id != origin_id)
+			var/datum/overworld_cell/on_path = cells[walk_id]
+			if(!on_path.is_passable())
+				on_path.topology = OVERWORLD_TOPOLOGY_DIFFICULT
+				passes_opened++
+			walk_id = came_from[walk_id]
+		reachable = reachable_cell_ids()
+
+/**
+ * Chooses each land cell's terrain from heat and humidity that change slowly across the map.
+ *
+ * The south of the region is warmer than the north, high ground is colder, and land near water is wetter.
+ * The planet's own temperature and moisture move both axes, as in the first generator.
+ */
+/datum/overworld_region/proc/place_climate(datum/planet_definition/planet, list/heat_raw, list/humidity_raw)
+	var/list/heat_ranks = rank_percentiles(heat_raw)
+	var/list/humidity_ranks = rank_percentiles(humidity_raw)
+	// A region is small against a planet: it varies around the planet's own climate, it does not span it.
+	var/degrees_warmer = (isnum(planet?.mean_temperature) ? planet.mean_temperature : T20C) - T20C
+	var/heat_base = 50 + (degrees_warmer * OVERWORLD_HEAT_PER_DEGREE)
+	var/humidity_base = 50 + (((isnum(planet?.moisture) ? planet.moisture : 50) - 50) * OVERWORLD_HUMIDITY_PER_MOISTURE)
+	var/list/table = OVERWORLD_TERRAIN_TABLE
+
+	for(var/cell_id in cells)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		if(cell.terrain == OVERWORLD_TERRAIN_WATER)
+			continue
+
+		var/heat = heat_base + ((heat_ranks[cell_id] - 50) * OVERWORLD_HEAT_SPREAD) + round(cell.r * OVERWORLD_LATITUDE_HEAT / max(1, radius))
+		switch(cell.topology)
+			if(OVERWORLD_TOPOLOGY_DIFFICULT)
+				heat -= OVERWORLD_HIGHLAND_CHILL
+			if(OVERWORLD_TOPOLOGY_IMPASSABLE)
+				heat -= OVERWORLD_HIGHLAND_CHILL * 2
+
+		var/humidity = humidity_base + ((humidity_ranks[cell_id] - 50) * OVERWORLD_HUMIDITY_SPREAD)
+		var/water_distance = distance_to_water(cell, 2)
+		if(water_distance == 1)
+			humidity += OVERWORLD_SHORE_HUMIDITY
+		else if(water_distance == 2)
+			humidity += round(OVERWORLD_SHORE_HUMIDITY / 2)
+
+		var/list/row = table[band_index(clamp(heat, 0, 99))]
+		cell.terrain = row[band_index(clamp(humidity, 0, 99))]
+
+/// Hexes from this cell to the nearest water, or 0 if there is none within `limit`.
+/datum/overworld_region/proc/distance_to_water(datum/overworld_cell/cell, limit)
+	for(var/ring in 1 to limit)
+		for(var/dq in -ring to ring)
+			for(var/dr in max(-ring, -dq - ring) to min(ring, -dq + ring))
+				if(overworld_axial_distance(0, 0, dq, dr) != ring)
+					continue
+				var/datum/overworld_cell/other = get_cell(cell.q + dq, cell.r + dr)
+				if(other?.terrain == OVERWORLD_TERRAIN_WATER)
+					return ring
+	return 0
+
+/**
+ * How dangerous each cell is. Wild country is more dangerous, and so is country far from the colony.
+ *
+ * The land is ranked by that score and split into quarters, as the first generator's danger was, so all
+ * four ratings appear. The roughness option moves the split. The colony's valley is never above 1.
+ */
+/datum/overworld_region/proc/place_danger(list/wild_raw)
+	var/list/wild_ranks = rank_percentiles(wild_raw)
+	var/list/danger_bias = OVERWORLD_ROUGHNESS_DANGER_BIAS
+	var/bias = danger_bias[options["roughness"]]
+
+	var/list/score = list()
+	for(var/cell_id in cells)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		cell.danger = 0
+		if(cell.terrain == OVERWORLD_TERRAIN_WATER || cell.is_origin())
+			continue
+
+		var/distance = overworld_axial_distance(0, 0, cell.q, cell.r)
+		var/value = wild_ranks[cell_id] + (distance * OVERWORLD_FAR_DANGER / max(1, radius))
+		switch(cell.terrain)
+			if(OVERWORLD_TERRAIN_FOREST, OVERWORLD_TERRAIN_MARSH, OVERWORLD_TERRAIN_TAIGA)
+				value += 10
+			if(OVERWORLD_TERRAIN_DESERT, OVERWORLD_TERRAIN_FROZEN_STEPPE)
+				value += 5
+		if(cell.topology == OVERWORLD_TOPOLOGY_DIFFICULT)
+			value += 10
+		score[cell_id] = value / 160
+
+	var/list/ranks = rank_percentiles(score)
+	for(var/cell_id in ranks)
+		var/datum/overworld_cell/cell = cells[cell_id]
+		cell.danger = clamp(floor(clamp(ranks[cell_id] + bias, 0, 99) / 25), 0, OVERWORLD_MAX_CELL_DANGER)
+		if(in_home_valley(cell))
+			cell.danger = min(cell.danger, 1)
+
 /**
  * Places sites, then guarantees the ones a new colony is promised.
  *
@@ -295,7 +616,7 @@
 		var/datum/overworld_cell/cell = cells[cell_id]
 		if(cell.is_origin() || !cell.is_passable() || !reachable[cell_id])
 			continue
-		var/score = hash_percentile(cell_hash(planet, stream, cell.q, cell.r))
+		var/score = hash_percentile(cell_hash(planet, stream, cell.q, cell.r)) + site_bonus(kind, cell)
 		// Inverted and zero padded so a plain descending text sort ranks by score first.
 		ranked += "[num2text(999 - score, 3)]:[cell_id]"
 
@@ -312,6 +633,28 @@
 		if(kind == OVERWORLD_SITE_RESOURCE)
 			site.yield = roll_yield(planet, cell)
 		sites[site.site_id()] = site
+
+/// Extra placement score from the ground: ore in the hills, ruins on open ground. Zero for version 1.
+/datum/overworld_region/proc/site_bonus(kind, datum/overworld_cell/cell)
+	if(generation_version == 1)
+		return 0
+	switch(kind)
+		if(OVERWORLD_SITE_RESOURCE)
+			if(cell.topology == OVERWORLD_TOPOLOGY_DIFFICULT || has_neighbour_topology(cell, OVERWORLD_TOPOLOGY_IMPASSABLE))
+				return 30
+		if(OVERWORLD_SITE_RUIN)
+			if(cell.topology == OVERWORLD_TOPOLOGY_EASY)
+				return 20
+	return 0
+
+/// TRUE when a land neighbour of this cell has this topology. Water does not count as a peak.
+/datum/overworld_region/proc/has_neighbour_topology(datum/overworld_cell/cell, topology)
+	var/list/directions = OVERWORLD_AXIAL_DIRECTIONS
+	for(var/list/step as anything in directions)
+		var/datum/overworld_cell/neighbour = get_cell(cell.q + step[1], cell.r + step[2])
+		if(neighbour && neighbour.topology == topology && neighbour.terrain != OVERWORLD_TERRAIN_WATER)
+			return TRUE
+	return FALSE
 
 /// TRUE when something already stands on this cell. One site per hex keeps the map readable.
 /datum/overworld_region/proc/cell_has_site(datum/overworld_cell/cell)

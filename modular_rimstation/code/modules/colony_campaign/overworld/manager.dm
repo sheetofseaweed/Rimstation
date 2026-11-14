@@ -49,6 +49,55 @@ SUBSYSTEM_DEF(overworld)
 
 	return complete_leg(party)
 
+/// Sends a party that has already left toward another site. Returns null, or why it could not.
+/datum/controller/subsystem/overworld/proc/order_to_site(datum/overworld_party/party, site_id)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!party || !region)
+		return "This colony has no regional map."
+
+	var/leaving_a_site = (party.state == OVERWORLD_PARTY_AT_SITE)
+	if(!party.change_destination(region, site_id, get_discovered_cell_ids(region)))
+		return "The expedition cannot get there from where it is standing."
+	return follow_orders(party, region, leaving_a_site)
+
+/// Sends a party that has already left to look at unknown ground. Returns null, or why it could not.
+/datum/controller/subsystem/overworld/proc/order_to_survey(datum/overworld_party/party, cell_id)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!party || !region)
+		return "This colony has no regional map."
+
+	var/leaving_a_site = (party.state == OVERWORLD_PARTY_AT_SITE)
+	if(!party.change_survey(region, cell_id, get_discovered_cell_ids(region)))
+		return "The expedition cannot get near enough to see that from where it is standing."
+	return follow_orders(party, region, leaving_a_site)
+
+/// Turns a party that has already left for the colony. Returns null, or why it could not.
+/datum/controller/subsystem/overworld/proc/order_home(datum/overworld_party/party, reason)
+	var/datum/overworld_region/region = get_active_overworld_region()
+	if(!party || !region)
+		return "This colony has no regional map."
+
+	var/leaving_a_site = (party.state == OVERWORLD_PARTY_AT_SITE)
+	if(!party.begin_return(reason, region, get_discovered_cell_ids(region)))
+		return "The expedition cannot turn for home from here."
+	return follow_orders(party, region, leaving_a_site)
+
+/// Gets a party with new orders moving. Returns null, or why it could not.
+/// A party inside a crossing is walking already; one that stood in a site goes back to the camp.
+/datum/controller/subsystem/overworld/proc/follow_orders(datum/overworld_party/party, datum/overworld_region/region, leaving_a_site)
+	if(!party.leg_arrives_at)
+		// Sent home while already standing on the colony: there is nothing to walk.
+		if(party.state == OVERWORLD_PARTY_RETURNING && party.at_home())
+			finish_journey(party)
+			return null
+		if(!schedule_or_ask(party, region))
+			return "The expedition could not get moving."
+
+	if(leaving_a_site && party.living_member_count())
+		INVOKE_ASYNC(src, PROC_REF(board_camp), party.party_id)
+	SScampaign.commit_party_change()
+	return null
+
 /**
  * The party crosses into the cell it was walking towards.
  *
@@ -67,23 +116,26 @@ SUBSYSTEM_DEF(overworld)
 		halt_party(party, "the route no longer matches the region")
 		return FALSE
 
+	// A party that turned round inside a crossing comes back to the cell it stood on. It entered nothing.
+	var/came_back = (entered_cell_id == party.current_cell)
 	party.current_cell = entered_cell_id
+	party.leg_origin_cell = null
 	party.leg_started_at = 0
 	party.leg_arrives_at = 0
 
-	// One ration per head per boundary, taken from what the party carried out rather than from the colony -
-	// the colony already paid at departure and this is the allocation being spent down.
-	var/mouths = party.living_member_count()
-	party.supplies = max(0, party.supplies - mouths)
-
-	// Walking into somewhere is how the region gets explored. This is the one funnel, so it serializes and
-	// pushes the map for us.
-	SScampaign.discover_overworld_cell(entered_cell_id)
+	if(!came_back)
+		eat_rations(party)
+		// Walking into somewhere is how the region gets explored. This is the one funnel, so it serializes
+		// and pushes the map for us.
+		SScampaign.discover_overworld_cell(entered_cell_id)
 
 	if(party.state == OVERWORLD_PARTY_RETURNING)
 		if(party.at_home())
 			return finish_journey(party)
-		party.next_leg_index--
+		party.next_leg_index++
+		// A road that stops short of the colony is replaced, not walked off the end of.
+		if(!party.leg_target_cell() && !party.begin_return(null, region, get_discovered_cell_ids(region)))
+			return halt_party(party, "the expedition has no road home")
 		return schedule_leg(party, region)
 
 	if(party.at_destination(region))
@@ -91,6 +143,24 @@ SUBSYSTEM_DEF(overworld)
 
 	party.next_leg_index++
 	return schedule_or_ask(party, region)
+
+/// One ration a head for the cell just entered. A party with too few goes hungry instead.
+/// It is never stopped: a stopped party cannot get home to eat.
+/datum/controller/subsystem/overworld/proc/eat_rations(datum/overworld_party/party)
+	var/mouths = party.living_member_count()
+	if(!mouths)
+		return
+	if(party.supplies >= mouths)
+		party.supplies -= mouths
+		return
+
+	party.supplies = 0
+	for(var/colonist_id in party.member_ids)
+		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
+		if(!body || body.stat == DEAD)
+			continue
+		body.adjust_nutrition(-OVERWORLD_HUNGRY_MARCH_NUTRITION)
+		to_chat(body, span_warning("The rations are gone. You walk on an empty stomach."))
 
 /**
  * Sets the clock for the next boundary. Returns TRUE if the party is now walking.
@@ -106,15 +176,15 @@ SUBSYSTEM_DEF(overworld)
 		halt_party(party, "the next step of the route is not on this region")
 		return FALSE
 
-	// Out of rations mid-journey is a bug in the supply arithmetic rather than a hardship to simulate: the
-	// departure debit is sized for the whole round trip. Say so and stop, rather than inventing starvation.
+	// A party with no rations still walks, but slowly. See eat_rations() for why it is never stopped.
+	var/crossing_seconds = next_cell.traversal_seconds()
 	if(party.supplies <= 0 && party.living_member_count())
-		halt_party(party, "the expedition ran out of rations, which its departure debit should have prevented")
-		return FALSE
+		crossing_seconds *= OVERWORLD_HUNGRY_MARCH_MULTIPLIER
 
 	var/now = SScampaign.get_campaign_time()
+	party.leg_origin_cell = null
 	party.leg_started_at = now
-	party.leg_arrives_at = now + (next_cell.traversal_seconds() SECONDS)
+	party.leg_arrives_at = now + (crossing_seconds SECONDS)
 	SScampaign.commit_party_change()
 	return TRUE
 
@@ -198,9 +268,27 @@ SUBSYSTEM_DEF(overworld)
 		var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
 		if(!body || body.stat == DEAD)
 			continue
-		body.forceMove(arrival)
+		move_traveller(body, arrival)
 		moved++
 	return moved
+
+/// Moves one traveller to a turf, with the object they are hauling.
+/// A dragged person, or a container with a person in it, stays behind: they did not sign on.
+/datum/controller/subsystem/overworld/proc/move_traveller(mob/living/body, turf/where)
+	var/atom/movable/hauled = body.pulling
+	body.forceMove(where)
+	// A cut to black that clears, so a change of place reads as a journey and not as a jump.
+	if(body.client)
+		body.overlay_fullscreen("expedition_travel", /atom/movable/screen/fullscreen/flash/black)
+		body.clear_fullscreen("expedition_travel", OVERWORLD_TRAVEL_FADE)
+	if(!isobj(hauled) || QDELETED(hauled))
+		return
+	if(locate(/mob/living) in hauled.get_all_contents())
+		return
+
+	hauled.forceMove(where)
+	if(body.pulling != hauled)
+		body.start_pulling(hauled, supress_message = TRUE)
 
 /**
  * The journey is over and the party is home.
@@ -225,20 +313,19 @@ SUBSYSTEM_DEF(overworld)
 	SScampaign.commit_party_change()
 	return TRUE
 
-/**
- * Moves a party that has just turned for home back into the travelling camp.
- *
- * Without this they stand around the site they have finished with while the map says they are on the road,
- * which is the same mismatch the hitching post exists to fix at the other end of the journey.
- */
-/datum/controller/subsystem/overworld/proc/board_for_return(party_id)
+/// Moves a party that has just left a site back into the travelling camp.
+/// Without it they stand in the site while the map shows them on the road.
+/datum/controller/subsystem/overworld/proc/board_camp(party_id)
 	UNTIL(!loading_destination)
 	loading_destination = TRUE
 	var/datum/overworld_destination/camp = load_overworld_destination(null, /datum/overworld_scene_provider/premade/transit)
 	loading_destination = FALSE
 
 	var/datum/overworld_party/party = SScampaign.get_active_party()
-	if(!party || party.party_id != party_id || party.state != OVERWORLD_PARTY_RETURNING)
+	if(!party || party.party_id != party_id)
+		return FALSE
+	// On the road in either direction, or stopped on it by a question.
+	if(party.state != OVERWORLD_PARTY_RETURNING && party.state != OVERWORLD_PARTY_OUTBOUND && party.state != OVERWORLD_PARTY_DECISION)
 		return FALSE
 	if(!camp)
 		return FALSE
@@ -252,12 +339,12 @@ SUBSYSTEM_DEF(overworld)
 	if(!party || party.party_id != party_id)
 		return FALSE
 
-	var/turf/landing = get_caravan_return_turf()
+	var/turf/landing = get_caravan_return_turf(party)
 	if(landing)
 		for(var/colonist_id in party.member_ids)
 			var/mob/living/body = SScampaign.get_colonist_body(colonist_id)
 			if(body && body.stat != DEAD)
-				body.forceMove(landing)
+				move_traveller(body, landing)
 
 	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
 	region_state?.clear_party("the expedition came home")
@@ -271,8 +358,15 @@ SUBSYSTEM_DEF(overworld)
  * Three fallbacks because arriving nowhere means a body in nullspace, which is worse than arriving somewhere
  * slightly wrong.
  */
-/proc/get_caravan_return_turf()
+/proc/get_caravan_return_turf(datum/overworld_party/party)
 	RETURN_TYPE(/turf)
+	// Back in by the way they went out, if that ground can still be stood on.
+	var/turf/way_out = party?.exit_turf()
+	if(is_caravan_exit_turf(way_out))
+		for(var/turf/candidate as anything in list(way_out) + RANGE_TURFS(2, way_out))
+			if(!isopenspaceturf(candidate) && !candidate.is_blocked_turf(exclude_mobs = TRUE))
+				return candidate
+
 	for(var/obj/effect/landmark/rimstation_caravan_return/marker in GLOB.landmarks_list)
 		var/turf/spot = get_turf(marker)
 		if(spot)
@@ -717,7 +811,7 @@ SUBSYSTEM_DEF(overworld)
 	log_game("Colony expedition [party.party_id] surveyed [party.current_cell] and revealed [revealed] cells.")
 
 	// Home the way they came. `begin_return()` clears the survey target, so nothing can re-reveal on the way.
-	if(!party.begin_return("the survey was finished"))
+	if(!party.begin_return("the survey was finished", region, region_state.discovered_cells))
 		return halt_party(party, "the expedition could not turn for home after its survey")
 
 	if(!schedule_leg(party, region))
@@ -727,6 +821,6 @@ SUBSYSTEM_DEF(overworld)
 	// edge of the map.
 	party.leg_arrives_at += (OVERWORLD_SURVEY_SECONDS SECONDS)
 
-	INVOKE_ASYNC(src, PROC_REF(board_for_return), party.party_id)
+	// No boarding: a survey has no scene, so the party never left the camp.
 	SScampaign.commit_party_change()
 	return TRUE

@@ -389,15 +389,9 @@ ADMIN_VERB(rimstation_recall_expedition, R_DEBUG, "Recall Expedition", "Turns th
 	party.pending_decision = null
 	if(party.state == OVERWORLD_PARTY_DECISION)
 		party.set_state(OVERWORLD_PARTY_OUTBOUND, "recalled by an admin")
-	if(party.state == OVERWORLD_PARTY_AT_SITE)
-		party.begin_return("recalled by an admin")
-	else if(!party.turn_for_home(region, SScampaign.get_overworld_state()?.discovered_cells))
+	if(SSoverworld.order_home(party, "recalled by an admin"))
 		to_chat(user, span_warning("They could not be routed home from [party.current_cell]. The region may have changed under them."))
 		return
-
-	SSoverworld.schedule_leg(party, region)
-	INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
-	SScampaign.commit_party_change()
 
 	log_admin("[key_name(user)] recalled expedition [party.party_id] from [party.current_cell].")
 	message_admins("[key_name_admin(user)] recalled colony expedition [party.party_id].")

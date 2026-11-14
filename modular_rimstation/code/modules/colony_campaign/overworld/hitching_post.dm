@@ -75,7 +75,7 @@ GLOBAL_LIST_EMPTY(caravan_hitching_posts)
 		to_chat(user, span_warning("You are not signed on to this expedition."))
 		return TRUE
 
-	var/refused = SScampaign.depart_party()
+	var/refused = SScampaign.depart_party(traveller.colonist_id)
 	if(refused)
 		to_chat(user, span_warning(refused))
 		return TRUE

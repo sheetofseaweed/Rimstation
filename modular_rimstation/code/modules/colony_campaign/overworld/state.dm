@@ -364,7 +364,7 @@
 		return FALSE
 
 	var/incoming_generation = data["generation_version"]
-	if(!isnum(incoming_generation) || incoming_generation > OVERWORLD_GENERATION_VERSION)
+	if(!isnum(incoming_generation) || incoming_generation < OVERWORLD_OLDEST_GENERATION_VERSION || incoming_generation > OVERWORLD_GENERATION_VERSION)
 		log_game("Overworld state rejected: generator version [incoming_generation] is newer than this build understands ([OVERWORLD_GENERATION_VERSION]).")
 		return FALSE
 
@@ -476,6 +476,8 @@
  * planet.
  */
 /datum/overworld_state/proc/reset_for_new_generation()
+	// A new world owes nothing to the old one's ids, so it is built by the newest generator.
+	generation_version = OVERWORLD_GENERATION_VERSION
 	discovered_cells = list()
 	site_states = list()
 	// Edits described the dead planet's ground as surely as the discoveries did. A cell id means somewhere
@@ -486,3 +488,24 @@
 	// Anybody who was still out there was out there on a planet that is gone. The counter is not rewound: ids
 	// stay unique across the whole campaign, which is what makes an old ledger entry still readable.
 	QDEL_NULL(active_party)
+
+/**
+ * Moves this campaign's world to the newest generator. Returns null, or why it could not.
+ *
+ * The map is a new one, so everything recorded against the old cells and sites is dropped. Refused while
+ * a party is away: its route names cells that may be water on the new map.
+ */
+/datum/overworld_state/proc/adopt_newest_generator()
+	if(generation_version == OVERWORLD_GENERATION_VERSION)
+		return "This campaign already uses the newest generator."
+	if(active_party && !active_party.is_planning())
+		return "An expedition is away. Bring it home first."
+
+	active_party?.clear_destination("the map was rebuilt")
+	generation_version = OVERWORLD_GENERATION_VERSION
+	discovered_cells = list()
+	site_states = list()
+	cell_overrides = list()
+	added_sites = list()
+	region_fingerprint = null
+	return null

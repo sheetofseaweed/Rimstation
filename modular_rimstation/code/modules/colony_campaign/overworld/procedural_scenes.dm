@@ -560,8 +560,13 @@
 
 /datum/rimstation_expedition_scene_context/ruin/place_objective(datum/overworld_destination/destination, turf/bottom_left)
 	var/turf/corner = local_turf(bottom_left, ruin_x, ruin_y)
+	// The map loader skips AfterChange(), so a wall it stamps over queued ground stays in the air queue.
+	// Atmos then calls an open-turf proc on that wall. Clear the footprint before and after the load.
+	var/list/footprint = ruin_template.get_affected_turfs(corner)
+	SSair.high_pressure_delta -= footprint
 	if(!ruin_template.load(corner))
 		return FALSE
+	SSair.high_pressure_delta -= ruin_template.get_affected_turfs(corner)
 	if(QDELETED(destination) || QDELETED(ruin_template))
 		return FALSE
 	var/obj/structure/rimstation_ruin_archive/archive

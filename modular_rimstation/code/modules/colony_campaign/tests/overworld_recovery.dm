@@ -69,7 +69,7 @@
 	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
 	TEST_ASSERT(party.add_member(vera.colonist_id), "A colonist could not sign on.")
 
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 
 	// Mid-leg, which is the state a chapter is most likely to end in.
@@ -105,7 +105,7 @@
 	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
 	party.add_member(vera.colonist_id)
 
-	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 4), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40, allow_decisions = TRUE)
 
 	// Walk until the road stops them, or until the route runs out. It may already have stopped them at the
@@ -162,7 +162,7 @@
 	party.add_member(vera.colonist_id)
 	party.add_member(otto.colonist_id)
 
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 	var/cell_when_it_started = party.current_cell
 
@@ -205,7 +205,7 @@
 	TEST_ASSERT_EQUAL(length(get_colonists_physically_at_colony()), 2, "Somebody who had only signed on was already counted as away.")
 
 	// Leaving does.
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 	var/list/at_home = get_colonists_physically_at_colony()
 	TEST_ASSERT_EQUAL(length(at_home), 1, "A departed expedition was still counted as defending the colony.")
@@ -230,7 +230,7 @@
 	var/datum/colonist_record/otto = settle_traveller("playertwo", "Otto Vance")
 	party.add_member(vera.colonist_id)
 
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 
 	// On the road, so rejoining must not put her back in the colony.
@@ -302,7 +302,7 @@
 	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
 	party.add_member(vera.colonist_id)
 
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 
 	// Everybody logs off: the roster still knows them, but there is no body anywhere.
@@ -383,7 +383,7 @@
 	var/datum/colonist_record/vera = settle_traveller("playerone", "Vera Holt")
 	party.add_member(vera.colonist_id)
 
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	send_out(party, route, supplies = 40)
 
 	// A record from a build whose archetypes are not this build's: halted, with a question naming nothing.

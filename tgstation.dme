@@ -3496,6 +3496,7 @@
 #include "modular_rimstation\code\modules\colony_campaign\overworld\destinations.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\hitching_post.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\manager.dm"
+#include "modular_rimstation\code\modules\colony_campaign\overworld\map_exit.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\party.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\procedural_scenes.dm"
 #include "modular_rimstation\code\modules\colony_campaign\overworld\region.dm"

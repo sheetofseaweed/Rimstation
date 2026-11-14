@@ -1041,7 +1041,7 @@ SUBSYSTEM_DEF(campaign)
  * here - not at the moment somebody clicked ready - and the food is debited before the state moves, so a
  * caravan can never be on the road unpaid for, and a refused departure can never have eaten anything.
  */
-/datum/controller/subsystem/campaign/proc/depart_party()
+/datum/controller/subsystem/campaign/proc/depart_party(giving_the_word)
 	var/datum/overworld_party/party = get_active_party()
 	if(!party)
 		return "There is no expedition to send."
@@ -1050,9 +1050,14 @@ SUBSYSTEM_DEF(campaign)
 	if(!region)
 		return "This colony has no regional map."
 
-	var/blocked = party.departure_problem(region, get_discovered_cell_ids(region))
+	// The member who gives the word counts as ready: giving it is saying yes.
+	var/blocked = party.departure_problem(region, get_discovered_cell_ids(region), giving_the_word)
 	if(blocked)
 		return blocked
+
+	// A party that walks out at the map edge comes back in there. The hitching post leaves this empty.
+	var/atom/muster = party.muster_point()
+	party.exit_point = isturf(muster) ? list(muster.x, muster.y, muster.z) : null
 
 	var/cost = party.supply_cost()
 	// Paid before the state moves, and paid all at once: out of the larder if the colony has stocked it, and
@@ -1078,8 +1083,8 @@ SUBSYSTEM_DEF(campaign)
 
 /// Pushes new map data to anyone looking at one. Autoupdate is off, so this is how the map ever changes.
 /datum/controller/subsystem/campaign/proc/refresh_overworld_consoles()
-	for(var/obj/machinery/computer/colony_overworld/table as anything in GLOB.colony_overworld_consoles)
-		SStgui.update_uis(table)
+	for(var/datum/overworld_map_view/view as anything in GLOB.overworld_map_views)
+		SStgui.update_uis(view)
 
 /**
  * How many threat points a raid scheduled right now is worth.

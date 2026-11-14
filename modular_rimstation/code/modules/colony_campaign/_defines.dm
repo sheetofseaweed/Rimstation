@@ -255,7 +255,46 @@
 #define COLONY_OVERWORLD_SCHEMA_VERSION 1
 
 /// Bump whenever any generation rule changes. Regions built by different versions are not comparable.
-#define OVERWORLD_GENERATION_VERSION 1
+#define OVERWORLD_GENERATION_VERSION 2
+/// The oldest generator a stored campaign may name. Its code is kept, so its world rebuilds the same.
+#define OVERWORLD_OLDEST_GENERATION_VERSION 1
+
+// Generator version 2: smooth fields instead of one roll per hex.
+/// Flat map position of a hex, in hex widths. Noise is sampled here.
+#define OVERWORLD_HEX_X(q, r) (((q) + ((r) / 2)) * 1.7320508)
+#define OVERWORLD_HEX_Y(r) ((r) * 1.5)
+/// How many hexes across a feature of each field is.
+#define OVERWORLD_ELEVATION_ZOOM 6
+#define OVERWORLD_RIDGE_ZOOM 5
+#define OVERWORLD_CLIMATE_ZOOM 9
+#define OVERWORLD_WILDNESS_ZOOM 4
+/// Noise seeds are kept below this, so they print as plain digits for the noise library.
+#define OVERWORLD_NOISE_SEED_MODULUS 1000000
+/// Cells this close to the colony are always open land: no colony starts walled in or on a shore.
+#define OVERWORLD_HOME_VALLEY_RADIUS OVERWORLD_INITIAL_REVEAL_RADIUS
+/// Percent of the region under water, on the driest and on the wettest planet.
+#define OVERWORLD_WATER_PERCENT_MIN 3
+#define OVERWORLD_WATER_PERCENT_MAX 14
+/// Highest `height` a water cell gets. Land starts above it.
+#define OVERWORLD_WATER_HEIGHT_MAX 20
+/// What the pass finder pays to cross one peak, against one for ordinary ground.
+#define OVERWORLD_PASS_PEAK_COST 25
+/// How much warmer the south edge of the region is than the centre, in climate percent.
+#define OVERWORLD_LATITUDE_HEAT 12
+/// Climate percent per degree the planet is warmer than 20 C. A 0 C planet is mostly cold.
+#define OVERWORLD_HEAT_PER_DEGREE 1.5
+/// How far heat varies across one region around the planet's own value. 0.5 gives 25 either way.
+#define OVERWORLD_HEAT_SPREAD 0.5
+/// Climate percent per point of planet moisture above 50.
+#define OVERWORLD_HUMIDITY_PER_MOISTURE 0.8
+/// How far humidity varies across one region around the planet's own value.
+#define OVERWORLD_HUMIDITY_SPREAD 0.7
+/// How much colder hard going is than the plain around it. Peaks are twice as cold.
+#define OVERWORLD_HIGHLAND_CHILL 10
+/// How much wetter land beside water is. Half this two hexes away.
+#define OVERWORLD_SHORE_HUMIDITY 20
+/// How much more dangerous the edge of the region is than the colony.
+#define OVERWORLD_FAR_DANGER 30
 
 /**
  * The six axial neighbours of any cell, as list(q offset, r offset).
@@ -405,6 +444,8 @@
 #define OVERWORLD_TERRAIN_DESERT "desert"
 #define OVERWORLD_TERRAIN_SAVANNA "savanna"
 #define OVERWORLD_TERRAIN_MARSH "marsh"
+/// Lakes and sea. Only generator version 2 makes it, and always as impassable ground.
+#define OVERWORLD_TERRAIN_WATER "water"
 
 /// Heat band (cold/temperate/hot) by humidity band (dry/moderate/wet). Split at 33 and 67.
 #define OVERWORLD_TERRAIN_TABLE list( \
@@ -424,6 +465,7 @@
 	OVERWORLD_TERRAIN_DESERT, \
 	OVERWORLD_TERRAIN_SAVANNA, \
 	OVERWORLD_TERRAIN_MARSH, \
+	OVERWORLD_TERRAIN_WATER, \
 )
 
 /// Every kind of site that can stand on the map.
@@ -508,6 +550,16 @@
  */
 #define OVERWORLD_DANGER_TIME_PENALTY 30
 
+/// The cell the colony stands on. Every journey starts and ends here.
+#define OVERWORLD_HOME_CELL "0,0"
+
+/// How close to the border of the colony map a caravan can leave from, in tiles.
+#define OVERWORLD_EXIT_EDGE_DEPTH 2
+/// The screen alert a colonist gets while standing where a caravan can leave from.
+#define ALERT_CARAVAN_EXIT "caravan_exit"
+/// How long a traveller's screen takes to clear after they are moved between places.
+#define OVERWORLD_TRAVEL_FADE (2 SECONDS)
+
 /// Nobody may sign on to a party alone-and-endless. A cap keeps the colony from being emptied into one caravan.
 #define OVERWORLD_PARTY_MAX_MEMBERS 6
 
@@ -515,6 +567,10 @@
 #define OVERWORLD_SUPPLY_PER_EDGE 2
 /// Extra rations per member, held against waits and detours on the road.
 #define OVERWORLD_SUPPLY_RESERVE 2
+/// How much longer a crossing takes for a party with no rations left.
+#define OVERWORLD_HUNGRY_MARCH_MULTIPLIER 1.5
+/// Nutrition each traveller loses for a crossing made without a ration.
+#define OVERWORLD_HUNGRY_MARCH_NUTRITION 40
 
 /// The ledger resource a caravan eats. The same pile the refugee incident feeds from - there is one larder.
 #define OVERWORLD_SUPPLY_RESOURCE "food"

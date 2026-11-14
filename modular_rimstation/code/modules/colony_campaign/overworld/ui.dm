@@ -37,13 +37,15 @@ GLOBAL_VAR(active_overworld_signature)
 		// No campaign, or an unreadable planet record. Either way the map still has to draw something.
 		planet = new("rimstation-development-region", "development-planet")
 
-	var/signature = "[planet.root_seed]:[options["extent"]]:[options["roughness"]]:[options["abundance"]]:[OVERWORLD_GENERATION_VERSION]"
+	// The campaign's own generator, which may be older than the newest one. Its ids describe that world.
+	var/version = region_state?.generation_version || OVERWORLD_GENERATION_VERSION
+	var/signature = "[planet.root_seed]:[options["extent"]]:[options["roughness"]]:[options["abundance"]]:[version]"
 	if(GLOB.active_overworld_region && GLOB.active_overworld_signature == signature)
 		qdel(planet)
 		return GLOB.active_overworld_region
 
 	QDEL_NULL(GLOB.active_overworld_region)
-	GLOB.active_overworld_region = new(planet, options)
+	GLOB.active_overworld_region = new(planet, options, version)
 	GLOB.active_overworld_signature = signature
 	// Laid over every build, not just the first. The region above is thrown away and regenerated whenever the
 	// signature changes, so an edit applied once would last exactly until the next thing asked for the map.
@@ -76,8 +78,17 @@ GLOBAL_VAR(active_overworld_signature)
 	return discovered
 
 
-/// Every expedition table that exists, so a discovery can refresh the ones people are looking at.
-GLOBAL_LIST_EMPTY(colony_overworld_consoles)
+/// Every open way of looking at the region, so a change can refresh the ones people have open.
+GLOBAL_LIST_EMPTY(overworld_map_views)
+/// The map every colonist carries. One shared view; each viewer keeps their own selection in it.
+GLOBAL_DATUM(personal_overworld_map, /datum/overworld_map_view)
+
+/// The map a colonist carries, made the first time somebody opens it.
+/proc/get_personal_overworld_map()
+	RETURN_TYPE(/datum/overworld_map_view)
+	if(!GLOB.personal_overworld_map)
+		GLOB.personal_overworld_map = new
+	return GLOB.personal_overworld_map
 
 /obj/machinery/computer/colony_overworld
 	name = "expedition table"
@@ -86,11 +97,8 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	icon_keyboard = "med_key"
 	circuit = /obj/item/circuitboard/computer/colony_overworld
 	light_color = LIGHT_COLOR_DIM_YELLOW
-	/// The site somebody is currently looking at, so both route offers can be priced for it. Per table, and
-	/// never persisted: it is where a player's attention is, not a fact about the colony.
-	var/previewed_site_id
-	/// The unknown hex somebody is considering surveying, on the same terms.
-	var/previewed_survey_cell
+	/// The map this table shows. The table is a place to stand; the view does the work.
+	var/datum/overworld_map_view/map_view
 
 /obj/item/circuitboard/computer/colony_overworld
 	name = "Expedition Table (Computer Board)"
@@ -99,13 +107,70 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 
 /obj/machinery/computer/colony_overworld/ui_interact(mob/user, datum/tgui/ui)
 	. = ..()
+	map_view?.ui_interact(user)
+
+/// One way of looking at the region: an expedition table, or the map a colonist carries.
+/datum/overworld_map_view
+	/// The table this view belongs to. Null for the map a colonist carries.
+	var/obj/machinery/computer/colony_overworld/table
+	/// What each viewer has selected on the map, by ckey: list("site" = site id, "survey" = cell id).
+	/// Per viewer, so two people at one map do not move each other's selection. Never persisted.
+	var/list/previews
+
+/datum/overworld_map_view/New(obj/machinery/computer/colony_overworld/table)
+	. = ..()
+	src.table = table
+	GLOB.overworld_map_views += src
+
+/datum/overworld_map_view/Destroy(force)
+	GLOB.overworld_map_views -= src
+	SStgui.close_uis(src)
+	table = null
+	previews = null
+	return ..()
+
+/datum/overworld_map_view/ui_host(mob/user)
+	return table || src
+
+/// A table is used by standing at it. The carried map needs only somebody awake to read it.
+/datum/overworld_map_view/ui_state(mob/user)
+	return table ? GLOB.default_state : GLOB.conscious_state
+
+/datum/overworld_map_view/ui_interact(mob/user, datum/tgui/ui)
 	ui = SStgui.try_update_ui(user, src, ui)
 	if(!ui)
-		ui = new(user, src, "ColonyOverworld", name)
-		// The region does not change on its own, and the payload is a few hundred cells. Pushing on change
-		// costs nothing; rebuilding this every tick for every viewer would cost a great deal.
+		ui = new(user, src, "ColonyOverworld", table ? table.name : "expedition map")
+		// The region changes only when play changes it, so it is pushed on change and not every tick.
 		ui.set_autoupdate(FALSE)
 		ui.open()
+
+/datum/overworld_map_view/ui_close(mob/user)
+	. = ..()
+	set_preview(user, null, null)
+
+/// What a viewer's selection is filed under. The ckey, so it follows a player from one body to the next.
+/datum/overworld_map_view/proc/preview_key(mob/user)
+	if(!user)
+		return ""
+	return user.ckey || REF(user)
+
+/// The site this viewer has selected, or null.
+/datum/overworld_map_view/proc/previewed_site(mob/user)
+	var/list/looking_at = LAZYACCESS(previews, preview_key(user))
+	return looking_at?["site"]
+
+/// The frontier cell this viewer has selected, or null.
+/datum/overworld_map_view/proc/previewed_survey(mob/user)
+	var/list/looking_at = LAZYACCESS(previews, preview_key(user))
+	return looking_at?["survey"]
+
+/// Records what one viewer is looking at. Both null forgets the viewer.
+/datum/overworld_map_view/proc/set_preview(mob/user, site_id, survey_cell)
+	var/viewer_key = preview_key(user)
+	if(!site_id && !survey_cell)
+		LAZYREMOVE(previews, viewer_key)
+		return
+	LAZYSET(previews, viewer_key, list("site" = site_id, "survey" = survey_cell))
 
 /**
  * The region's shape and vocabulary: everything that cannot change while the map is open.
@@ -114,13 +179,14 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * the region extends. What is in each cell is not sent here; that belongs to ui_data(), which only describes
  * cells the colony has actually seen.
  */
-/obj/machinery/computer/colony_overworld/ui_static_data(mob/user)
+/datum/overworld_map_view/ui_static_data(mob/user)
 	var/list/data = list()
 	var/datum/overworld_region/region = get_active_overworld_region()
 
 	data["radius"] = region?.radius || 0
 	data["options"] = region?.options?.Copy() || list()
 	data["fingerprint"] = region?.fingerprint
+	data["planet"] = region?.planet_climate?.Copy()
 
 	var/list/cells = list()
 	for(var/cell_id in region?.cells)
@@ -144,6 +210,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 		OVERWORLD_TERRAIN_DESERT = "desert",
 		OVERWORLD_TERRAIN_SAVANNA = "savanna",
 		OVERWORLD_TERRAIN_MARSH = "marsh",
+		OVERWORLD_TERRAIN_WATER = "open water",
 	)
 	data["topology_names"] = list(
 		OVERWORLD_TOPOLOGY_EASY = "open ground",
@@ -160,7 +227,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * standing on them. Sending hidden facts and trusting the interface not to draw them would make the fog a
  * rendering choice rather than a rule.
  */
-/obj/machinery/computer/colony_overworld/ui_data(mob/user)
+/datum/overworld_map_view/ui_data(mob/user)
 	var/list/data = list()
 	var/datum/overworld_region/region = get_active_overworld_region()
 	var/list/discovered = get_discovered_cell_ids(region)
@@ -176,6 +243,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			"topology" = cell.topology,
 			"danger" = cell.danger,
 			"seconds" = cell.traversal_seconds(),
+			"height" = cell.height,
 		))
 	data["known_cells"] = known
 
@@ -204,6 +272,8 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	// the obvious place to be able to read them.
 	data["ledger"] = SScampaign.get_ledger()?.build_readout()
 	data["campaign_clock"] = SScampaign.get_campaign_time()
+	// The colony's time of day, so the globe's sun stands where the sky outside says. The client moves it on.
+	data["sun"] = list("fraction" = SSdaylight.day_fraction(), "day_length" = SSdaylight.day_length())
 	data["colony_under_attack"] = is_colony_raid_running()
 
 	// How thin the colony would be left. Counted from membership rather than from bodies in the room, because a
@@ -220,12 +290,14 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	data["viewer_is_colonist"] = !isnull(viewer)
 	data["viewer_has_locker"] = viewer ? !isnull(get_personal_colonist_locker(viewer.colonist_id)) : FALSE
 
+	var/previewed_site_id = previewed_site(user)
+	var/previewed_survey_cell = previewed_survey(user)
 	data["previewed_site_id"] = previewed_site_id
 	// Sent beside the site for a reason: the panel gates its route offers on whichever of the two is set, so a
 	// missing one is not a blank field but a step of the journey nobody can reach.
 	data["previewed_survey_cell"] = previewed_survey_cell
-	data["party"] = build_party_payload(region, discovered, viewer)
-	data["route_offers"] = build_route_offers(region, discovered)
+	data["party"] = build_party_payload(region, discovered, viewer, user)
+	data["route_offers"] = build_route_offers(region, discovered, previewed_site_id)
 
 	// The edge of what is known. Only these can be surveyed: a route may only cross walked ground, so the map
 	// opens one ring at a time and anything further out cannot be reached yet.
@@ -233,8 +305,38 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	for(var/cell_id in get_overworld_frontier_cells(region))
 		frontier += cell_id
 	data["frontier_cells"] = frontier
-	data["survey_offers"] = build_survey_offers(region, discovered)
+	data["survey_offers"] = build_survey_offers(region, discovered, previewed_survey_cell)
+	data["order_preview"] = build_order_preview(region, discovered, previewed_site_id, previewed_survey_cell)
 	return data
+
+/// What it costs a party that is already out to go to the selected site or ground. Null when it cannot.
+/datum/overworld_map_view/proc/build_order_preview(datum/overworld_region/region, list/discovered, site_id, survey_cell)
+	RETURN_TYPE(/list)
+	var/datum/overworld_party/party = SScampaign.get_active_party()
+	if(!party || !region || party.is_planning() || (party.state in OVERWORLD_PARTY_TERMINAL_STATES))
+		return null
+
+	var/datum/overworld_site/site = region.sites[site_id]
+	var/target_cell = site ? "[site.q],[site.r]" : survey_cell
+	if(!target_cell)
+		return null
+
+	// Unknown ground is one step into the dark. A site must be reached over known ground alone.
+	var/list/reachable = discovered
+	if(!site)
+		reachable = discovered.Copy()
+		reachable[target_cell] = TRUE
+
+	var/list/road = region.plan_route(party.current_cell, target_cell, party.route_kind || OVERWORLD_ROUTE_FASTEST, reachable)
+	if(length(road) < 2)
+		return null
+	return list(
+		"kind" = site ? "site" : "survey",
+		"steps" = length(road) - 1,
+		"travel_seconds" = region.route_travel_seconds(road),
+		"rations_needed" = party.rations_to_finish(region, road, discovered),
+		"rations_carried" = party.supplies,
+	)
 
 /**
  * The expedition as the table shows it, or null when there is not one.
@@ -242,7 +344,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * Names rather than ids wherever a person is shown: a colonist id is how the campaign refers to somebody, not
  * how anybody at the table does.
  */
-/obj/machinery/computer/colony_overworld/proc/build_party_payload(datum/overworld_region/region, list/discovered, datum/colonist_record/viewer)
+/datum/overworld_map_view/proc/build_party_payload(datum/overworld_region/region, list/discovered, datum/colonist_record/viewer, mob/user)
 	RETURN_TYPE(/list)
 	var/datum/overworld_party/party = SScampaign.get_active_party()
 	if(!party)
@@ -285,13 +387,21 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 		"has_larder" = !isnull(get_colony_larder()),
 		"current_cell" = party.current_cell,
 		"next_cell" = party.leg_target_cell(),
+		// Where the marker starts its crossing. Not the standing cell for a party that turned round inside one.
+		"leg_from_cell" = party.leg_origin_cell || party.current_cell,
+		"rations_needed" = party.rations_still_needed(region, discovered),
 		"leg_started_at" = party.leg_started_at,
 		"leg_arrives_at" = party.leg_arrives_at,
 		"clock_now" = SScampaign.get_campaign_time(),
 		"supplies_carried" = party.supplies,
 		"pending_decision" = party.pending_decision?.Copy(),
-		"gathered_ids" = party_members_at_post(party),
+		"gathered_ids" = party.gathered_member_ids(),
 		"has_hitching_post" = !isnull(get_caravan_hitching_post()),
+		"muster_place" = isturf(party.muster_anchor()) ? "the way out" : "the hitching post",
+		"you_are_at_exit" = is_caravan_exit_turf(get_turf(user)),
+		// The viewer counts as ready here: giving the word is saying yes.
+		"set_out_problem" = viewer ? party.departure_problem(region, discovered, viewer.colonist_id) : "You are not one of this colony's colonists.",
+		"eta_seconds" = party.seconds_to_route_end(region),
 		"gather_radius" = OVERWORLD_GATHER_RADIUS,
 		"you_are_a_member" = viewer ? (viewer.colonist_id in party.member_ids) : FALSE,
 		"you_are_ready" = viewer ? (viewer.colonist_id in party.ready_member_ids) : FALSE,
@@ -305,7 +415,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * Computed here and only here. The interface never sends a route or a total back - it names a site and picks
  * one of these two answers, so nothing a client says can inflate what a journey pays or shorten what it costs.
  */
-/obj/machinery/computer/colony_overworld/proc/build_route_offers(datum/overworld_region/region, list/discovered)
+/datum/overworld_map_view/proc/build_route_offers(datum/overworld_region/region, list/discovered, previewed_site_id)
 	RETURN_TYPE(/list)
 	var/list/offers = list()
 	var/datum/overworld_site/site = region?.sites[previewed_site_id]
@@ -339,7 +449,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * Built exactly like the route offers for a site, and for the same reason: the totals are the server's business,
  * and a client that could describe its own journey could describe a cheap one.
  */
-/obj/machinery/computer/colony_overworld/proc/build_survey_offers(datum/overworld_region/region, list/discovered)
+/datum/overworld_map_view/proc/build_survey_offers(datum/overworld_region/region, list/discovered, previewed_survey_cell)
 	RETURN_TYPE(/list)
 	var/list/offers = list()
 	if(!region || !previewed_survey_cell)
@@ -377,7 +487,7 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
  * Nothing here takes a colonist id from the message. Who is acting is whoever is standing at the table, which
  * is what stops one player signing another one up for a journey, or marking them ready to leave.
  */
-/obj/machinery/computer/colony_overworld/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
+/datum/overworld_map_view/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
 	. = ..()
 	if(.)
 		return
@@ -387,15 +497,17 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 	var/list/discovered = get_discovered_cell_ids(region)
 	var/datum/colonist_record/viewer = SScampaign.get_colonist_record_for_body(actor)
 	var/datum/overworld_party/party = SScampaign.get_active_party()
+	// What this one viewer has selected. Somebody else at the same table has their own.
+	var/previewed_site_id = previewed_site(actor)
+	var/previewed_survey_cell = previewed_survey(actor)
 
 	switch(action)
 		if("preview_site")
 			// Looking is free, and looking at nothing clears it. Validated anyway so the offer builder is never
 			// handed a site id that came from outside the region.
 			var/wanted = params["site_id"]
-			previewed_site_id = (istext(wanted) && region?.sites[wanted]) ? wanted : null
-			if(previewed_site_id)
-				previewed_survey_cell = null
+			wanted = (istext(wanted) && region?.sites[wanted]) ? wanted : null
+			set_preview(actor, wanted, wanted ? null : previewed_survey_cell)
 			return TRUE
 
 		if("form_party")
@@ -439,9 +551,8 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			// Looking is free, and only unknown ground on the frontier can be looked at.
 			var/wanted = params["cell_id"]
 			var/list/frontier = get_overworld_frontier_cells(region)
-			previewed_survey_cell = (istext(wanted) && frontier[wanted]) ? wanted : null
-			if(previewed_survey_cell)
-				previewed_site_id = null
+			wanted = (istext(wanted) && frontier[wanted]) ? wanted : null
+			set_preview(actor, wanted ? null : previewed_site_id, wanted)
 			return TRUE
 
 		if("choose_survey")
@@ -507,15 +618,32 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			if(!(viewer.colonist_id in party.member_ids))
 				to_chat(actor, span_warning("You are not on this expedition."))
 				return TRUE
-			if(!previewed_site_id)
-				to_chat(actor, span_warning("Choose somewhere on the map first."))
+			var/refused = "Choose a site or unknown ground on the map first."
+			if(previewed_site_id)
+				refused = SSoverworld.order_to_site(party, previewed_site_id)
+			else if(previewed_survey_cell)
+				refused = SSoverworld.order_to_survey(party, previewed_survey_cell)
+			if(refused)
+				to_chat(actor, span_warning(refused))
+			return TRUE
+
+		if("set_out")
+			// Giving the word at a way out. The hitching post is the other place to give it.
+			if(!party || !viewer)
 				return TRUE
-			if(!party.change_destination(region, previewed_site_id, discovered))
-				to_chat(actor, span_warning("The expedition cannot get there from where it is standing."))
+			if(!(viewer.colonist_id in party.member_ids))
+				to_chat(actor, span_warning("You are not on this expedition."))
+				return TRUE
+			if(!is_caravan_exit_turf(get_turf(actor)))
+				to_chat(actor, span_warning("You are not standing at a way out of the colony."))
 				return TRUE
 
-			SSoverworld.schedule_leg(party, region)
-			SScampaign.commit_party_change()
+			var/refused = SScampaign.depart_party(viewer.colonist_id)
+			if(refused)
+				to_chat(actor, span_warning(refused))
+				return TRUE
+			actor.visible_message(span_notice("[actor] gives the word, and the caravan moves off."))
+			party.announce_departure()
 			return TRUE
 
 		if("turn_for_home")
@@ -524,13 +652,9 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			if(!(viewer.colonist_id in party.member_ids))
 				to_chat(actor, span_warning("You are not on this expedition."))
 				return TRUE
-			if(!party.turn_for_home(region, discovered))
-				to_chat(actor, span_warning("The expedition cannot turn back from here."))
-				return TRUE
-
-			SSoverworld.schedule_leg(party, region)
-			INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
-			SScampaign.commit_party_change()
+			var/refused = SSoverworld.order_home(party, "[viewer.display_name] turned the expedition back")
+			if(refused)
+				to_chat(actor, span_warning(refused))
 			return TRUE
 
 		if("answer_decision")
@@ -558,23 +682,17 @@ GLOBAL_LIST_EMPTY(colony_overworld_consoles)
 			if(party.state != OVERWORLD_PARTY_AT_SITE)
 				to_chat(actor, span_warning("The expedition is not standing anywhere it can leave from."))
 				return TRUE
-			if(!party.begin_return("[viewer.display_name] called the expedition home"))
-				return TRUE
-
-			// Onto the road properly, rather than standing around the site they have finished with.
-			INVOKE_ASYNC(SSoverworld, TYPE_PROC_REF(/datum/controller/subsystem/overworld, board_for_return), party.party_id)
-
-			var/datum/overworld_region/home_region = get_active_overworld_region()
-			SSoverworld.schedule_leg(party, home_region)
-			SScampaign.commit_party_change()
+			var/refused = SSoverworld.order_home(party, "[viewer.display_name] called the expedition home")
+			if(refused)
+				to_chat(actor, span_warning(refused))
 			return TRUE
 
 	return FALSE
 
 /obj/machinery/computer/colony_overworld/Initialize(mapload)
 	. = ..()
-	GLOB.colony_overworld_consoles += src
+	map_view = new(src)
 
 /obj/machinery/computer/colony_overworld/Destroy()
-	GLOB.colony_overworld_consoles -= src
+	QDEL_NULL(map_view)
 	return ..()

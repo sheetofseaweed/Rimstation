@@ -74,7 +74,7 @@
 	TEST_ASSERT_NOTNULL(party, "An expedition could not be formed.")
 
 	// The worst case the game can produce: on the road, out of food, and nobody online to act.
-	party.route = region.plan_route("0,0", "2,0", OVERWORLD_ROUTE_FASTEST)
+	party.route = region.plan_route("0,0", overworld_test_target(region, 2), OVERWORLD_ROUTE_FASTEST)
 	party.current_cell = party.route[1]
 	party.next_leg_index = 2
 	party.supplies = 0
@@ -113,7 +113,7 @@
 	var/datum/overworld_region/region = get_active_overworld_region()
 
 	var/datum/overworld_party/party = SScampaign.form_party()
-	party.route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	party.route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	party.current_cell = party.route[1]
 	party.next_leg_index = 2
 

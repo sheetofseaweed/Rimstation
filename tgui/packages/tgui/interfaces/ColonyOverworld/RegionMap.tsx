@@ -34,6 +34,8 @@ export type KnownCell = {
   topology: string;
   danger: number;
   seconds: number;
+  /** 0-99. How high the ground stands. Water is lowest. */
+  height?: number;
 };
 
 export type KnownSite = {
@@ -59,6 +61,7 @@ export const TERRAIN_FILL: Record<string, string> = {
   desert: '#cbb279',
   savanna: '#b09a52',
   marsh: '#5d7160',
+  water: '#2f5d7c',
 };
 
 const UNKNOWN_FILL = '#14161a';
@@ -71,7 +74,7 @@ const TOPOLOGY_MARKS: Record<string, string> = {
   impassable: '×',
 };
 
-type Props = {
+export type RegionMapProps = {
   radius: number;
   cells: Cell[];
   knownCells: KnownCell[];
@@ -97,7 +100,7 @@ type Props = {
  * Shared between the expedition table and the campaign creation preview so that what somebody chooses at
  * creation is drawn by exactly the same code that will draw it for the rest of the campaign.
  */
-export function RegionMap(props: Props) {
+export function RegionMap(props: RegionMapProps) {
   const {
     radius,
     cells,
@@ -310,7 +313,10 @@ export function RegionMap(props: Props) {
                   !isSelected && !visible && isFrontier[cell.id] ? '2 1.5' : undefined
                 }
               />
-              {!!known && (known.topology === 'difficult' || known.topology === 'impassable') && (
+              {!!known &&
+                known.terrain !== 'water' &&
+                (known.topology === 'difficult' ||
+                  known.topology === 'impassable') && (
                 <polygon
                   points={hexPoints(cell, HEX_SIZE)}
                   fill="url(#rough-hatch)"
@@ -329,9 +335,13 @@ export function RegionMap(props: Props) {
               {!isHome && !site && !!known && (
                 <HexLabel
                   cell={cell}
-                  text={TOPOLOGY_MARKS[known.topology] ?? ''}
+                  text={
+                    known.terrain === 'water'
+                      ? '≈'
+                      : (TOPOLOGY_MARKS[known.topology] ?? '')
+                  }
                   size={6}
-                  fill="#0d0d0d"
+                  fill={known.terrain === 'water' ? '#a9cfe6' : '#0d0d0d'}
                 />
               )}
               {!!known && known.danger > 0 && (

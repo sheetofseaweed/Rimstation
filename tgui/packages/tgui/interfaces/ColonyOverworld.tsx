@@ -17,8 +17,9 @@ import {
   type KnownCell,
   type KnownSite,
   parseCellId,
-  RegionMap,
 } from './ColonyOverworld/RegionMap';
+import type { PlanetInfo, SunInfo } from './ColonyOverworld/GlobeMap';
+import { OverworldMap } from './ColonyOverworld/OverworldMap';
 
 type Member = {
   id: string;
@@ -50,6 +51,10 @@ type Party = {
   has_larder: boolean;
   current_cell: string | null;
   next_cell: string | null;
+  /** Where the crossing in progress started. Differs from current_cell after a turn inside a crossing. */
+  leg_from_cell: string | null;
+  /** Rations the party must eat to finish this journey and get home. */
+  rations_needed: number;
   leg_started_at: number;
   leg_arrives_at: number;
   clock_now: number;
@@ -58,6 +63,13 @@ type Party = {
   gathered_ids: string[];
   has_hitching_post: boolean;
   gather_radius: number;
+  /** Where the party is gathering: the hitching post, or a way out at the edge of the map. */
+  muster_place: string;
+  you_are_at_exit: boolean;
+  /** Why the viewer cannot give the word right now, or null. The viewer counts as ready. */
+  set_out_problem: string | null;
+  /** Seconds until the party reaches the end of its route. */
+  eta_seconds: number;
   you_are_a_member: boolean;
   you_are_ready: boolean;
   join_problem: string | null;
@@ -85,6 +97,15 @@ type RouteOffer = {
   supply_cost: number;
 };
 
+/** What a new order would cost a party that has already left. */
+type OrderPreview = {
+  kind: 'site' | 'survey';
+  steps: number;
+  travel_seconds: number;
+  rations_needed: number;
+  rations_carried: number;
+};
+
 type Data = {
   radius: number;
   options: Record<string, string>;
@@ -108,9 +129,14 @@ type Data = {
   /** Unknown hexes touching known ground - the only ones a survey can be aimed at. */
   frontier_cells: string[];
   survey_offers: RouteOffer[];
+  order_preview: OrderPreview | null;
   previewed_survey_cell: string | null;
   ledger: Ledger | null;
   campaign_clock: number;
+  /** The planet the region stands on, for drawing the globe. */
+  planet: PlanetInfo | null;
+  /** The colony's time of day, so the globe's sun matches the sky outside. */
+  sun: SunInfo | null;
 };
 
 /** Seconds into something a person can judge at a glance. Journeys are minutes, not thousands of seconds. */
@@ -205,8 +231,11 @@ export const ColonyOverworld = (props) => {
     route_offers,
     frontier_cells,
     survey_offers,
+    order_preview,
     previewed_survey_cell,
     ledger,
+    planet,
+    sun,
   } = data;
 
   // Which hex the player is looking at. Local, except that picking one with a site on it asks the server to
@@ -256,7 +285,7 @@ export const ColonyOverworld = (props) => {
   };
 
   return (
-    <Window title="Expedition Table" width={1010} height={660}>
+    <Window title="Expedition Map" width={1010} height={660}>
       <Window.Content>
         {!radius ? (
           <NoticeBox>
@@ -274,7 +303,9 @@ export const ColonyOverworld = (props) => {
                   )
                 }
               >
-                <RegionMap
+                <OverworldMap
+                  planet={planet}
+                  sun={sun}
                   radius={radius}
                   cells={cells}
                   knownCells={known_cells}
@@ -283,7 +314,7 @@ export const ColonyOverworld = (props) => {
                   onSelect={selectCell}
                   frontier={frontier_cells}
                   route={party?.route}
-                  partyFrom={party?.current_cell ?? undefined}
+                  partyFrom={party?.leg_from_cell ?? party?.current_cell ?? undefined}
                   partyTo={party?.next_cell ?? undefined}
                   partyProgress={legProgress}
                 />
@@ -298,6 +329,7 @@ export const ColonyOverworld = (props) => {
                       party={party}
                       offers={route_offers}
                       surveyOffers={survey_offers}
+                      orderPreview={order_preview}
                       surveyCell={previewed_survey_cell}
                       previewedSiteId={previewed_site_id}
                       viewerIsColonist={viewer_is_colonist}
@@ -417,6 +449,7 @@ function ExpeditionPanel(props: {
   offers: RouteOffer[];
   previewedSiteId: string | null;
   surveyOffers: RouteOffer[];
+  orderPreview: OrderPreview | null;
   surveyCell: string | null;
   viewerIsColonist: boolean;
   legProgress: number;
@@ -429,6 +462,7 @@ function ExpeditionPanel(props: {
     offers,
     previewedSiteId,
     surveyOffers,
+    orderPreview,
     surveyCell,
     viewerIsColonist,
     legProgress,
@@ -498,9 +532,31 @@ function ExpeditionPanel(props: {
             {`${party.next_cell} — ${Math.round(legProgress * 100)}% of the way`}
           </LabeledList.Item>
         )}
+        {(party.state === 'outbound' || party.state === 'returning') &&
+          party.eta_seconds > 0 && (
+            <LabeledList.Item label="Arrives">
+              {`in about ${describeDuration(party.eta_seconds)}`}
+            </LabeledList.Item>
+          )}
         {!party.is_planning && (
           <LabeledList.Item label="Rations">
-            {`${party.supplies_carried} carried`}
+            <Box
+              inline
+              color={
+                party.supplies_carried < party.rations_needed
+                  ? 'average'
+                  : undefined
+              }
+            >
+              {party.rations_needed > 0
+                ? `${party.supplies_carried} carried, ${party.rations_needed} needed to get home`
+                : `${party.supplies_carried} carried`}
+            </Box>
+            {party.supplies_carried <= 0 && party.rations_needed > 0 && (
+              <Box color="bad">
+                Out of rations. The party walks slowly and goes hungry.
+              </Box>
+            )}
           </LabeledList.Item>
         )}
         <LabeledList.Item label="Signed on">
@@ -579,7 +635,7 @@ function ExpeditionPanel(props: {
                 planning &&
                 !atPost && (
                   <Box inline color="average" ml={1}>
-                    not at the post
+                    not gathered
                   </Box>
                 )
               )}
@@ -591,9 +647,9 @@ function ExpeditionPanel(props: {
       {/* Where the caravan actually leaves from. Without a post there is nowhere to muster at all. */}
       {!!planning && !!party.members.length && (
         <Box mt={1} color="label">
-          {!party.has_hitching_post
-            ? 'This colony has no hitching post to muster at.'
-            : `${party.gathered_ids.length} of ${party.members.length} gathered at the hitching post (within ${party.gather_radius} paces).`}
+          {`${party.gathered_ids.length} of ${party.members.length} gathered at ${party.muster_place} (within ${party.gather_radius} paces).`}
+          {!party.has_hitching_post &&
+            ' This colony has no hitching post, so gather at the edge of the map.'}
         </Box>
       )}
 
@@ -735,57 +791,97 @@ function ExpeditionPanel(props: {
       )}
 
       {/*
-        Changing your mind on the road. Only between cells and only with no question outstanding - rerouting
-        while halted would be answering the road by walking away from it, which the server refuses anyway.
+        Changing your mind after leaving. Refused while a question is outstanding - rerouting while halted
+        would be answering the road by walking away from it.
       */}
-      {(party.state === 'outbound' || party.state === 'returning') &&
+      {(party.state === 'outbound' ||
+        party.state === 'returning' ||
+        party.state === 'at_site') &&
         !party.pending_decision &&
         !!party.you_are_a_member && (
           <Box mt={1.5}>
             <Box color="label" mb={0.5}>
-              The expedition can change its mind between cells. Rations are not
+              The expedition can change its plan at any time. Rations are not
               refilled by doing so.
             </Box>
+            {!!orderPreview && (
+              <Box
+                mb={0.5}
+                color={
+                  orderPreview.rations_needed > orderPreview.rations_carried
+                    ? 'average'
+                    : 'good'
+                }
+              >
+                {`From here: ${orderPreview.steps} crossings, ${describeDuration(orderPreview.travel_seconds)}. The walk there and home needs ${orderPreview.rations_needed} rations; the party carries ${orderPreview.rations_carried}.`}
+              </Box>
+            )}
             <Button
               fluid
               icon="map-location-dot"
-              disabled={!previewedSiteId}
+              disabled={!orderPreview}
               tooltip={
-                previewedSiteId
+                orderPreview
                   ? undefined
-                  : 'Choose somewhere on the map to head for instead.'
+                  : 'Choose a site, or unknown ground at the edge of the known map, that the party can reach.'
               }
               onClick={() => onAct('reroute')}
             >
-              Head for the selected site instead
+              {!orderPreview
+                ? 'Choose where to go on the map'
+                : orderPreview.kind === 'survey'
+                  ? 'Go and look at the selected ground'
+                  : party.state === 'at_site'
+                    ? 'Go on to the selected site'
+                    : 'Head for the selected site'}
             </Button>
-            <Button
-              fluid
-              mt={0.5}
-              icon="house"
-              onClick={() => onAct('turn_for_home')}
-            >
-              Turn back for the colony
-            </Button>
+            {party.state === 'outbound' && (
+              <Button
+                fluid
+                mt={0.5}
+                icon="house"
+                onClick={() => onAct('turn_for_home')}
+              >
+                Turn back for the colony
+              </Button>
+            )}
           </Box>
         )}
 
-      {!!planning && !!party.destination_site_id && (
+      {!!planning && !!party.route.length && (
         <Box mt={1.5}>
-          {!!party.departure_problem && (
-            <NoticeBox info mb={1}>
-              {party.departure_problem}
-            </NoticeBox>
+          {/* The word is given where the party stands to leave: here at a way out, or at the hitching post. */}
+          {!!party.you_are_a_member && !!party.you_are_at_exit ? (
+            <>
+              {!!party.set_out_problem && (
+                <NoticeBox info mb={1}>
+                  {party.set_out_problem}
+                </NoticeBox>
+              )}
+              <Button
+                fluid
+                icon="person-walking-arrow-right"
+                color="good"
+                disabled={!!party.set_out_problem}
+                onClick={() => onAct('set_out')}
+              >
+                Set out from here
+              </Button>
+            </>
+          ) : (
+            <>
+              {!!party.departure_problem && (
+                <NoticeBox info mb={1}>
+                  {party.departure_problem}
+                </NoticeBox>
+              )}
+              <NoticeBox mb={1} success={!party.departure_problem}>
+                {party.departure_problem
+                  ? 'Not ready to leave yet.'
+                  : 'Ready. Give the word at the hitching post, or at the edge of the map.'}
+              </NoticeBox>
+            </>
           )}
-          {/*
-            The table plans; the post departs. There is no Set out button here because the whole party has to be
-            standing at the post to leave, and somebody pressing this would have to not be standing there.
-          */}
-          <NoticeBox mb={1} success={!party.departure_problem}>
-            {party.departure_problem
-              ? 'Not ready to leave yet.'
-              : 'Ready. Gather at the hitching post and give the word there.'}
-          </NoticeBox>
           <Button
             fluid
             mt={0.5}

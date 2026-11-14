@@ -89,11 +89,10 @@
 	if(party.supplies >= (2 * mouths))
 		offered += OVERWORLD_CHOICE_SHELTER
 
+	// Priced for the whole of what is left: round the obstacle, on to the end, and home from there.
 	var/list/detour = party.detour_route(region)
-	if(length(detour) >= 2)
-		var/added = (length(detour) - 1) - (length(party.route) - 1)
-		if(party.supplies >= (added + 1) * mouths)
-			offered += OVERWORLD_CHOICE_SKIRT
+	if(length(detour) >= 2 && party.supplies >= party.rations_to_finish(region, detour, SScampaign.get_overworld_state()?.discovered_cells))
+		offered += OVERWORLD_CHOICE_SKIRT
 
 	return offered
 

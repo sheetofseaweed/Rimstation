@@ -221,7 +221,16 @@ ADMIN_VERB(rimstation_inspect_overworld_region, R_ADMIN, "Inspect Colony Region"
 	var/list/lines = list()
 	lines += "Region radius [region.radius], [length(region.cells)] cells, [length(region.sites)] sites."
 	lines += "Options: extent [region.options["extent"]], roughness [region.options["roughness"]], abundance [region.options["abundance"]]."
-	lines += "Generator fingerprint: [region.fingerprint]."
+	lines += "Generator version [region.generation_version] (newest [OVERWORLD_GENERATION_VERSION]), fingerprint [region.fingerprint]."
+	var/water = 0
+	var/peaks = 0
+	for(var/cell_id in region.cells)
+		var/datum/overworld_cell/cell = region.cells[cell_id]
+		if(cell.terrain == OVERWORLD_TERRAIN_WATER)
+			water++
+		else if(!cell.is_passable())
+			peaks++
+	lines += "Water: [water] cells. Peaks: [peaks] cells. Passes cut through ranges: [region.passes_opened] cells."
 	lines += "Discovered: [length(region_state.discovered_cells)] cells."
 	lines += "Admin edits: [length(region_state.cell_overrides)] cells, [length(region_state.added_sites)] placed sites."
 	lines += "---"
@@ -241,3 +250,34 @@ ADMIN_VERB(rimstation_inspect_overworld_region, R_ADMIN, "Inspect Colony Region"
 			lines += "Edited [cell_id]: [parts.Join(", ")]"
 
 	to_chat(user, boxed_message(span_notice(lines.Join("\n"))))
+
+/**
+ * Rebuilds a running campaign's region with the newest generator.
+ *
+ * The new map is a different place, so discoveries, site states and admin edits are dropped and the
+ * colony's surroundings are revealed again. Refused while an expedition is away.
+ */
+ADMIN_VERB(rimstation_rebuild_overworld_region, R_ADMIN, "Rebuild Colony Region", "Rebuilds the region with the newest generator. Drops discoveries and site states.", ADMIN_CATEGORY_COLONY_DEBUG)
+	var/datum/overworld_state/region_state = SScampaign.get_overworld_state()
+	if(!region_state)
+		to_chat(user, span_warning("No campaign is loaded, so there is no region to rebuild."))
+		return
+
+	var/question = "Rebuild the region with generator version [OVERWORLD_GENERATION_VERSION]? It uses version [region_state.generation_version] now. All discoveries, site states and cell edits are lost."
+	if(tgui_alert(user, question, "Colony Region", list("Rebuild", "Cancel")) != "Rebuild")
+		return
+
+	var/refused = region_state.adopt_newest_generator()
+	if(refused)
+		to_chat(user, span_warning(refused))
+		return
+
+	var/datum/overworld_region/region = get_active_overworld_region()
+	region_state.reveal_initial(region)
+	region_state.region_fingerprint = region.fingerprint
+	SScampaign.sync_overworld()
+	SScampaign.commit_party_change()
+
+	message_admins("[key_name_admin(user)] rebuilt the colony region with generator version [OVERWORLD_GENERATION_VERSION].")
+	log_admin("[key_name(user)] rebuilt the colony region with generator version [OVERWORLD_GENERATION_VERSION].")
+	to_chat(user, span_notice("The region is rebuilt. [length(region_state.discovered_cells)] cells around the colony are revealed."))

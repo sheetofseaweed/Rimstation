@@ -14,8 +14,9 @@ import {
   type Cell,
   type KnownCell,
   type KnownSite,
-  RegionMap,
 } from './ColonyOverworld/RegionMap';
+import type { PlanetInfo } from './ColonyOverworld/GlobeMap';
+import { OverworldMap } from './ColonyOverworld/OverworldMap';
 
 type Choice = {
   id: string;
@@ -41,6 +42,8 @@ type Data = {
   ruin_site_count: number;
   fingerprint: string | null;
   world_seed: string;
+  /** The previewed planet, for drawing the globe. */
+  planet: PlanetInfo | null;
   can_confirm: boolean;
   blocked_reason: string | null;
 };
@@ -64,6 +67,7 @@ export const CampaignSetup = (props) => {
     resource_site_count,
     ruin_site_count,
     world_seed,
+    planet,
     can_confirm,
     blocked_reason,
   } = data;
@@ -191,7 +195,8 @@ export const CampaignSetup = (props) => {
                     </Box>
                   </Stack.Item>
                   <Stack.Item grow>
-                    <RegionMap
+                    <OverworldMap
+                      planet={planet}
                       radius={radius}
                       cells={cells}
                       knownCells={known_cells}

@@ -83,7 +83,7 @@
 	SScampaign.bind_colonist(body, vera)
 	party.member_ids += vera.colonist_id
 
-	party.route = region.plan_route("0,0", "2,0", OVERWORLD_ROUTE_FASTEST)
+	party.route = region.plan_route("0,0", overworld_test_target(region, 2), OVERWORLD_ROUTE_FASTEST)
 	party.current_cell = party.route[1]
 	party.next_leg_index = 2
 	party.supplies = 20

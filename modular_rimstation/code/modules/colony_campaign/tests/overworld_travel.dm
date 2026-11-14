@@ -73,7 +73,7 @@
 	TEST_ASSERT_NOTNULL(party, "An expedition could not be formed.")
 
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	TEST_ASSERT(length(route) >= 3, "The test could not plan a route long enough to walk.")
 
 	put_on_the_road(party, route, supplies = 50)
@@ -108,7 +108,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/holds_still_for_a_checkpoint/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 	put_on_the_road(party, route, supplies = 50)
 	skip_to_arrival(party)
 
@@ -129,7 +129,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/ignores_parties_not_travelling/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "3,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 3), OVERWORLD_ROUTE_FASTEST)
 
 	// Still being assembled: no route, no clock, nothing to advance.
 	SSoverworld.fire()
@@ -151,7 +151,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/returns_and_completes/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "2,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 2), OVERWORLD_ROUTE_FASTEST)
 	TEST_ASSERT(length(route) >= 2, "The test could not plan a route to walk back along.")
 
 	// Standing at the far end, as a party that had finished at a site would be.
@@ -161,7 +161,7 @@
 
 	TEST_ASSERT(party.begin_return("test"), "A party at a site could not turn for home.")
 	TEST_ASSERT_EQUAL(party.state, OVERWORLD_PARTY_RETURNING, "A party that turned for home is not returning.")
-	TEST_ASSERT_EQUAL(party.next_leg_index, length(route) - 1, "A returning party did not aim at the cell before it.")
+	TEST_ASSERT_EQUAL(party.leg_target_cell(), route[length(route) - 1], "A returning party did not aim at the cell before it.")
 
 	TEST_ASSERT(SSoverworld.schedule_leg(party, region), "A returning party could not be given a leg to walk.")
 
@@ -200,7 +200,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/decides_once/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 4), OVERWORLD_ROUTE_FASTEST)
 	TEST_ASSERT(length(route) >= 4, "The test could not plan a route long enough to be interrupted.")
 
 	put_on_the_road(party, route, supplies = 80, allow_decisions = TRUE)
@@ -262,7 +262,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/waiting_costs_time_and_food/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 4), OVERWORLD_ROUTE_FASTEST)
 	put_on_the_road(party, route, supplies = 80)
 
 	// Driven at the weather archetype directly. Which problem a party meets is derived from where it is
@@ -292,7 +292,7 @@
 /datum/unit_test/rimstation_colonist_chapter/overworld_travel/poverty_still_offers_a_way_on/Run()
 	var/datum/overworld_party/party = begin_travel_campaign()
 	var/datum/overworld_region/region = get_active_overworld_region()
-	var/list/route = region.plan_route("0,0", "4,0", OVERWORLD_ROUTE_FASTEST)
+	var/list/route = region.plan_route("0,0", overworld_test_target(region, 4), OVERWORLD_ROUTE_FASTEST)
 	put_on_the_road(party, route, supplies = 80)
 
 	// No need to be interrupted for this: what is under test is what each archetype offers a party in a given
@@ -435,15 +435,14 @@
 	TEST_ASSERT_NOTNULL(site_id, "The region holds no site to preview.")
 
 	// Unknown ground. Without this in the payload the survey offers below are built and then never shown.
-	table.previewed_survey_cell = target
-	var/list/data = table.ui_data(null)
+	table.map_view.set_preview(null, null, target)
+	var/list/data = table.map_view.ui_data(null)
 	TEST_ASSERT_EQUAL(data["previewed_survey_cell"], target, "The table did not report the frontier cell it was previewing, so its survey offers can never be reached.")
 	TEST_ASSERT(length(data["survey_offers"]), "A previewed frontier cell was offered no way to reach it.")
 	TEST_ASSERT(length(data["frontier_cells"]), "The table sent no frontier, so no cell can be picked to survey in the first place.")
 
 	// And the site half, which is the same contract and the reason the missing one was not obvious.
-	table.previewed_survey_cell = null
-	table.previewed_site_id = site_id
-	data = table.ui_data(null)
+	table.map_view.set_preview(null, site_id, null)
+	data = table.map_view.ui_data(null)
 	TEST_ASSERT_EQUAL(data["previewed_site_id"], site_id, "The table did not report the site it was previewing.")
 	TEST_ASSERT_NULL(data["previewed_survey_cell"], "The table reported a survey target it had been told to forget.")

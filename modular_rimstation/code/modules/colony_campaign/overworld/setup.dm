@@ -96,6 +96,7 @@
 	// Preview mode reveals everything: somebody choosing a world should see the world.
 	data["radius"] = preview?.radius || 0
 	data["fingerprint"] = preview?.fingerprint
+	data["planet"] = preview?.planet_climate?.Copy()
 	// Short enough to read out, long enough to tell two worlds apart. The full seed goes in the manifest.
 	data["world_seed"] = copytext(world_seed, 1, 13)
 
@@ -115,6 +116,7 @@
 			"topology" = cell.topology,
 			"danger" = cell.danger,
 			"seconds" = cell.traversal_seconds(),
+			"height" = cell.height,
 		))
 	data["cells"] = cells
 	data["known_cells"] = known
