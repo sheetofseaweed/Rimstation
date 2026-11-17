@@ -437,6 +437,7 @@
 #include "../../../modular_rimstation/code/modules/species/tests/asari_physique.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/quarian.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/quarian_clothing.dm"
+#include "../../../modular_rimstation/code/modules/species/tests/quarian_feeding.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/quarian_suit.dm"
 #include "../../../modular_rimstation/code/modules/species/tests/species_ui_contract.dm"
 #include "../../../modular_rimstation/code/datums/ai/tests/jps_retarget.dm"

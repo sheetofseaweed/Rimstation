@@ -8,7 +8,8 @@
 /obj/item/clothing/head/helmet/space/quarian
 	name = "quarian helmet"
 	desc = "The standard quarian helmet, sealed against the bacteria and viruses of the outside world. \
-		There is a bracket for a welding mask behind the faceplate and a clip for a torch on the side."
+		There is a bracket for a welding mask behind the faceplate and a clip for a torch on the side. \
+		A feeding port under the chin lets food and drink through without breaking the seal."
 	icon = 'modular_rimstation/icons/obj/clothing/quarian_helmets.dmi'
 	worn_icon = 'modular_rimstation/icons/mob/clothing/quarian_helmets.dmi'
 	icon_state = "helmet-0-0"
@@ -18,6 +19,8 @@
 	base_icon_state = "helmet"
 	// No HEADINTERNALS: a quarian still needs a breath mask under this, the same as in the source build.
 	clothing_flags = STOPSPRESSUREDAMAGE | THICKMATERIAL | SNUG_FIT | STACKABLE_HELMET_EXEMPT
+	// The mouth stays covered for disease and pepper spray. Only feeding checks look past it.
+	clothing_traits = list(TRAIT_FEEDING_PORT)
 	armor_type = /datum/armor/quarian_envirosuit
 	// These are what the welding visor grants. Initialize() raises the visor, which zeroes them.
 	flash_protect = FLASH_PROTECTION_WELDER

@@ -257,7 +257,7 @@
 	if(!target_mob.reagents || reagents.total_volume <= 0)
 		return  ..()
 
-	if(target_mob.is_mouth_covered(ITEM_SLOT_HEAD) || target_mob.is_mouth_covered(ITEM_SLOT_MASK))
+	if(target_mob.get_feeding_obstruction(ITEM_SLOT_HEAD) || target_mob.get_feeding_obstruction(ITEM_SLOT_MASK)) // RIMSTATION EDIT - ORG: is_mouth_covered() on both
 		if(target_mob == user)
 			target_mob.balloon_alert(user, "can't eat with mouth covered!")
 		else

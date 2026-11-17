@@ -560,7 +560,7 @@ Behavior that's still missing from this component that original food items had t
 /datum/component/edible/proc/CanConsume(mob/living/carbon/eater, mob/living/feeder)
 	if(!iscarbon(eater))
 		return FALSE
-	if(eater.is_mouth_covered())
+	if(eater.get_feeding_obstruction()) // RIMSTATION EDIT - ORG: eater.is_mouth_covered(). Lets a feeding port through.
 		eater.balloon_alert(feeder, "mouth is covered!")
 		return FALSE
 

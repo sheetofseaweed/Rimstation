@@ -187,10 +187,12 @@
 		return FALSE
 	var/mob/living/carbon/as_carbon = eater
 	var/covered = ""
-	if(as_carbon.is_mouth_covered(ITEM_SLOT_HEAD))
+	// RIMSTATION EDIT START - ORG: is_mouth_covered() on both lines. Lets a feeding port through.
+	if(as_carbon.get_feeding_obstruction(ITEM_SLOT_HEAD))
 		covered = "headgear"
-	else if(as_carbon.is_mouth_covered(ITEM_SLOT_MASK))
+	else if(as_carbon.get_feeding_obstruction(ITEM_SLOT_MASK))
 		covered = "mask"
+	// RIMSTATION EDIT END
 	if(covered)
 		var/who = (isnull(user) || eater == user) ? "your" : "[eater.p_their()]"
 		to_chat(user, span_warning("You have to remove [who] [covered] first!"))
